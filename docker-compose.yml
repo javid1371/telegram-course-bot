@@ -46,6 +46,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - default
     environment:
       # Telegram
       BOT_TOKEN: ${BOT_TOKEN}
@@ -87,5 +89,9 @@ services:
       - tools
 
 volumes:
+
+networks:
+  default:
+    driver: bridge
   postgres_data:
   redis_data:

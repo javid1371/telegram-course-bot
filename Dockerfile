@@ -21,9 +21,14 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p files backups exports logs
 
+# Copy and set permissions for entrypoint
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Run database migrations and start bot
-CMD ["sh", "-c", "alembic upgrade head && python bot.py"]
+# Use entrypoint to wait for postgres, then run migrations and start bot
+ENTRYPOINT ["docker-entrypoint.sh", "postgres"]
+CMD ["sh", "-c", "python bot.py"]
