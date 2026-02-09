@@ -1,0 +1,119 @@
+"""
+Telegram Course Bot - Main Entry Point
+A complete course delivery bot with advanced admin panel
+"""
+import asyncio
+import logging
+import sys
+from aiogram import Bot, Dispatcher
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+
+import config
+from database import init_db
+
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, config.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(config.LOG_FILE),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+async def on_startup(bot: Bot):
+    """Actions to perform on bot startup"""
+    logger.info("🚀 Starting Telegram Course Bot...")
+    
+    # Validate configuration
+    errors = config.validate_config()
+    if errors:
+        logger.error("❌ Configuration errors:")
+        for error in errors:
+            logger.error(f"  - {error}")
+        sys.exit(1)
+    
+    # Initialize database
+    try:
+        await init_db()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database: {e}")
+        sys.exit(1)
+    
+    # Send startup message to admins
+    for admin_id in config.ADMIN_USER_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                "✅ ربات با موفقیت راه‌اندازی شد!\n\n"
+                "برای دسترسی به پنل ادمین دستور /admin را ارسال کنید."
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send startup message to admin {admin_id}: {e}")
+    
+    logger.info("✅ Bot started successfully")
+
+
+async def on_shutdown(bot: Bot):
+    """Actions to perform on bot shutdown"""
+    logger.info("🛑 Shutting down bot...")
+    
+    # Send shutdown message to admins
+    for admin_id in config.ADMIN_USER_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                "⚠️ ربات متوقف شد."
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send shutdown message to admin {admin_id}: {e}")
+    
+    logger.info("✅ Bot shutdown complete")
+
+
+async def main():
+    """Main function to run the bot"""
+    
+    # Initialize bot and dispatcher
+    bot = Bot(
+        token=config.BOT_TOKEN,
+        default=DefaultBotProperties(
+            parse_mode=ParseMode.HTML
+        )
+    )
+    
+    dp = Dispatcher()
+    
+    # Register handlers (will be implemented in Phase 2)
+    # from handlers import user, admin
+    # dp.include_router(user.router)
+    # dp.include_router(admin.router)
+    
+    # Register startup and shutdown handlers
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
+    
+    # Start polling
+    try:
+        logger.info("📡 Starting polling...")
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    except Exception as e:
+        logger.error(f"❌ Error during polling: {e}")
+        raise
+    finally:
+        await bot.session.close()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("⚠️ Bot stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
+        sys.exit(1)

@@ -1,0 +1,49 @@
+# Telegram Bot Framework
+aiogram==3.4.1
+aiohttp==3.9.3
+
+# Database
+sqlalchemy==2.0.27
+asyncpg==0.29.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# Redis (optional for caching)
+redis==5.0.1
+aioredis==2.0.1
+
+# Task Scheduling
+APScheduler==3.10.4
+
+# Data Processing
+pandas==2.2.0
+openpyxl==3.1.2
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# Validation
+pydantic==2.6.1
+email-validator==2.1.0
+
+# HTTP Requests
+requests==2.31.0
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2024.1
+
+# Logging
+loguru==0.7.2
+
+# Security
+cryptography==42.0.2
+
+# Testing (optional)
+pytest==8.0.0
+pytest-asyncio==0.23.4
+
+# Development (optional)
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0
