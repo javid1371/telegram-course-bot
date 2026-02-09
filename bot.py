@@ -37,13 +37,24 @@ async def on_startup(bot: Bot):
             logger.error(f"  - {error}")
         sys.exit(1)
     
-    # Initialize database
-    try:
-        await init_db()
-        logger.info("✅ Database initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize database: {e}")
-        sys.exit(1)
+    # Initialize database with retry logic
+    max_retries = 5
+    retry_delay = 5
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Attempt {attempt}/{max_retries} to connect to database...")
+            await init_db()
+            logger.info("✅ Database initialized successfully")
+            break
+        except Exception as e:
+            logger.warning(f"Failed to initialize database (attempt {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.error(f"❌ Failed to initialize database after {max_retries} attempts")
+                sys.exit(1)
     
     # Send startup message to admins
     for admin_id in config.ADMIN_USER_IDS:
