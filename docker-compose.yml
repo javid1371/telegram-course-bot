@@ -89,9 +89,9 @@ services:
       - tools
 
 volumes:
+  postgres_data:
+  redis_data:
 
 networks:
   default:
     driver: bridge
-  postgres_data:
-  redis_data:
