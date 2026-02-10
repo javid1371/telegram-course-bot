@@ -1,10 +1,19 @@
 """Services package initialization"""
 
+from services.user_service import UserService
+from services.lesson_service import LessonService
+from services.webhook_service import WebhookService
+from services.broadcast_service import BroadcastService
+from services.analytics_service import AnalyticsService
+from services.export_service import ExportService
+from services.reminder_service import ReminderService
+
 __all__ = [
-    'lesson_service',
-    'webhook_service',
-    'reminder_service',
-    'analytics_service',
-    'export_service',
-    'broadcast_service',
+    'UserService',
+    'LessonService',
+    'WebhookService',
+    'BroadcastService',
+    'AnalyticsService',
+    'ExportService',
+    'ReminderService',
 ]
