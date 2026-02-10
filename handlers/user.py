@@ -180,7 +180,7 @@ async def confirm_lesson(callback: CallbackQuery):
 
         # Get current lesson to check delay
         current_lesson = await lesson_service.get_lesson_by_id(lesson_id)
-        delay_hours = current_lesson.delay_hours if current_lesson else 0
+        delay_minutes = current_lesson.delay_hours if current_lesson else 0  # column is delay_hours but stores minutes
 
         # Get progress
         progress = await lesson_service.get_user_progress(user.id)
@@ -194,9 +194,9 @@ async def confirm_lesson(callback: CallbackQuery):
         else:
             lesson = current_lesson
 
-            if delay_hours > 0:
+            if delay_minutes > 0:
                 # Schedule next lesson delivery
-                send_at = datetime.utcnow() + timedelta(hours=delay_hours)
+                send_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
                 scheduled = ScheduledMessage(
                     user_id=user.id,
                     message="__next_lesson__",
@@ -207,15 +207,26 @@ async def confirm_lesson(callback: CallbackQuery):
                 await session.commit()
 
                 # Format delay text
-                if delay_hours >= 24:
-                    days = delay_hours // 24
-                    remaining_hours = delay_hours % 24
-                    if remaining_hours > 0:
-                        delay_text = f"{days} روز و {remaining_hours} ساعت"
+                if delay_minutes < 60:
+                    delay_text = f"{delay_minutes} دقیقه"
+                elif delay_minutes < 1440:
+                    hours = delay_minutes // 60
+                    rem = delay_minutes % 60
+                    if rem > 0:
+                        delay_text = f"{hours} ساعت و {rem} دقیقه"
                     else:
-                        delay_text = f"{days} روز"
+                        delay_text = f"{hours} ساعت"
                 else:
-                    delay_text = f"{delay_hours} ساعت"
+                    days = delay_minutes // 1440
+                    remaining = delay_minutes % 1440
+                    hours = remaining // 60
+                    rem_min = remaining % 60
+                    parts = [f"{days} روز"]
+                    if hours > 0:
+                        parts.append(f"{hours} ساعت")
+                    if rem_min > 0:
+                        parts.append(f"{rem_min} دقیقه")
+                    delay_text = " و ".join(parts)
 
                 await callback.message.answer(
                     config.MESSAGES["lesson_completed"].format(

@@ -35,6 +35,28 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def _format_delay(minutes: int) -> str:
+    """Format delay minutes into human-readable Persian text"""
+    if minutes <= 0:
+        return "فوری"
+    if minutes < 60:
+        return f"{minutes} دقیقه"
+    hours = minutes // 60
+    remaining_min = minutes % 60
+    if hours < 24:
+        if remaining_min > 0:
+            return f"{hours} ساعت و {remaining_min} دقیقه"
+        return f"{hours} ساعت"
+    days = hours // 24
+    remaining_hours = hours % 24
+    parts = [f"{days} روز"]
+    if remaining_hours > 0:
+        parts.append(f"{remaining_hours} ساعت")
+    if remaining_min > 0:
+        parts.append(f"{remaining_min} دقیقه")
+    return " و ".join(parts)
+
+
 # ===========================
 # FSM STATES
 # ===========================
@@ -307,8 +329,8 @@ async def process_lesson_description(message: Message, state: FSMContext):
 
     await message.answer(
         "⏱ <b>فاصله زمانی تا درس بعدی</b>\n\n"
-        "بعد از تایید این درس، چند ساعت بعد درس بعدی ارسال شود؟\n"
-        "عدد را به ساعت وارد کنید (مثلاً: 24 برای یک روز)\n"
+        "بعد از تایید این درس، چند دقیقه بعد درس بعدی ارسال شود؟\n"
+        "عدد را به دقیقه وارد کنید (مثلاً: 60 برای یک ساعت، 1440 برای یک روز)\n"
         "یا 0 برای ارسال فوری:",
         reply_markup=get_cancel_keyboard()
     )
@@ -317,21 +339,21 @@ async def process_lesson_description(message: Message, state: FSMContext):
 
 @router.message(AdminStates.waiting_lesson_delay)
 async def process_lesson_delay(message: Message, state: FSMContext):
-    """Process lesson delay hours"""
+    """Process lesson delay in minutes"""
     if message.text == "❌ انصراف":
         await state.clear()
         await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
         return
 
     try:
-        delay_hours = int(message.text)
-        if delay_hours < 0:
+        delay_minutes = int(message.text)
+        if delay_minutes < 0:
             raise ValueError
     except (ValueError, TypeError):
-        await message.answer("⚠️ لطفاً یک عدد صحیح مثبت وارد کنید (مثلاً: 0، 6، 12، 24):")
+        await message.answer("⚠️ لطفاً یک عدد صحیح مثبت وارد کنید (مثلاً: 0، 30، 60، 1440):")
         return
 
-    await state.update_data(lesson_delay_hours=delay_hours)
+    await state.update_data(lesson_delay_minutes=delay_minutes)
 
     # Save lesson
     data = await state.get_data()
@@ -354,15 +376,15 @@ async def process_lesson_delay(message: Message, state: FSMContext):
             description=data.get("lesson_description"),
             file_id=data.get("lesson_file_id"),
             text_content=data.get("lesson_text_content"),
-            delay_hours=delay_hours,
+            delay_hours=delay_minutes,  # stored in delay_hours column but value is minutes
         )
 
-        delay_text = f"⏱ فاصله: {delay_hours} ساعت" if delay_hours > 0 else "⏱ فاصله: فوری"
+        delay_text = _format_delay(delay_minutes)
         await message.answer(
             f"✅ درس «{lesson.title}» با موفقیت اضافه شد!\n"
             f"📋 شماره: {lesson.order}\n"
             f"📦 نوع: {data['lesson_content_type']}\n"
-            f"{delay_text}",
+            f"⏱ فاصله: {delay_text}",
             reply_markup=get_admin_main_menu()
         )
 
@@ -395,9 +417,10 @@ async def list_lessons(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin:lesson:view:"))
 @admin_only
 @log_errors
-async def view_lesson(callback: CallbackQuery):
+async def view_lesson(callback: CallbackQuery, lesson_id: int = None):
     """View lesson details"""
-    lesson_id = int(callback.data.split(":")[3])
+    if lesson_id is None:
+        lesson_id = int(callback.data.split(":")[3])
     await callback.answer()
 
     async with async_session_maker() as session:
@@ -411,7 +434,7 @@ async def view_lesson(callback: CallbackQuery):
         stats = await lesson_service.get_lesson_stats(lesson_id)
 
         status = "✅ فعال" if lesson.is_active else "❌ غیرفعال"
-        delay_text = f"{lesson.delay_hours} ساعت" if lesson.delay_hours > 0 else "فوری"
+        delay_text = _format_delay(lesson.delay_hours)
         text = (
             f"📚 <b>درس {lesson.order}: {lesson.title}</b>\n\n"
             f"📦 نوع: {lesson.content_type.value}\n"
@@ -438,8 +461,7 @@ async def view_lesson(callback: CallbackQuery):
 async def lesson_stats(callback: CallbackQuery):
     """Show lesson stats - redirects to lesson view which includes stats"""
     lesson_id = int(callback.data.split(":")[3])
-    callback.data = f"admin:lesson:view:{lesson_id}"
-    await view_lesson(callback)
+    await view_lesson(callback, lesson_id=lesson_id)
 
 
 @router.callback_query(F.data.startswith("admin:lesson:edit:"))
@@ -491,7 +513,7 @@ async def edit_lesson_field(callback: CallbackQuery, state: FSMContext):
     field_prompts = {
         "title": "📝 عنوان جدید درس را وارد کنید:",
         "description": "📄 توضیحات جدید را وارد کنید (یا /skip برای حذف):",
-        "delay_hours": "⏱ فاصله زمانی جدید (به ساعت) را وارد کنید (مثلاً: 0، 6، 12، 24):",
+        "delay_hours": "⏱ فاصله زمانی جدید (به دقیقه) را وارد کنید (مثلاً: 0، 30، 60، 1440):",
         "content": "🔄 محتوای جدید را ارسال کنید (متن، فایل، ویدیو، صوت، ویس یا عکس):",
         "cta_text": "🔗 متن دکمه CTA جدید را وارد کنید (یا /skip برای حذف):",
         "cta_url": "🌐 لینک CTA جدید را وارد کنید (یا /skip برای حذف):",
@@ -674,7 +696,7 @@ async def toggle_lesson(callback: CallbackQuery):
             status = "فعال ✅" if lesson.is_active else "غیرفعال ❌"
             await callback.answer(f"وضعیت درس: {status}")
             # Refresh view
-            await view_lesson(callback)
+            await view_lesson(callback, lesson_id=lesson_id)
         else:
             await callback.answer("❌ خطا در تغییر وضعیت")
 
@@ -720,8 +742,7 @@ async def cancel_delete_lesson(callback: CallbackQuery):
     await callback.answer("لغو شد")
     lesson_id = int(callback.data.split(":")[2])
     # Go back to lesson view
-    callback.data = f"admin:lesson:view:{lesson_id}"
-    await view_lesson(callback)
+    await view_lesson(callback, lesson_id=lesson_id)
 
 
 # ===========================
@@ -860,9 +881,10 @@ async def users_pagination(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin:user:view:"))
 @admin_only
 @log_errors
-async def view_user(callback: CallbackQuery):
+async def view_user(callback: CallbackQuery, user_id: int = None):
     """View user details"""
-    user_id = int(callback.data.split(":")[3])
+    if user_id is None:
+        user_id = int(callback.data.split(":")[3])
     await callback.answer()
 
     async with async_session_maker() as session:
@@ -990,8 +1012,7 @@ async def cancel_delete_user(callback: CallbackQuery):
     await callback.answer("لغو شد")
     user_id = int(callback.data.split(":")[2])
     # Go back to user view
-    callback.data = f"admin:user:view:{user_id}"
-    await view_user(callback)
+    await view_user(callback, user_id=user_id)
 
 
 @router.callback_query(F.data.startswith("admin:user:stats:"))
@@ -1000,8 +1021,7 @@ async def cancel_delete_user(callback: CallbackQuery):
 async def user_stats(callback: CallbackQuery):
     """Show user stats - redirects to user view which includes stats"""
     user_id = int(callback.data.split(":")[3])
-    callback.data = f"admin:user:view:{user_id}"
-    await view_user(callback)
+    await view_user(callback, user_id=user_id)
 
 
 @router.callback_query(F.data.startswith("confirm:delete_user:"))
