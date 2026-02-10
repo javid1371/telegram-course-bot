@@ -19,6 +19,7 @@ class ContentType(enum.Enum):
     TEXT = "text"
     VIDEO = "video"
     AUDIO = "audio"
+    VOICE = "voice"
     DOCUMENT = "document"
     PHOTO = "photo"
 
@@ -136,6 +137,9 @@ class Lesson(Base):
     # Display settings
     order: Mapped[int] = mapped_column(Integer, default=0, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Delay before sending next lesson (in hours, 0 = instant)
+    delay_hours: Mapped[int] = mapped_column(Integer, default=0)
 
     # Call to Action
     cta_text: Mapped[Optional[str]] = mapped_column(String(255))

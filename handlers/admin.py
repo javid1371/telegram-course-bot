@@ -46,6 +46,7 @@ class AdminStates(StatesGroup):
     waiting_lesson_content_type = State()
     waiting_lesson_content = State()
     waiting_lesson_description = State()
+    waiting_lesson_delay = State()
     waiting_lesson_cta_text = State()
     waiting_lesson_cta_url = State()
     waiting_lesson_edit_field = State()
@@ -199,9 +200,10 @@ async def process_lesson_title(message: Message, state: FSMContext):
     )
     builder.row(
         InlineKeyboardButton(text="🎵 صوت", callback_data="lesson_type:audio"),
-        InlineKeyboardButton(text="📄 فایل", callback_data="lesson_type:document"),
+        InlineKeyboardButton(text="🎤 ویس", callback_data="lesson_type:voice"),
     )
     builder.row(
+        InlineKeyboardButton(text="📄 فایل", callback_data="lesson_type:document"),
         InlineKeyboardButton(text="🖼 تصویر", callback_data="lesson_type:photo"),
     )
 
@@ -222,7 +224,8 @@ async def process_lesson_type(callback: CallbackQuery, state: FSMContext):
     type_prompts = {
         "text": "📝 متن درس را ارسال کنید:",
         "video": "🎥 ویدیو درس را ارسال کنید (فایل ویدیو):",
-        "audio": "🎵 فایل صوتی درس را ارسال کنید:",
+        "audio": "🎵 فایل صوتی یا ویس درس را ارسال کنید:",
+        "voice": "🎤 ویس درس را ضبط و ارسال کنید (یا فایل صوتی بفرستید):",
         "document": "📄 فایل درس را ارسال کنید:",
         "photo": "🖼 تصویر درس را ارسال کنید:",
     }
@@ -252,8 +255,25 @@ async def process_lesson_content(message: Message, state: FSMContext):
         text_content = message.text
     elif content_type == "video" and message.video:
         file_id = message.video.file_id
-    elif content_type == "audio" and message.audio:
-        file_id = message.audio.file_id
+    elif content_type == "audio":
+        if message.audio:
+            file_id = message.audio.file_id
+        elif message.voice:
+            file_id = message.voice.file_id
+            # Switch to voice type if user sent a voice message
+            await state.update_data(lesson_content_type="voice")
+        else:
+            await message.answer("⚠️ لطفاً فایل صوتی یا ویس ارسال کنید.")
+            return
+    elif content_type == "voice":
+        if message.voice:
+            file_id = message.voice.file_id
+        elif message.audio:
+            file_id = message.audio.file_id
+            await state.update_data(lesson_content_type="audio")
+        else:
+            await message.answer("⚠️ لطفاً ویس ضبط کنید یا فایل صوتی ارسال کنید.")
+            return
     elif content_type == "document" and message.document:
         file_id = message.document.file_id
     elif content_type == "photo" and message.photo:
@@ -285,6 +305,34 @@ async def process_lesson_description(message: Message, state: FSMContext):
     description = None if message.text == "/skip" else message.text
     await state.update_data(lesson_description=description)
 
+    await message.answer(
+        "⏱ <b>فاصله زمانی تا درس بعدی</b>\n\n"
+        "بعد از تایید این درس، چند ساعت بعد درس بعدی ارسال شود؟\n"
+        "عدد را به ساعت وارد کنید (مثلاً: 24 برای یک روز)\n"
+        "یا 0 برای ارسال فوری:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_lesson_delay)
+
+
+@router.message(AdminStates.waiting_lesson_delay)
+async def process_lesson_delay(message: Message, state: FSMContext):
+    """Process lesson delay hours"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    try:
+        delay_hours = int(message.text)
+        if delay_hours < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        await message.answer("⚠️ لطفاً یک عدد صحیح مثبت وارد کنید (مثلاً: 0، 6، 12، 24):")
+        return
+
+    await state.update_data(lesson_delay_hours=delay_hours)
+
     # Save lesson
     data = await state.get_data()
     await state.clear()
@@ -293,6 +341,7 @@ async def process_lesson_description(message: Message, state: FSMContext):
         "text": ContentType.TEXT,
         "video": ContentType.VIDEO,
         "audio": ContentType.AUDIO,
+        "voice": ContentType.VOICE,
         "document": ContentType.DOCUMENT,
         "photo": ContentType.PHOTO,
     }
@@ -302,15 +351,18 @@ async def process_lesson_description(message: Message, state: FSMContext):
         lesson = await lesson_service.create_lesson(
             title=data["lesson_title"],
             content_type=content_type_map[data["lesson_content_type"]],
-            description=description,
+            description=data.get("lesson_description"),
             file_id=data.get("lesson_file_id"),
             text_content=data.get("lesson_text_content"),
+            delay_hours=delay_hours,
         )
 
+        delay_text = f"⏱ فاصله: {delay_hours} ساعت" if delay_hours > 0 else "⏱ فاصله: فوری"
         await message.answer(
             f"✅ درس «{lesson.title}» با موفقیت اضافه شد!\n"
             f"📋 شماره: {lesson.order}\n"
-            f"📦 نوع: {data['lesson_content_type']}",
+            f"📦 نوع: {data['lesson_content_type']}\n"
+            f"{delay_text}",
             reply_markup=get_admin_main_menu()
         )
 
@@ -359,10 +411,12 @@ async def view_lesson(callback: CallbackQuery):
         stats = await lesson_service.get_lesson_stats(lesson_id)
 
         status = "✅ فعال" if lesson.is_active else "❌ غیرفعال"
+        delay_text = f"{lesson.delay_hours} ساعت" if lesson.delay_hours > 0 else "فوری"
         text = (
             f"📚 <b>درس {lesson.order}: {lesson.title}</b>\n\n"
             f"📦 نوع: {lesson.content_type.value}\n"
             f"📌 وضعیت: {status}\n"
+            f"⏱ فاصله تا درس بعد: {delay_text}\n"
             f"📝 توضیحات: {truncate_text(lesson.description or 'ندارد', 200)}\n\n"
             f"📊 <b>آمار:</b>\n"
             f"  👁 شروع شده: {stats['started']}\n"
@@ -391,17 +445,218 @@ async def lesson_stats(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin:lesson:edit:"))
 @admin_only
 @log_errors
-async def edit_lesson(callback: CallbackQuery):
-    """Edit lesson - placeholder for future implementation"""
-    await callback.answer("⚠️ این قابلیت در نسخه بعدی اضافه می‌شود.", show_alert=True)
+async def edit_lesson(callback: CallbackQuery, state: FSMContext):
+    """Show edit options for a lesson"""
+    lesson_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 عنوان", callback_data=f"admin:lesson:editf:title:{lesson_id}"),
+        InlineKeyboardButton(text="📄 توضیحات", callback_data=f"admin:lesson:editf:description:{lesson_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="⏱ فاصله زمانی", callback_data=f"admin:lesson:editf:delay_hours:{lesson_id}"),
+        InlineKeyboardButton(text="🔄 محتوا", callback_data=f"admin:lesson:editf:content:{lesson_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔗 متن CTA", callback_data=f"admin:lesson:editf:cta_text:{lesson_id}"),
+        InlineKeyboardButton(text="🌐 لینک CTA", callback_data=f"admin:lesson:editf:cta_url:{lesson_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:lesson:view:{lesson_id}")
+    )
+
+    await callback.message.edit_text(
+        "✏️ <b>ویرایش درس</b>\n\nکدام فیلد را می‌خواهید ویرایش کنید؟",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("admin:lesson:editf:"))
+@admin_only
+@log_errors
+async def edit_lesson_field(callback: CallbackQuery, state: FSMContext):
+    """Start editing a specific lesson field"""
+    parts = callback.data.split(":")
+    field_name = parts[3]
+    lesson_id = int(parts[4])
+    await callback.answer()
+
+    await state.update_data(edit_lesson_id=lesson_id, edit_field=field_name)
+
+    field_prompts = {
+        "title": "📝 عنوان جدید درس را وارد کنید:",
+        "description": "📄 توضیحات جدید را وارد کنید (یا /skip برای حذف):",
+        "delay_hours": "⏱ فاصله زمانی جدید (به ساعت) را وارد کنید (مثلاً: 0، 6، 12، 24):",
+        "content": "🔄 محتوای جدید را ارسال کنید (متن، فایل، ویدیو، صوت، ویس یا عکس):",
+        "cta_text": "🔗 متن دکمه CTA جدید را وارد کنید (یا /skip برای حذف):",
+        "cta_url": "🌐 لینک CTA جدید را وارد کنید (یا /skip برای حذف):",
+    }
+
+    await callback.message.edit_text(
+        field_prompts.get(field_name, "مقدار جدید را وارد کنید:"),
+    )
+    await state.set_state(AdminStates.waiting_lesson_edit_value)
+
+
+@router.message(AdminStates.waiting_lesson_edit_value)
+async def process_lesson_edit_value(message: Message, state: FSMContext):
+    """Process the new value for a lesson field"""
+    data = await state.get_data()
+    lesson_id = data["edit_lesson_id"]
+    field_name = data["edit_field"]
+    await state.clear()
+
+    update_data = {}
+
+    if field_name == "title":
+        update_data["title"] = message.text
+    elif field_name == "description":
+        update_data["description"] = None if message.text == "/skip" else message.text
+    elif field_name == "delay_hours":
+        try:
+            val = int(message.text)
+            if val < 0:
+                raise ValueError
+            update_data["delay_hours"] = val
+        except (ValueError, TypeError):
+            await message.answer("⚠️ عدد نامعتبر. ویرایش لغو شد.", reply_markup=get_admin_main_menu())
+            return
+    elif field_name == "content":
+        if message.text:
+            update_data["text_content"] = message.text
+            update_data["file_id"] = None
+            update_data["content_type"] = ContentType.TEXT
+        elif message.video:
+            update_data["file_id"] = message.video.file_id
+            update_data["text_content"] = None
+            update_data["content_type"] = ContentType.VIDEO
+        elif message.audio:
+            update_data["file_id"] = message.audio.file_id
+            update_data["text_content"] = None
+            update_data["content_type"] = ContentType.AUDIO
+        elif message.voice:
+            update_data["file_id"] = message.voice.file_id
+            update_data["text_content"] = None
+            update_data["content_type"] = ContentType.VOICE
+        elif message.document:
+            update_data["file_id"] = message.document.file_id
+            update_data["text_content"] = None
+            update_data["content_type"] = ContentType.DOCUMENT
+        elif message.photo:
+            update_data["file_id"] = message.photo[-1].file_id
+            update_data["text_content"] = None
+            update_data["content_type"] = ContentType.PHOTO
+        else:
+            await message.answer("⚠️ محتوای نامعتبر. ویرایش لغو شد.", reply_markup=get_admin_main_menu())
+            return
+    elif field_name in ("cta_text", "cta_url"):
+        update_data[field_name] = None if message.text == "/skip" else message.text
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.update_lesson(lesson_id, **update_data)
+
+        if lesson:
+            await message.answer(
+                f"✅ درس «{lesson.title}» با موفقیت ویرایش شد.",
+                reply_markup=get_admin_main_menu()
+            )
+        else:
+            await message.answer("❌ خطا در ویرایش درس.", reply_markup=get_admin_main_menu())
 
 
 @router.callback_query(F.data == "admin:lesson:reorder")
 @admin_only
 @log_errors
 async def reorder_lessons(callback: CallbackQuery):
-    """Reorder lessons - placeholder for future implementation"""
-    await callback.answer("⚠️ این قابلیت در نسخه بعدی اضافه می‌شود.", show_alert=True)
+    """Show lessons with up/down buttons for reordering"""
+    await callback.answer()
+    await _show_reorder_lessons(callback)
+
+
+async def _show_reorder_lessons(callback: CallbackQuery):
+    """Display reorder interface for lessons"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lessons = await lesson_service.get_all_lessons(active_only=False)
+
+        if not lessons or len(lessons) < 2:
+            await callback.message.edit_text(
+                "⚠️ حداقل ۲ درس برای تغییر ترتیب نیاز است.",
+                reply_markup=get_lesson_management_keyboard()
+            )
+            return
+
+        builder = InlineKeyboardBuilder()
+        for i, lesson in enumerate(lessons):
+            row_buttons = []
+            if i > 0:
+                row_buttons.append(InlineKeyboardButton(text="⬆️", callback_data=f"admin:lesson:moveup:{lesson.id}"))
+            else:
+                row_buttons.append(InlineKeyboardButton(text="  ", callback_data="noop"))
+            row_buttons.append(InlineKeyboardButton(text=f"{lesson.order}. {lesson.title[:20]}", callback_data="noop"))
+            if i < len(lessons) - 1:
+                row_buttons.append(InlineKeyboardButton(text="⬇️", callback_data=f"admin:lesson:movedown:{lesson.id}"))
+            else:
+                row_buttons.append(InlineKeyboardButton(text="  ", callback_data="noop"))
+            builder.row(*row_buttons)
+
+        builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:lessons"))
+
+        await callback.message.edit_text(
+            "🔄 <b>تغییر ترتیب درس‌ها</b>\n\nبا دکمه‌های ⬆️ و ⬇️ ترتیب را تغییر دهید:",
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data.startswith("admin:lesson:moveup:"))
+@admin_only
+@log_errors
+async def move_lesson_up(callback: CallbackQuery):
+    """Move lesson up in order"""
+    lesson_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lessons = await lesson_service.get_all_lessons(active_only=False)
+        lesson_ids = [l.id for l in lessons]
+
+        idx = lesson_ids.index(lesson_id) if lesson_id in lesson_ids else -1
+        if idx > 0:
+            lesson_ids[idx], lesson_ids[idx - 1] = lesson_ids[idx - 1], lesson_ids[idx]
+            await lesson_service.reorder_lessons(lesson_ids)
+
+    await _show_reorder_lessons(callback)
+
+
+@router.callback_query(F.data.startswith("admin:lesson:movedown:"))
+@admin_only
+@log_errors
+async def move_lesson_down(callback: CallbackQuery):
+    """Move lesson down in order"""
+    lesson_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lessons = await lesson_service.get_all_lessons(active_only=False)
+        lesson_ids = [l.id for l in lessons]
+
+        idx = lesson_ids.index(lesson_id) if lesson_id in lesson_ids else -1
+        if idx >= 0 and idx < len(lesson_ids) - 1:
+            lesson_ids[idx], lesson_ids[idx + 1] = lesson_ids[idx + 1], lesson_ids[idx]
+            await lesson_service.reorder_lessons(lesson_ids)
+
+    await _show_reorder_lessons(callback)
 
 
 @router.callback_query(F.data.startswith("admin:lesson:toggle:"))
@@ -1140,8 +1395,89 @@ async def list_registration_fields(callback: CallbackQuery):
 @admin_only
 @log_errors
 async def reorder_fields(callback: CallbackQuery):
-    """Reorder registration fields - placeholder for future implementation"""
-    await callback.answer("⚠️ این قابلیت در نسخه بعدی اضافه می‌شود.", show_alert=True)
+    """Show fields with up/down buttons for reordering"""
+    await callback.answer()
+    await _show_reorder_fields(callback)
+
+
+async def _show_reorder_fields(callback: CallbackQuery):
+    """Display reorder interface for registration fields"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        fields = await user_service.get_active_registration_fields()
+
+        if not fields or len(fields) < 2:
+            await callback.message.edit_text(
+                "⚠️ حداقل ۲ فیلد برای تغییر ترتیب نیاز است.",
+                reply_markup=get_registration_fields_keyboard()
+            )
+            return
+
+        builder = InlineKeyboardBuilder()
+        for i, field in enumerate(fields):
+            row_buttons = []
+            if i > 0:
+                row_buttons.append(InlineKeyboardButton(text="⬆️", callback_data=f"admin:field:moveup:{field.id}"))
+            else:
+                row_buttons.append(InlineKeyboardButton(text="  ", callback_data="noop"))
+            row_buttons.append(InlineKeyboardButton(text=f"{field.order}. {field.field_label[:20]}", callback_data="noop"))
+            if i < len(fields) - 1:
+                row_buttons.append(InlineKeyboardButton(text="⬇️", callback_data=f"admin:field:movedown:{field.id}"))
+            else:
+                row_buttons.append(InlineKeyboardButton(text="  ", callback_data="noop"))
+            builder.row(*row_buttons)
+
+        builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back"))
+
+        await callback.message.edit_text(
+            "🔄 <b>تغییر ترتیب فیلدها</b>\n\nبا دکمه‌های ⬆️ و ⬇️ ترتیب را تغییر دهید:",
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data.startswith("admin:field:moveup:"))
+@admin_only
+@log_errors
+async def move_field_up(callback: CallbackQuery):
+    """Move field up in order"""
+    field_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        fields = await user_service.get_active_registration_fields()
+        field_ids = [f.id for f in fields]
+
+        idx = field_ids.index(field_id) if field_id in field_ids else -1
+        if idx > 0:
+            field_ids[idx], field_ids[idx - 1] = field_ids[idx - 1], field_ids[idx]
+            await user_service.reorder_registration_fields(field_ids)
+
+    await _show_reorder_fields(callback)
+
+
+@router.callback_query(F.data.startswith("admin:field:movedown:"))
+@admin_only
+@log_errors
+async def move_field_down(callback: CallbackQuery):
+    """Move field down in order"""
+    field_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        fields = await user_service.get_active_registration_fields()
+        field_ids = [f.id for f in fields]
+
+        idx = field_ids.index(field_id) if field_id in field_ids else -1
+        if idx >= 0 and idx < len(field_ids) - 1:
+            field_ids[idx], field_ids[idx + 1] = field_ids[idx + 1], field_ids[idx]
+            await user_service.reorder_registration_fields(field_ids)
+
+    await _show_reorder_fields(callback)
 
 
 @router.callback_query(F.data == "admin:field:cancel")

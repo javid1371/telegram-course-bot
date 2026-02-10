@@ -232,6 +232,17 @@ class UserService:
         )
         return list(result.scalars().all())
 
+    async def reorder_registration_fields(self, field_ids: List[int]) -> bool:
+        """Reorder registration fields based on provided ID list"""
+        for order, field_id in enumerate(field_ids, 1):
+            await self.session.execute(
+                update(RegistrationField)
+                .where(RegistrationField.id == field_id)
+                .values(order=order)
+            )
+        await self.session.commit()
+        return True
+
     async def get_total_users_count(self) -> int:
         """Get total number of users"""
         result = await self.session.execute(select(func.count(User.id)))

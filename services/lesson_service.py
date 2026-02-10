@@ -60,6 +60,7 @@ class LessonService:
         text_content: Optional[str] = None,
         cta_text: Optional[str] = None,
         cta_url: Optional[str] = None,
+        delay_hours: int = 0,
     ) -> Lesson:
         """Create a new lesson"""
         # Get next order
@@ -75,6 +76,7 @@ class LessonService:
             file_id=file_id,
             text_content=text_content,
             order=max_order + 1,
+            delay_hours=delay_hours,
             cta_text=cta_text,
             cta_url=cta_url,
         )

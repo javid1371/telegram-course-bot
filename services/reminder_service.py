@@ -7,8 +7,11 @@ from typing import List
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database.models import User, ScheduledMessage, MessageStatus
+from database.models import User, Lesson, ScheduledMessage, MessageStatus, ContentType
+from services.lesson_service import LessonService
 import config
 
 logger = logging.getLogger(__name__)
@@ -121,10 +124,14 @@ class ReminderService:
                     )
                     user = user_result.scalar_one_or_none()
                     if user:
-                        await self.bot.send_message(
-                            chat_id=user.telegram_user_id,
-                            text=msg.message,
-                        )
+                        if msg.message_type == "next_lesson":
+                            # Send the next lesson to the user
+                            await self._send_next_lesson(user)
+                        else:
+                            await self.bot.send_message(
+                                chat_id=user.telegram_user_id,
+                                text=msg.message,
+                            )
 
                 msg.status = MessageStatus.SENT
                 msg.sent_at = datetime.utcnow()
@@ -138,3 +145,65 @@ class ReminderService:
 
         await self.session.commit()
         return {"sent": sent, "failed": failed}
+
+    async def _send_next_lesson(self, user: User):
+        """Send the next lesson to a user (for delayed delivery)"""
+        lesson_service = LessonService(self.session)
+        next_lesson = await lesson_service.get_next_lesson_for_user(user.id)
+
+        if not next_lesson:
+            return
+
+        # Mark lesson as started
+        await lesson_service.mark_lesson_started(user.id, next_lesson.id)
+
+        # Update user's current lesson
+        user.current_lesson_id = next_lesson.id
+        await self.session.commit()
+
+        # Build caption
+        description = next_lesson.description or ""
+        lesson_text = config.MESSAGES["lesson_sent"].format(
+            lesson_number=next_lesson.order,
+            lesson_title=next_lesson.title,
+            description=description,
+        )
+
+        # Build keyboard
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="✅ دیدم، ادامه بده",
+                callback_data=f"confirm_lesson:{next_lesson.id}"
+            )
+        )
+        if next_lesson.cta_text and next_lesson.cta_url:
+            builder.row(
+                InlineKeyboardButton(
+                    text=next_lesson.cta_text,
+                    url=next_lesson.cta_url
+                )
+            )
+        keyboard = builder.as_markup()
+
+        chat_id = user.telegram_user_id
+
+        if next_lesson.content_type == ContentType.TEXT:
+            full_text = lesson_text
+            if next_lesson.text_content:
+                full_text += f"\n\n{next_lesson.text_content}"
+            await self.bot.send_message(chat_id=chat_id, text=full_text, reply_markup=keyboard)
+        elif next_lesson.content_type == ContentType.VIDEO and next_lesson.file_id:
+            await self.bot.send_video(chat_id=chat_id, video=next_lesson.file_id, caption=lesson_text, reply_markup=keyboard)
+        elif next_lesson.content_type == ContentType.AUDIO and next_lesson.file_id:
+            await self.bot.send_audio(chat_id=chat_id, audio=next_lesson.file_id, caption=lesson_text, reply_markup=keyboard)
+        elif next_lesson.content_type == ContentType.VOICE and next_lesson.file_id:
+            await self.bot.send_voice(chat_id=chat_id, voice=next_lesson.file_id, caption=lesson_text, reply_markup=keyboard)
+        elif next_lesson.content_type == ContentType.DOCUMENT and next_lesson.file_id:
+            await self.bot.send_document(chat_id=chat_id, document=next_lesson.file_id, caption=lesson_text, reply_markup=keyboard)
+        elif next_lesson.content_type == ContentType.PHOTO and next_lesson.file_id:
+            await self.bot.send_photo(chat_id=chat_id, photo=next_lesson.file_id, caption=lesson_text, reply_markup=keyboard)
+        else:
+            await self.bot.send_message(chat_id=chat_id, text=lesson_text, reply_markup=keyboard)
+
+        logger.info(f"Delayed lesson {next_lesson.id} sent to user {user.telegram_user_id}")

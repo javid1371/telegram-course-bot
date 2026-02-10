@@ -3,12 +3,13 @@ User handlers - handles user-facing bot interactions
 Lesson delivery, progress tracking, support
 """
 import logging
+from datetime import datetime, timedelta
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 
 from database import async_session_maker
-from database.models import ContentType
+from database.models import ContentType, ScheduledMessage, MessageStatus
 from services.user_service import UserService
 from services.lesson_service import LessonService
 from services.webhook_service import WebhookService
@@ -125,6 +126,16 @@ async def _send_lesson(message: Message, lesson):
         else:
             await message.answer(lesson_text, reply_markup=keyboard)
 
+    elif lesson.content_type == ContentType.VOICE:
+        if lesson.file_id:
+            await message.answer_voice(
+                voice=lesson.file_id,
+                caption=lesson_text,
+                reply_markup=keyboard,
+            )
+        else:
+            await message.answer(lesson_text, reply_markup=keyboard)
+
     elif lesson.content_type == ContentType.DOCUMENT:
         if lesson.file_id:
             await message.answer_document(
@@ -167,6 +178,10 @@ async def confirm_lesson(callback: CallbackQuery):
         # Mark lesson as completed
         await lesson_service.mark_lesson_completed(user.id, lesson_id)
 
+        # Get current lesson to check delay
+        current_lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        delay_hours = current_lesson.delay_hours if current_lesson else 0
+
         # Get progress
         progress = await lesson_service.get_user_progress(user.id)
 
@@ -177,15 +192,45 @@ async def confirm_lesson(callback: CallbackQuery):
             webhook_service = WebhookService(session)
             await webhook_service.send_webhook("course_completed", user)
         else:
-            lesson = await lesson_service.get_lesson_by_id(lesson_id)
-            lesson_title = lesson.title if lesson else ""
+            lesson = current_lesson
 
-            await callback.message.answer(
-                config.MESSAGES["lesson_completed"].format(
-                    lesson_number=lesson.order if lesson else "?",
-                    progress=progress["progress_percent"],
-                ) + f"\n\n📚 برای دریافت درس بعدی روی «ادامه دوره» کلیک کنید."
-            )
+            if delay_hours > 0:
+                # Schedule next lesson delivery
+                send_at = datetime.utcnow() + timedelta(hours=delay_hours)
+                scheduled = ScheduledMessage(
+                    user_id=user.id,
+                    message="__next_lesson__",
+                    message_type="next_lesson",
+                    send_at=send_at,
+                )
+                session.add(scheduled)
+                await session.commit()
+
+                # Format delay text
+                if delay_hours >= 24:
+                    days = delay_hours // 24
+                    remaining_hours = delay_hours % 24
+                    if remaining_hours > 0:
+                        delay_text = f"{days} روز و {remaining_hours} ساعت"
+                    else:
+                        delay_text = f"{days} روز"
+                else:
+                    delay_text = f"{delay_hours} ساعت"
+
+                await callback.message.answer(
+                    config.MESSAGES["lesson_completed"].format(
+                        lesson_number=lesson.order if lesson else "?",
+                        progress=progress["progress_percent"],
+                    ) + f"\n\n⏱ درس بعدی <b>{delay_text}</b> دیگر برای شما ارسال می‌شود."
+                )
+            else:
+                # Instant - tell user to click continue
+                await callback.message.answer(
+                    config.MESSAGES["lesson_completed"].format(
+                        lesson_number=lesson.order if lesson else "?",
+                        progress=progress["progress_percent"],
+                    ) + f"\n\n📚 برای دریافت درس بعدی روی «ادامه دوره» کلیک کنید."
+                )
 
             # Send webhook
             webhook_service = WebhookService(session)
