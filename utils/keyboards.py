@@ -29,7 +29,7 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
 def get_lesson_keyboard(lesson_id: int, cta_text: str = None, cta_url: str = None) -> InlineKeyboardMarkup:
     """Keyboard for lesson confirmation"""
     builder = InlineKeyboardBuilder()
-    
+
     # Confirmation button
     builder.row(
         InlineKeyboardButton(
@@ -37,13 +37,13 @@ def get_lesson_keyboard(lesson_id: int, cta_text: str = None, cta_url: str = Non
             callback_data=f"confirm_lesson:{lesson_id}"
         )
     )
-    
+
     # CTA button if provided
     if cta_text and cta_url:
         builder.row(
             InlineKeyboardButton(text=cta_text, url=cta_url)
         )
-    
+
     return builder.as_markup()
 
 
@@ -104,7 +104,7 @@ def get_lesson_management_keyboard() -> InlineKeyboardMarkup:
 def get_lesson_list_keyboard(lessons: list) -> InlineKeyboardMarkup:
     """List of lessons for management"""
     builder = InlineKeyboardBuilder()
-    
+
     for lesson in lessons:
         status = "✅" if lesson.is_active else "❌"
         builder.row(
@@ -113,7 +113,7 @@ def get_lesson_list_keyboard(lessons: list) -> InlineKeyboardMarkup:
                 callback_data=f"admin:lesson:view:{lesson.id}"
             )
         )
-    
+
     builder.row(
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:lessons")
     )
@@ -298,17 +298,17 @@ def get_pagination_keyboard(
 ) -> InlineKeyboardMarkup:
     """Generic pagination keyboard"""
     builder = InlineKeyboardBuilder()
-    
+
     buttons = []
     if page > 1:
         buttons.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"{callback_prefix}:{page-1}"))
-    
+
     buttons.append(InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="noop"))
-    
+
     if page < total_pages:
         buttons.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"{callback_prefix}:{page+1}"))
-    
+
     builder.row(*buttons)
     builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back"))
-    
+
     return builder.as_markup()

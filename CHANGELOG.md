@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Phase 4 - Advanced Features (Planned)
 - [ ] Analytics dashboard
-- [ ] Excel export functionality  
+- [ ] Excel export functionality
 - [ ] Reminder system for inactive users
 - [ ] Campaign and tagging system
 - [ ] Rate limiting implementation

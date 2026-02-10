@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 async def on_startup(bot: Bot):
     """Actions to perform on bot startup"""
     logger.info("🚀 Starting Telegram Course Bot...")
-    
+
     # Validate configuration
     errors = config.validate_config()
     if errors:
@@ -36,11 +36,11 @@ async def on_startup(bot: Bot):
         for error in errors:
             logger.error(f"  - {error}")
         sys.exit(1)
-    
+
     # Initialize database with retry logic
     max_retries = 5
     retry_delay = 5
-    
+
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"Attempt {attempt}/{max_retries} to connect to database...")
@@ -55,7 +55,7 @@ async def on_startup(bot: Bot):
             else:
                 logger.error(f"❌ Failed to initialize database after {max_retries} attempts")
                 sys.exit(1)
-    
+
     # Send startup message to admins
     for admin_id in config.ADMIN_USER_IDS:
         try:
@@ -66,14 +66,14 @@ async def on_startup(bot: Bot):
             )
         except Exception as e:
             logger.warning(f"Failed to send startup message to admin {admin_id}: {e}")
-    
+
     logger.info("✅ Bot started successfully")
 
 
 async def on_shutdown(bot: Bot):
     """Actions to perform on bot shutdown"""
     logger.info("🛑 Shutting down bot...")
-    
+
     # Send shutdown message to admins
     for admin_id in config.ADMIN_USER_IDS:
         try:
@@ -83,13 +83,13 @@ async def on_shutdown(bot: Bot):
             )
         except Exception as e:
             logger.warning(f"Failed to send shutdown message to admin {admin_id}: {e}")
-    
+
     logger.info("✅ Bot shutdown complete")
 
 
 async def main():
     """Main function to run the bot"""
-    
+
     # Initialize bot and dispatcher
     bot = Bot(
         token=config.BOT_TOKEN,
@@ -97,18 +97,18 @@ async def main():
             parse_mode=ParseMode.HTML
         )
     )
-    
+
     dp = Dispatcher()
-    
+
     # Register handlers (will be implemented in Phase 2)
     # from handlers import user, admin
     # dp.include_router(user.router)
     # dp.include_router(admin.router)
-    
+
     # Register startup and shutdown handlers
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
-    
+
     # Start polling
     try:
         logger.info("📡 Starting polling...")

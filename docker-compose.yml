@@ -52,18 +52,18 @@ services:
       # Telegram
       BOT_TOKEN: ${BOT_TOKEN}
       ADMIN_USER_IDS: ${ADMIN_USER_IDS}
-      
+
       # Database
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-course_bot}
       DB_USER: ${DB_USER:-bot_user}
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
-      
+
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      
+
       # Other settings
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:

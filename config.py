@@ -16,8 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent
 # Telegram Bot
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_USER_IDS = [
-    int(uid.strip()) 
-    for uid in os.getenv("ADMIN_USER_IDS", "").split(",") 
+    int(uid.strip())
+    for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
     if uid.strip()
 ]
 
@@ -89,16 +89,16 @@ MESSAGES = {
 def validate_config() -> List[str]:
     """Validate required configuration"""
     errors = []
-    
+
     if not BOT_TOKEN:
         errors.append("BOT_TOKEN is required")
-    
+
     if not ADMIN_USER_IDS:
         errors.append("At least one ADMIN_USER_ID is required")
-    
+
     if not DB_PASSWORD:
         errors.append("DB_PASSWORD is required")
-    
+
     return errors
 
 

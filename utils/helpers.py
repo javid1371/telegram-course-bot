@@ -16,7 +16,7 @@ def validate_phone(phone: str) -> bool:
     """Validate Iranian phone number"""
     # Remove spaces and dashes
     phone = phone.replace(" ", "").replace("-", "")
-    
+
     # Check Iranian mobile format
     pattern = r'^(\+98|0)?9\d{9}$'
     return bool(re.match(pattern, phone))
@@ -75,12 +75,12 @@ def parse_tracking_link(start_param: Optional[str]) -> tuple[Optional[str], Opti
     """
     if not start_param:
         return None, None
-    
+
     if start_param.startswith("camp_"):
         return start_param[5:], None
     elif start_param.startswith("ref_"):
         return None, start_param[4:]
-    
+
     return None, None
 
 
@@ -95,10 +95,10 @@ def escape_markdown(text: str) -> str:
 def format_datetime(dt: datetime, include_time: bool = True) -> str:
     """Format datetime in Persian format"""
     from datetime import datetime
-    
+
     # Convert to Jalali if needed (optional - for Persian calendar)
     # For now, using Gregorian
-    
+
     if include_time:
         return dt.strftime("%Y/%m/%d - %H:%M")
     return dt.strftime("%Y/%m/%d")
@@ -113,7 +113,7 @@ def is_within_rate_limit(last_action: Optional[datetime], limit_seconds: int = 6
     """Check if action is within rate limit"""
     if not last_action:
         return True
-    
+
     time_diff = (datetime.now() - last_action).total_seconds()
     return time_diff < limit_seconds
 
@@ -144,12 +144,12 @@ def get_month_range() -> tuple[datetime, datetime]:
     """Get start and end of current month"""
     today = datetime.now()
     start = today.replace(day=1, hour=0, minute=0, second=0)
-    
+
     # Get last day of month
     if today.month == 12:
         end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
     else:
         end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
-    
+
     end = end.replace(hour=23, minute=59, second=59)
     return start, end
