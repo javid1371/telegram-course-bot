@@ -100,10 +100,18 @@ async def main():
 
     dp = Dispatcher()
 
-    # Register handlers (will be implemented in Phase 2)
-    # from handlers import user, admin
-    # dp.include_router(user.router)
-    # dp.include_router(admin.router)
+    # Register handlers
+    from handlers.registration import router as registration_router
+    from handlers.user import router as user_router
+    from handlers.admin import router as admin_router
+
+    dp.include_router(registration_router)
+    dp.include_router(admin_router)
+    dp.include_router(user_router)  # User router last (catch-all menus)
+
+    # Setup scheduler
+    from tasks.scheduler import setup_scheduler, start_scheduler, stop_scheduler
+    setup_scheduler(bot)
 
     # Register startup and shutdown handlers
     dp.startup.register(on_startup)
@@ -111,12 +119,14 @@ async def main():
 
     # Start polling
     try:
+        start_scheduler()
         logger.info("📡 Starting polling...")
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     except Exception as e:
         logger.error(f"❌ Error during polling: {e}")
         raise
     finally:
+        stop_scheduler()
         await bot.session.close()
 
 

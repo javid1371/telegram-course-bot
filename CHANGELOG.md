@@ -4,27 +4,64 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Phase 4 - Advanced Features (Planned)
-- [ ] Analytics dashboard
-- [ ] Excel export functionality
-- [ ] Reminder system for inactive users
-- [ ] Campaign and tagging system
-- [ ] Rate limiting implementation
+### Phase 4 - Polish & Optimization (Planned)
+- [ ] Redis caching integration
+- [ ] Advanced rate limiting with Redis
+- [ ] Jalali calendar support
+- [ ] Multi-language support
+- [ ] Comprehensive test suite
 
-### Phase 3 - Admin Panel (Planned)
-- [ ] Lesson management (CRUD)
-- [ ] User management interface
-- [ ] Registration fields configuration
-- [ ] Broadcast messaging system
-- [ ] Private messaging to users
-- [ ] Webhook configuration panel
+## [0.3.0] - 2026-02-10
 
-### Phase 2 - Core Bot Features (Planned)
-- [ ] Admin authentication system
-- [ ] Dynamic user registration
-- [ ] Lesson delivery system
-- [ ] Progress tracking and confirmation
-- [ ] Webhook integration
+### Phase 3 - Admin Panel ✅
+
+#### Added
+- Full admin panel with dashboard statistics
+- Lesson management (CRUD: add, edit, delete, toggle, reorder)
+- User management (list, search, view, block, delete, reset progress)
+- Registration fields management (dynamic field creation: text, number, email, phone, date, select)
+- Broadcast messaging system (to all, active, inactive, completed, by tag)
+- Private messaging to individual users
+- Tag management for users
+- Webhook management (add, list, test webhooks)
+- Analytics & reporting (today, week, month, all-time stats)
+- Excel export (users, progress, analytics)
+- Settings overview panel
+
+## [0.2.0] - 2026-02-10
+
+### Phase 2 - Core Bot Features ✅
+
+#### Added
+- Admin authentication system with `@admin_only` decorator
+- Dynamic user registration with FSM (Finite State Machine)
+  - Support for text, number, email, phone, date, select field types
+  - Input validation per field type
+  - Campaign tracking via start parameters
+  - Referral code system
+- Lesson delivery system
+  - Support for text, video, audio, document, photo content types
+  - Automatic lesson progression
+  - Call to Action (CTA) buttons
+- Progress tracking and confirmation
+  - Visual progress bar
+  - Lesson completion confirmation
+  - Course completion detection
+- Webhook integration for events (user_registered, lesson_completed, course_completed)
+- Service layer architecture:
+  - UserService - user CRUD and registration
+  - LessonService - lesson management and delivery
+  - WebhookService - outgoing webhook notifications
+  - BroadcastService - mass messaging with rate limiting
+  - AnalyticsService - statistics and reporting
+  - ExportService - Excel export functionality
+  - ReminderService - inactive user reminders
+- Task scheduler (APScheduler):
+  - Daily reminders for inactive users (10:00 AM)
+  - Daily statistics snapshot (23:55)
+  - Scheduled message processing (every 5 min)
+- User commands: /start, /help, /progress
+- Menu-based navigation for users
 
 ## [0.1.0] - 2026-02-09
 
@@ -78,6 +115,8 @@ All notable changes to this project will be documented in this file.
 
 ## Version History
 
+- **v0.3.0** (2026-02-10): Admin panel and management features
+- **v0.2.0** (2026-02-10): Core bot features (registration, lessons, progress)
 - **v0.1.0** (2026-02-09): Initial infrastructure setup
 - More versions coming with each phase completion...
 
@@ -90,23 +129,27 @@ All notable changes to this project will be documented in this file.
 - [x] Configuration
 - [x] Utilities
 
-### 🔄 Phase 2: Core Bot Features (In Progress)
-- [ ] Admin authentication
-- [ ] User registration
-- [ ] Lesson delivery
-- [ ] Progress tracking
+### ✅ Phase 2: Core Bot Features (Complete)
+- [x] Admin authentication
+- [x] User registration (FSM)
+- [x] Lesson delivery
+- [x] Progress tracking
+- [x] Webhook integration
 
-### 📅 Phase 3: Admin Panel (Planned)
-- [ ] Lesson management
-- [ ] User management
-- [ ] Broadcast system
-- [ ] Webhook settings
+### ✅ Phase 3: Admin Panel (Complete)
+- [x] Lesson management (CRUD)
+- [x] User management
+- [x] Registration fields
+- [x] Broadcast system
+- [x] Webhook settings
+- [x] Analytics & Export
 
-### 🎯 Phase 4: Advanced Features (Planned)
-- [ ] Analytics
-- [ ] Export functionality
-- [ ] Reminder system
-- [ ] Campaign tracking
+### 🎯 Phase 4: Polish & Optimization (Planned)
+- [ ] Redis caching
+- [ ] Advanced rate limiting
+- [ ] Jalali calendar
+- [ ] Multi-language
+- [ ] Test suite
 
 ## Contributing
 
