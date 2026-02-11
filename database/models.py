@@ -22,6 +22,7 @@ class ContentType(enum.Enum):
     VOICE = "voice"
     DOCUMENT = "document"
     PHOTO = "photo"
+    FORM = "form"
 
 
 class FieldType(enum.Enum):
@@ -81,6 +82,28 @@ class RegistrationField(Base):
 
 
 # ===========================
+# COURSE MODEL
+# ===========================
+class Course(Base):
+    __tablename__ = "courses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    lessons: Mapped[List["Lesson"]] = relationship("Lesson", back_populates="course", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Course {self.id} - {self.title}>"
+
+
+# ===========================
 # USER MODEL
 # ===========================
 class User(Base):
@@ -97,8 +120,12 @@ class User(Base):
 
     # Course progress
     current_lesson_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("lessons.id"))
+    current_course_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("courses.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Per-course completion tracking {course_id: true/false}
+    completed_courses: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
 
     # Marketing & Analytics
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
@@ -114,6 +141,7 @@ class User(Base):
     # Relationships
     progress_records: Mapped[List["UserProgress"]] = relationship("UserProgress", back_populates="user", cascade="all, delete-orphan")
     current_lesson: Mapped[Optional["Lesson"]] = relationship("Lesson", foreign_keys=[current_lesson_id])
+    current_course_rel: Mapped[Optional["Course"]] = relationship("Course", foreign_keys=[current_course_id])
 
     def __repr__(self):
         return f"<User {self.telegram_user_id} - {self.first_name}>"
@@ -128,6 +156,9 @@ class Lesson(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Course association
+    course_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("courses.id"), index=True)
 
     # Content
     content_type: Mapped[ContentType] = mapped_column(SQLEnum(ContentType), nullable=False)
@@ -145,11 +176,21 @@ class Lesson(Base):
     cta_text: Mapped[Optional[str]] = mapped_column(String(255))
     cta_url: Mapped[Optional[str]] = mapped_column(String(500))
 
+    # Multi-content blocks (JSON array)
+    # [{"type": "text", "text": "..."}, {"type": "video", "file_id": "..."}, ...]
+    contents: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Quiz attached to this lesson (JSON)
+    quiz_data: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Form definition for FORM type lessons (JSON)
+    form_data: Mapped[Optional[dict]] = mapped_column(JSON)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    course: Mapped[Optional["Course"]] = relationship("Course", back_populates="lessons")
     progress_records: Mapped[List["UserProgress"]] = relationship("UserProgress", back_populates="lesson")
 
     def __repr__(self):
@@ -300,3 +341,37 @@ class DailyStat(Base):
 
     def __repr__(self):
         return f"<DailyStat {self.date.date()} - {self.new_users} new users>"
+
+
+# ===========================
+# QUIZ ATTEMPT MODEL
+# ===========================
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    lesson_id: Mapped[int] = mapped_column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    answers: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<QuizAttempt user={self.user_id} lesson={self.lesson_id} score={self.score}>"
+
+
+# ===========================
+# FORM RESPONSE MODEL
+# ===========================
+class FormResponse(Base):
+    __tablename__ = "form_responses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    lesson_id: Mapped[int] = mapped_column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    response_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<FormResponse user={self.user_id} lesson={self.lesson_id}>"

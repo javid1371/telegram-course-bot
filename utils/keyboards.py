@@ -101,7 +101,7 @@ def get_lesson_management_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_lesson_list_keyboard(lessons: list) -> InlineKeyboardMarkup:
+def get_lesson_list_keyboard(lessons: list, course_id: int = None) -> InlineKeyboardMarkup:
     """List of lessons for management"""
     builder = InlineKeyboardBuilder()
 
@@ -114,13 +114,18 @@ def get_lesson_list_keyboard(lessons: list) -> InlineKeyboardMarkup:
             )
         )
 
-    builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:lessons")
-    )
+    if course_id:
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت به دوره", callback_data=f"admin:course:view:{course_id}")
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:courses")
+        )
     return builder.as_markup()
 
 
-def get_lesson_actions_keyboard(lesson_id: int) -> InlineKeyboardMarkup:
+def get_lesson_actions_keyboard(lesson_id: int, course_id: int = None) -> InlineKeyboardMarkup:
     """Actions for a specific lesson"""
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -128,12 +133,20 @@ def get_lesson_actions_keyboard(lesson_id: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔄 تغییر وضعیت", callback_data=f"admin:lesson:toggle:{lesson_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🗑 حذف", callback_data=f"admin:lesson:delete:{lesson_id}"),
+        InlineKeyboardButton(text="📝 آزمون", callback_data=f"admin:lesson:quiz:{lesson_id}"),
         InlineKeyboardButton(text="📊 آمار", callback_data=f"admin:lesson:stats:{lesson_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:lesson:list")
+        InlineKeyboardButton(text="🗑 حذف", callback_data=f"admin:lesson:delete:{lesson_id}")
     )
+    if course_id:
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت به درس‌ها", callback_data=f"admin:lesson:list:{course_id}")
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:courses")
+        )
     return builder.as_markup()
 
 
@@ -214,6 +227,23 @@ def get_registration_fields_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+    )
+    return builder.as_markup()
+
+
+def get_field_actions_keyboard(field_id: int) -> InlineKeyboardMarkup:
+    """Actions for a specific registration field"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✏️ ویرایش عنوان", callback_data=f"admin:field:editlbl:{field_id}"),
+        InlineKeyboardButton(text="🔄 تغییر اجباری", callback_data=f"admin:field:togglereq:{field_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✅/❌ فعال/غیرفعال", callback_data=f"admin:field:toggle:{field_id}"),
+        InlineKeyboardButton(text="🗑 حذف", callback_data=f"admin:field:del:{field_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:field:list")
     )
     return builder.as_markup()
 

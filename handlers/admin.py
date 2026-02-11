@@ -8,9 +8,11 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
+from aiogram.exceptions import TelegramBadRequest
 
 from database import async_session_maker
-from database.models import ContentType, FieldType, Admin
+from database.models import ContentType, FieldType, Admin, RegistrationField, Course
+from sqlalchemy import select
 from services.user_service import UserService
 from services.lesson_service import LessonService
 from services.broadcast_service import BroadcastService
@@ -23,6 +25,7 @@ from utils.keyboards import (
     get_user_management_keyboard, get_user_actions_keyboard,
     get_broadcast_keyboard, get_stats_keyboard,
     get_registration_fields_keyboard, get_field_type_keyboard,
+    get_field_actions_keyboard,
     get_webhook_keyboard, get_cancel_keyboard,
     get_back_keyboard, get_pagination_keyboard,
     get_confirm_keyboard,
@@ -96,6 +99,28 @@ class AdminStates(StatesGroup):
     # Tag management
     waiting_tag_input = State()
 
+    # Quiz management
+    waiting_quiz_passing_score = State()
+    waiting_quiz_question_text = State()
+    waiting_quiz_options = State()
+
+    # Form builder
+    waiting_form_field_label = State()
+    waiting_form_field_type = State()
+    waiting_form_field_options = State()
+
+    # Field editing
+    waiting_field_edit_label = State()
+
+    # Lesson edit content (multi-content)
+    waiting_lesson_edit_content = State()
+
+    # Course management
+    waiting_course_title = State()
+    waiting_course_description = State()
+    waiting_course_edit_title = State()
+    waiting_course_edit_description = State()
+
 
 # ===========================
 # ADMIN ENTRY
@@ -139,7 +164,7 @@ async def cmd_admin(message: Message, state: FSMContext):
 @admin_only
 @log_errors
 async def show_dashboard(message: Message):
-    """Show admin dashboard"""
+    """Show admin dashboard with enhanced analytics"""
     async with async_session_maker() as session:
         analytics = AnalyticsService(session)
         stats = await analytics.get_dashboard_stats()
@@ -148,9 +173,13 @@ async def show_dashboard(message: Message):
             "📊 <b>داشبورد</b>\n\n"
             f"👥 کل کاربران: {format_number(stats['total_users'])}\n"
             f"✅ کاربران فعال: {format_number(stats['active_users'])}\n"
-            f"🎓 تکمیل کننده‌ها: {format_number(stats['completed_courses'])}\n"
+            f"🎓 تکمیل کننده‌ها: {format_number(stats['completed_all'])}\n"
             f"📈 نرخ تکمیل: {stats['completion_rate']}%\n\n"
-            f"📚 تعداد درس‌ها: {format_number(stats['total_lessons'])}\n\n"
+            f"📖 دوره‌ها: {format_number(stats['total_courses'])}\n"
+            f"📚 درس‌ها: {format_number(stats['total_lessons'])}\n\n"
+            f"🕐 <b>فعالیت:</b>\n"
+            f"  🔥 ۲۴ ساعت اخیر: {format_number(stats['active_24h'])}\n"
+            f"  📅 ۷ روز اخیر: {format_number(stats['active_7d'])}\n\n"
             f"📅 <b>امروز:</b>\n"
             f"  🆕 کاربران جدید: {format_number(stats['today_new_users'])}\n"
             f"  ✅ درس‌های تکمیل شده: {format_number(stats['today_completions'])}\n\n"
@@ -158,42 +187,442 @@ async def show_dashboard(message: Message):
             f"  🆕 کاربران جدید: {format_number(stats['week_new_users'])}"
         )
 
-        await message.answer(text)
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📊 فانل تحلیل", callback_data="admin:analytics:funnel"),
+            InlineKeyboardButton(text="📈 آمار دوره‌ها", callback_data="admin:analytics:courses")
+        )
+
+        await message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "admin:analytics:funnel")
+@admin_only
+@log_errors
+async def show_funnel_analysis(callback: CallbackQuery):
+    """Show lesson-by-lesson funnel analysis"""
+    await callback.answer()
+    async with async_session_maker() as session:
+        analytics = AnalyticsService(session)
+        funnel = await analytics.get_funnel_analysis()
+
+        if not funnel:
+            await callback.message.answer("📭 داده‌ای برای تحلیل وجود ندارد.")
+            return
+
+        text = "📊 <b>تحلیل فانل (ریزش درس به درس)</b>\n\n"
+        for item in funnel[:20]:
+            drop_indicator = ""
+            if item["drop_off_rate"] > 30:
+                drop_indicator = " ⚠️"
+            elif item["drop_off_rate"] > 15:
+                drop_indicator = " ⚡"
+
+            text += (
+                f"📖 {item['order']}. {item['title'][:20]}\n"
+                f"   شروع: {item['started']} | تکمیل: {item['completed']} "
+                f"({item['completion_rate']}%)"
+            )
+            if item["drop_off_rate"] > 0:
+                text += f" | ریزش: {item['drop_off_rate']}%{drop_indicator}"
+            text += "\n"
+
+        text += "\n⚠️ = ریزش بالا (>30%)  ⚡ = ریزش متوسط (>15%)"
+
+        try:
+            await callback.message.edit_text(text)
+        except TelegramBadRequest:
+            await callback.message.answer(text)
+
+
+@router.callback_query(F.data == "admin:analytics:courses")
+@admin_only
+@log_errors
+async def show_courses_analytics(callback: CallbackQuery):
+    """Show per-course analytics"""
+    await callback.answer()
+    async with async_session_maker() as session:
+        analytics = AnalyticsService(session)
+        lesson_service = LessonService(session)
+        courses = await lesson_service.get_all_courses(active_only=False)
+
+        text = "📈 <b>آمار دوره‌ها</b>\n\n"
+        for course in courses:
+            stats = await analytics.get_course_analytics(course.id)
+            status = "✅" if course.is_active else "❌"
+            text += (
+                f"{status} <b>{course.title}</b>\n"
+                f"   📖 {stats['total_lessons']} درس | 👥 {stats['enrolled']} ثبت‌نام\n"
+                f"   🎓 {stats['completed_users']} تکمیل ({stats['completion_rate']}%)\n"
+            )
+            if stats['quiz_attempts'] > 0:
+                text += (
+                    f"   📝 آزمون: {stats['quiz_attempts']} تلاش | "
+                    f"قبولی: {stats['quiz_pass_rate']}% | "
+                    f"میانگین: {stats['avg_quiz_score']}\n"
+                )
+            text += "\n"
+
+        try:
+            await callback.message.edit_text(text)
+        except TelegramBadRequest:
+            await callback.message.answer(text)
 
 
 # ===========================
-# LESSON MANAGEMENT
+# COURSE & LESSON MANAGEMENT
 # ===========================
 
 @router.message(F.text == "📚 درس‌ها")
 @admin_only
 @log_errors
 async def lesson_management_menu(message: Message):
-    """Show lesson management menu"""
-    await message.answer(
-        "📚 <b>مدیریت درس‌ها</b>\n\nیک گزینه را انتخاب کنید:",
-        reply_markup=get_lesson_management_keyboard()
-    )
+    """Show course list as entry to lesson management"""
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        courses = await lesson_service.get_all_courses(active_only=False)
 
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+
+        for course in courses:
+            status = "✅" if course.is_active else "❌"
+            lesson_count = await lesson_service.get_course_lesson_count(course.id)
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{status} {course.title} ({lesson_count} درس)",
+                    callback_data=f"admin:course:view:{course.id}"
+                )
+            )
+
+        builder.row(
+            InlineKeyboardButton(text="➕ ساخت دوره جدید", callback_data="admin:course:add")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        )
+
+        await message.answer(
+            "📚 <b>مدیریت دوره‌ها و درس‌ها</b>\n\n"
+            "یک دوره را انتخاب کنید یا دوره جدید بسازید:",
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data == "admin:courses")
+@admin_only
+@log_errors
+async def courses_menu_callback(callback: CallbackQuery):
+    """Show courses list via callback"""
+    await callback.answer()
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        courses = await lesson_service.get_all_courses(active_only=False)
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+
+        for course in courses:
+            status = "✅" if course.is_active else "❌"
+            lesson_count = await lesson_service.get_course_lesson_count(course.id)
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{status} {course.title} ({lesson_count} درس)",
+                    callback_data=f"admin:course:view:{course.id}"
+                )
+            )
+
+        builder.row(
+            InlineKeyboardButton(text="➕ ساخت دوره جدید", callback_data="admin:course:add")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        )
+
+        try:
+            await callback.message.edit_text(
+                "📚 <b>مدیریت دوره‌ها و درس‌ها</b>\n\n"
+                "یک دوره را انتخاب کنید یا دوره جدید بسازید:",
+                reply_markup=builder.as_markup()
+            )
+        except TelegramBadRequest:
+            await callback.message.answer(
+                "📚 <b>مدیریت دوره‌ها و درس‌ها</b>\n\n"
+                "یک دوره را انتخاب کنید یا دوره جدید بسازید:",
+                reply_markup=builder.as_markup()
+            )
+
+
+@router.callback_query(F.data == "admin:course:add")
+@admin_only
+@log_errors
+async def add_course_start(callback: CallbackQuery, state: FSMContext):
+    """Start creating a new course"""
+    await callback.answer()
+    await callback.message.answer(
+        "📝 <b>ساخت دوره جدید</b>\n\nعنوان دوره را وارد کنید:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_course_title)
+
+
+@router.message(AdminStates.waiting_course_title)
+async def process_course_title(message: Message, state: FSMContext):
+    """Process course title"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    await state.update_data(course_title=message.text)
+    await message.answer(
+        "📝 توضیحات دوره را وارد کنید (یا /skip):",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_course_description)
+
+
+@router.message(AdminStates.waiting_course_description)
+async def process_course_description(message: Message, state: FSMContext):
+    """Process course description and save"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    await state.clear()
+
+    description = None if message.text == "/skip" else message.text
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.create_course(
+            title=data["course_title"],
+            description=description,
+        )
+
+        await message.answer(
+            f"✅ دوره «{course.title}» با موفقیت ساخته شد!\n\n"
+            "حالا می‌توانید درس‌ها را به این دوره اضافه کنید.",
+            reply_markup=get_admin_main_menu()
+        )
+
+
+@router.callback_query(F.data.startswith("admin:course:view:"))
+@admin_only
+@log_errors
+async def view_course(callback: CallbackQuery):
+    """View course details with lesson list"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.get_course_by_id(course_id)
+        if not course:
+            await callback.message.answer("❌ دوره یافت نشد.")
+            return
+
+        lessons = await lesson_service.get_all_lessons(active_only=False, course_id=course_id)
+        stats = await lesson_service.get_course_stats(course_id)
+
+        status = "✅ فعال" if course.is_active else "❌ غیرفعال"
+        text = (
+            f"📚 <b>{course.title}</b>\n"
+            f"📝 {course.description or '---'}\n"
+            f"📊 وضعیت: {status}\n\n"
+            f"📈 <b>آمار:</b>\n"
+            f"  📖 تعداد درس: {stats['total_lessons']}\n"
+            f"  👥 ثبت‌نام شده: {stats['enrolled']}\n"
+            f"  🎓 تکمیل کرده: {stats['completed']}\n"
+            f"  📊 نرخ تکمیل: {stats['completion_rate']}%\n\n"
+        )
+
+        if lessons:
+            text += "<b>درس‌ها:</b>\n"
+            for l in lessons[:15]:
+                ls = "✅" if l.is_active else "❌"
+                text += f"  {ls} {l.order}. {l.title}\n"
+            if len(lessons) > 15:
+                text += f"  ... و {len(lessons) - 15} درس دیگر\n"
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="➕ افزودن درس", callback_data=f"admin:lesson:add:{course_id}"),
+            InlineKeyboardButton(text="📋 لیست درس‌ها", callback_data=f"admin:lesson:list:{course_id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text="✏️ ویرایش عنوان", callback_data=f"admin:course:edit_title:{course_id}"),
+            InlineKeyboardButton(text="🔄 تغییر وضعیت", callback_data=f"admin:course:toggle:{course_id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🗑 حذف دوره", callback_data=f"admin:course:delete:{course_id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:courses")
+        )
+
+        try:
+            await callback.message.edit_text(text, reply_markup=builder.as_markup())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("admin:course:toggle:"))
+@admin_only
+@log_errors
+async def toggle_course(callback: CallbackQuery):
+    """Toggle course active status"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.toggle_course(course_id)
+        if course:
+            status = "فعال ✅" if course.is_active else "غیرفعال ❌"
+            await callback.message.answer(
+                f"🔄 دوره «{course.title}» {status} شد.",
+                reply_markup=get_admin_main_menu()
+            )
+
+
+@router.callback_query(F.data.startswith("admin:course:delete:"))
+@admin_only
+@log_errors
+async def delete_course(callback: CallbackQuery):
+    """Delete a course"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.get_course_by_id(course_id)
+        if not course:
+            return
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ بله، حذف شود", callback_data=f"admin:course:dodel:{course_id}"),
+            InlineKeyboardButton(text="❌ خیر", callback_data=f"admin:course:view:{course_id}")
+        )
+
+        await callback.message.edit_text(
+            f"⚠️ آیا مطمئنید که می‌خواهید دوره «{course.title}» و تمام درس‌هایش را حذف کنید؟",
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data.startswith("admin:course:dodel:"))
+@admin_only
+@log_errors
+async def delete_course_execute(callback: CallbackQuery):
+    """Execute course deletion"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        await lesson_service.delete_course(course_id)
+        await callback.message.answer("✅ دوره حذف شد.", reply_markup=get_admin_main_menu())
+
+
+@router.callback_query(F.data.startswith("admin:course:edit_title:"))
+@admin_only
+@log_errors
+async def edit_course_title_start(callback: CallbackQuery, state: FSMContext):
+    """Start editing course title"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+    await state.update_data(editing_course_id=course_id)
+    await callback.message.answer(
+        "✏️ عنوان جدید دوره را وارد کنید:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_course_edit_title)
+
+
+@router.message(AdminStates.waiting_course_edit_title)
+async def process_course_edit_title(message: Message, state: FSMContext):
+    """Process course title edit"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    await state.clear()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.update_course(data["editing_course_id"], title=message.text)
+        if course:
+            await message.answer(f"✅ عنوان دوره به «{course.title}» تغییر یافت.", reply_markup=get_admin_main_menu())
+
+
+# ===========================
+# LESSON MANAGEMENT (course-aware)
+# ===========================
 
 @router.callback_query(F.data == "admin:lessons")
 @admin_only
 @log_errors
 async def lesson_menu_callback(callback: CallbackQuery):
-    """Show lesson management menu via callback"""
+    """Redirect to courses menu"""
     await callback.answer()
-    await callback.message.edit_text(
-        "📚 <b>مدیریت درس‌ها</b>\n\nیک گزینه را انتخاب کنید:",
-        reply_markup=get_lesson_management_keyboard()
-    )
+    # Redirect to courses list
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        courses = await lesson_service.get_all_courses(active_only=False)
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        for course in courses:
+            status = "✅" if course.is_active else "❌"
+            lesson_count = await lesson_service.get_course_lesson_count(course.id)
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{status} {course.title} ({lesson_count} درس)",
+                    callback_data=f"admin:course:view:{course.id}"
+                )
+            )
+        builder.row(
+            InlineKeyboardButton(text="➕ ساخت دوره جدید", callback_data="admin:course:add")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        )
+
+        try:
+            await callback.message.edit_text(
+                "📚 <b>مدیریت دوره‌ها و درس‌ها</b>\n\nیک دوره انتخاب کنید:",
+                reply_markup=builder.as_markup()
+            )
+        except TelegramBadRequest:
+            await callback.message.answer(
+                "📚 <b>مدیریت دوره‌ها و درس‌ها</b>\n\nیک دوره انتخاب کنید:",
+                reply_markup=builder.as_markup()
+            )
 
 
-@router.callback_query(F.data == "admin:lesson:add")
+@router.callback_query(F.data.startswith("admin:lesson:add:"))
 @admin_only
 @log_errors
 async def add_lesson_start(callback: CallbackQuery, state: FSMContext):
-    """Start adding a new lesson"""
+    """Start adding a new lesson to a specific course"""
+    course_id = int(callback.data.split(":")[3])
     await callback.answer()
+    await state.update_data(lesson_course_id=course_id)
     await callback.message.answer(
         "📝 <b>افزودن درس جدید</b>\n\nعنوان درس را وارد کنید:",
         reply_markup=get_cancel_keyboard()
@@ -228,6 +657,9 @@ async def process_lesson_title(message: Message, state: FSMContext):
         InlineKeyboardButton(text="📄 فایل", callback_data="lesson_type:document"),
         InlineKeyboardButton(text="🖼 تصویر", callback_data="lesson_type:photo"),
     )
+    builder.row(
+        InlineKeyboardButton(text="📋 فرم", callback_data="lesson_type:form"),
+    )
 
     await message.answer(
         "نوع محتوای درس را انتخاب کنید:",
@@ -242,6 +674,18 @@ async def process_lesson_type(callback: CallbackQuery, state: FSMContext):
     content_type = callback.data.split(":")[1]
     await callback.answer()
     await state.update_data(lesson_content_type=content_type)
+
+    if content_type == "form":
+        # Form type: go to form builder instead of content upload
+        await state.update_data(form_fields=[])
+        await callback.message.answer(
+            "📋 <b>ساخت فرم</b>\n\n"
+            "عنوان فیلد اول را وارد کنید:\n"
+            "مثال: نام و نام خانوادگی، شهر، نظر شما",
+            reply_markup=get_cancel_keyboard()
+        )
+        await state.set_state(AdminStates.waiting_form_field_label)
+        return
 
     type_prompts = {
         "text": "📝 متن درس را ارسال کنید:",
@@ -282,8 +726,7 @@ async def process_lesson_content(message: Message, state: FSMContext):
             file_id = message.audio.file_id
         elif message.voice:
             file_id = message.voice.file_id
-            # Switch to voice type if user sent a voice message
-            await state.update_data(lesson_content_type="voice")
+            content_type = "voice"
         else:
             await message.answer("⚠️ لطفاً فایل صوتی یا ویس ارسال کنید.")
             return
@@ -292,7 +735,7 @@ async def process_lesson_content(message: Message, state: FSMContext):
             file_id = message.voice.file_id
         elif message.audio:
             file_id = message.audio.file_id
-            await state.update_data(lesson_content_type="audio")
+            content_type = "audio"
         else:
             await message.answer("⚠️ لطفاً ویس ضبط کنید یا فایل صوتی ارسال کنید.")
             return
@@ -304,12 +747,91 @@ async def process_lesson_content(message: Message, state: FSMContext):
         await message.answer("⚠️ لطفاً نوع محتوای صحیح ارسال کنید.")
         return
 
-    await state.update_data(
-        lesson_file_id=file_id,
-        lesson_text_content=text_content,
+    # Build content block
+    block = {"type": content_type}
+    if file_id:
+        block["file_id"] = file_id
+    if text_content:
+        block["text"] = text_content
+
+    # Append to contents list
+    data = await state.get_data()
+    lesson_contents = data.get("lesson_contents", [])
+    lesson_contents.append(block)
+
+    # Save first block info for backward compat
+    if len(lesson_contents) == 1:
+        await state.update_data(
+            lesson_file_id=file_id,
+            lesson_text_content=text_content,
+            lesson_contents=lesson_contents,
+        )
+    else:
+        await state.update_data(lesson_contents=lesson_contents)
+
+    # Show summary and ask for more
+    type_labels = {
+        "text": "📝 متن", "video": "🎥 ویدیو", "audio": "🎵 صوت",
+        "voice": "🎤 ویس", "document": "📄 فایل", "photo": "🖼 تصویر",
+    }
+    summary = ""
+    for i, b in enumerate(lesson_contents, 1):
+        summary += f"  {i}. {type_labels.get(b['type'], b['type'])} ✅\n"
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="➕ اضافه کردن محتوای دیگر", callback_data="lesson_content:more")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✅ ادامه", callback_data="lesson_content:done")
     )
 
     await message.answer(
+        f"✅ محتوا اضافه شد!\n\n{summary}\n"
+        "آیا می‌خواهید محتوای دیگری اضافه کنید؟",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "lesson_content:more")
+@admin_only
+async def add_more_lesson_content(callback: CallbackQuery, state: FSMContext):
+    """Add more content blocks to the lesson"""
+    await callback.answer()
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 متن", callback_data="lesson_type:text"),
+        InlineKeyboardButton(text="🎥 ویدیو", callback_data="lesson_type:video"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 صوت", callback_data="lesson_type:audio"),
+        InlineKeyboardButton(text="🎤 ویس", callback_data="lesson_type:voice"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📄 فایل", callback_data="lesson_type:document"),
+        InlineKeyboardButton(text="🖼 تصویر", callback_data="lesson_type:photo"),
+    )
+
+    await callback.message.answer(
+        "نوع محتوای بعدی را انتخاب کنید:",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(AdminStates.waiting_lesson_content_type)
+
+
+@router.callback_query(F.data == "lesson_content:done")
+@admin_only
+async def lesson_content_done(callback: CallbackQuery, state: FSMContext):
+    """Done adding content, proceed to description"""
+    await callback.answer()
+
+    await callback.message.answer(
         "📝 توضیحات درس را وارد کنید (یا /skip برای رد شدن):",
         reply_markup=get_cancel_keyboard()
     )
@@ -366,51 +888,102 @@ async def process_lesson_delay(message: Message, state: FSMContext):
         "voice": ContentType.VOICE,
         "document": ContentType.DOCUMENT,
         "photo": ContentType.PHOTO,
+        "form": ContentType.FORM,
     }
+
+    # Determine primary content type from first content block
+    contents = data.get("lesson_contents", [])
+    if contents:
+        primary_type = contents[0].get("type", "text")
+        primary_file_id = contents[0].get("file_id")
+        primary_text = contents[0].get("text")
+    else:
+        primary_type = data.get("lesson_content_type", "text")
+        primary_file_id = data.get("lesson_file_id")
+        primary_text = data.get("lesson_text_content")
 
     async with async_session_maker() as session:
         lesson_service = LessonService(session)
         lesson = await lesson_service.create_lesson(
             title=data["lesson_title"],
-            content_type=content_type_map[data["lesson_content_type"]],
+            content_type=content_type_map[primary_type],
+            course_id=data.get("lesson_course_id"),
             description=data.get("lesson_description"),
-            file_id=data.get("lesson_file_id"),
-            text_content=data.get("lesson_text_content"),
-            delay_hours=delay_minutes,  # stored in delay_hours column but value is minutes
+            file_id=primary_file_id,
+            text_content=primary_text,
+            delay_hours=delay_minutes,
         )
 
+        # Save multi-content blocks
+        if contents and len(contents) > 0:
+            lesson.contents = contents
+            await session.commit()
+            await session.refresh(lesson)
+
+        # Save form data if FORM type
+        if data.get("lesson_content_type") == "form" and data.get("form_fields"):
+            lesson.form_data = {"fields": data["form_fields"]}
+            await session.commit()
+            await session.refresh(lesson)
+
         delay_text = _format_delay(delay_minutes)
+        content_count = len(contents) if contents else 1
+        content_info = f"📦 تعداد محتوا: {content_count}" if content_count > 1 else f"📦 نوع: {primary_type}"
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📝 افزودن آزمون", callback_data=f"admin:quiz:new:{lesson.id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text="✅ بازگشت به پنل", callback_data="admin:back")
+        )
+
         await message.answer(
             f"✅ درس «{lesson.title}» با موفقیت اضافه شد!\n"
             f"📋 شماره: {lesson.order}\n"
-            f"📦 نوع: {data['lesson_content_type']}\n"
-            f"⏱ فاصله: {delay_text}",
-            reply_markup=get_admin_main_menu()
+            f"{content_info}\n"
+            f"⏱ فاصله: {delay_text}\n\n"
+            "اگر می‌خواهید آزمون هم اضافه کنید:",
+            reply_markup=builder.as_markup()
         )
 
 
-@router.callback_query(F.data == "admin:lesson:list")
+@router.callback_query(F.data.startswith("admin:lesson:list:"))
 @admin_only
 @log_errors
 async def list_lessons(callback: CallbackQuery):
-    """List all lessons"""
+    """List lessons for a specific course"""
+    course_id = int(callback.data.split(":")[3])
     await callback.answer()
 
     async with async_session_maker() as session:
         lesson_service = LessonService(session)
-        lessons = await lesson_service.get_all_lessons(active_only=False)
+        lessons = await lesson_service.get_all_lessons(active_only=False, course_id=course_id)
+        course = await lesson_service.get_course_by_id(course_id)
+        course_title = course.title if course else ""
 
         if not lessons:
+            from aiogram.types import InlineKeyboardButton
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="➕ افزودن درس", callback_data=f"admin:lesson:add:{course_id}")
+            )
+            builder.row(
+                InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:course:view:{course_id}")
+            )
             await callback.message.edit_text(
-                "📭 هنوز درسی اضافه نشده.",
-                reply_markup=get_lesson_management_keyboard()
+                f"📭 دوره «{course_title}» هنوز درسی ندارد.",
+                reply_markup=builder.as_markup()
             )
             return
 
         await callback.message.edit_text(
-            f"📚 <b>لیست درس‌ها</b> ({len(lessons)} درس)\n\n"
+            f"📚 <b>درس‌های دوره «{course_title}»</b> ({len(lessons)} درس)\n\n"
             "برای مدیریت روی هر درس کلیک کنید:",
-            reply_markup=get_lesson_list_keyboard(lessons)
+            reply_markup=get_lesson_list_keyboard(lessons, course_id=course_id)
         )
 
 
@@ -435,9 +1008,21 @@ async def view_lesson(callback: CallbackQuery, lesson_id: int = None):
 
         status = "✅ فعال" if lesson.is_active else "❌ غیرفعال"
         delay_text = _format_delay(lesson.delay_hours)
+
+        # Content info
+        if lesson.contents and len(lesson.contents) > 1:
+            type_labels = {
+                "text": "متن", "video": "ویدیو", "audio": "صوت",
+                "voice": "ویس", "document": "فایل", "photo": "تصویر",
+            }
+            parts = [type_labels.get(b.get("type", ""), b.get("type", "")) for b in lesson.contents]
+            content_info = f"{len(lesson.contents)} بخش ({', '.join(parts)})"
+        else:
+            content_info = lesson.content_type.value
+
         text = (
             f"📚 <b>درس {lesson.order}: {lesson.title}</b>\n\n"
-            f"📦 نوع: {lesson.content_type.value}\n"
+            f"📦 محتوا: {content_info}\n"
             f"📌 وضعیت: {status}\n"
             f"⏱ فاصله تا درس بعد: {delay_text}\n"
             f"📝 توضیحات: {truncate_text(lesson.description or 'ندارد', 200)}\n\n"
@@ -450,9 +1035,15 @@ async def view_lesson(callback: CallbackQuery, lesson_id: int = None):
         if lesson.cta_text:
             text += f"\n\n🔗 CTA: {lesson.cta_text} → {lesson.cta_url or '-'}"
 
-        await callback.message.edit_text(
-            text, reply_markup=get_lesson_actions_keyboard(lesson_id)
-        )
+        if lesson.quiz_data and lesson.quiz_data.get("questions"):
+            text += f"\n\n📝 آزمون: {len(lesson.quiz_data['questions'])} سوال (حداقل {lesson.quiz_data.get('passing_score', 100)}%)"
+
+        try:
+            await callback.message.edit_text(
+                text, reply_markup=get_lesson_actions_keyboard(lesson_id, course_id=lesson.course_id)
+            )
+        except TelegramBadRequest:
+            pass  # Same content, ignore
 
 
 @router.callback_query(F.data.startswith("admin:lesson:stats:"))
@@ -510,11 +1101,38 @@ async def edit_lesson_field(callback: CallbackQuery, state: FSMContext):
 
     await state.update_data(edit_lesson_id=lesson_id, edit_field=field_name)
 
+    if field_name == "content":
+        # Redirect to multi-content edit flow
+        await state.update_data(edit_lesson_id=lesson_id, edit_field="content", lesson_contents=[])
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📝 متن", callback_data="edit_ctype:text"),
+            InlineKeyboardButton(text="🎥 ویدیو", callback_data="edit_ctype:video"),
+        )
+        builder.row(
+            InlineKeyboardButton(text="🎵 صوت", callback_data="edit_ctype:audio"),
+            InlineKeyboardButton(text="🎤 ویس", callback_data="edit_ctype:voice"),
+        )
+        builder.row(
+            InlineKeyboardButton(text="📄 فایل", callback_data="edit_ctype:document"),
+            InlineKeyboardButton(text="🖼 تصویر", callback_data="edit_ctype:photo"),
+        )
+
+        await callback.message.edit_text(
+            "🔄 <b>ویرایش محتوای درس</b>\n\n"
+            "محتوای قبلی جایگزین خواهد شد.\n"
+            "نوع اولین محتوا را انتخاب کنید:",
+            reply_markup=builder.as_markup()
+        )
+        return
+
     field_prompts = {
         "title": "📝 عنوان جدید درس را وارد کنید:",
         "description": "📄 توضیحات جدید را وارد کنید (یا /skip برای حذف):",
         "delay_hours": "⏱ فاصله زمانی جدید (به دقیقه) را وارد کنید (مثلاً: 0، 30، 60، 1440):",
-        "content": "🔄 محتوای جدید را ارسال کنید (متن، فایل، ویدیو، صوت، ویس یا عکس):",
         "cta_text": "🔗 متن دکمه CTA جدید را وارد کنید (یا /skip برای حذف):",
         "cta_url": "🌐 لینک CTA جدید را وارد کنید (یا /skip برای حذف):",
     }
@@ -549,33 +1167,9 @@ async def process_lesson_edit_value(message: Message, state: FSMContext):
             await message.answer("⚠️ عدد نامعتبر. ویرایش لغو شد.", reply_markup=get_admin_main_menu())
             return
     elif field_name == "content":
-        if message.text:
-            update_data["text_content"] = message.text
-            update_data["file_id"] = None
-            update_data["content_type"] = ContentType.TEXT
-        elif message.video:
-            update_data["file_id"] = message.video.file_id
-            update_data["text_content"] = None
-            update_data["content_type"] = ContentType.VIDEO
-        elif message.audio:
-            update_data["file_id"] = message.audio.file_id
-            update_data["text_content"] = None
-            update_data["content_type"] = ContentType.AUDIO
-        elif message.voice:
-            update_data["file_id"] = message.voice.file_id
-            update_data["text_content"] = None
-            update_data["content_type"] = ContentType.VOICE
-        elif message.document:
-            update_data["file_id"] = message.document.file_id
-            update_data["text_content"] = None
-            update_data["content_type"] = ContentType.DOCUMENT
-        elif message.photo:
-            update_data["file_id"] = message.photo[-1].file_id
-            update_data["text_content"] = None
-            update_data["content_type"] = ContentType.PHOTO
-        else:
-            await message.answer("⚠️ محتوای نامعتبر. ویرایش لغو شد.", reply_markup=get_admin_main_menu())
-            return
+        # Should not reach here - content edit uses multi-content flow
+        await message.answer("⚠️ خطا. لطفاً دوباره تلاش کنید.", reply_markup=get_admin_main_menu())
+        return
     elif field_name in ("cta_text", "cta_url"):
         update_data[field_name] = None if message.text == "/skip" else message.text
 
@@ -590,6 +1184,185 @@ async def process_lesson_edit_value(message: Message, state: FSMContext):
             )
         else:
             await message.answer("❌ خطا در ویرایش درس.", reply_markup=get_admin_main_menu())
+
+
+# ===========================
+# EDIT CONTENT MULTI-CONTENT FLOW
+# ===========================
+
+@router.callback_query(F.data.startswith("edit_ctype:"))
+@admin_only
+async def edit_content_select_type(callback: CallbackQuery, state: FSMContext):
+    """Select content type for edit multi-content flow"""
+    content_type = callback.data.split(":")[1]
+    await callback.answer()
+    await state.update_data(edit_content_type=content_type)
+
+    type_prompts = {
+        "text": "📝 متن را ارسال کنید:",
+        "video": "🎥 ویدیو را ارسال کنید:",
+        "audio": "🎵 فایل صوتی را ارسال کنید:",
+        "voice": "🎤 ویس را ضبط و ارسال کنید:",
+        "document": "📄 فایل را ارسال کنید:",
+        "photo": "🖼 تصویر را ارسال کنید:",
+    }
+
+    await callback.message.answer(
+        type_prompts.get(content_type, "محتوا را ارسال کنید:"),
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_lesson_edit_content)
+
+
+@router.message(AdminStates.waiting_lesson_edit_content)
+async def process_edit_content(message: Message, state: FSMContext):
+    """Process content block during edit"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    content_type = data.get("edit_content_type", "text")
+
+    file_id = None
+    text_content = None
+
+    if content_type == "text":
+        text_content = message.text
+    elif content_type == "video" and message.video:
+        file_id = message.video.file_id
+    elif content_type == "audio":
+        if message.audio:
+            file_id = message.audio.file_id
+        elif message.voice:
+            file_id = message.voice.file_id
+            content_type = "voice"
+        else:
+            await message.answer("⚠️ لطفاً فایل صوتی ارسال کنید.")
+            return
+    elif content_type == "voice":
+        if message.voice:
+            file_id = message.voice.file_id
+        elif message.audio:
+            file_id = message.audio.file_id
+            content_type = "audio"
+        else:
+            await message.answer("⚠️ لطفاً ویس ارسال کنید.")
+            return
+    elif content_type == "document" and message.document:
+        file_id = message.document.file_id
+    elif content_type == "photo" and message.photo:
+        file_id = message.photo[-1].file_id
+    else:
+        await message.answer("⚠️ لطفاً محتوای صحیح ارسال کنید.")
+        return
+
+    block = {"type": content_type}
+    if file_id:
+        block["file_id"] = file_id
+    if text_content:
+        block["text"] = text_content
+
+    lesson_contents = data.get("lesson_contents", [])
+    lesson_contents.append(block)
+    await state.update_data(lesson_contents=lesson_contents)
+
+    type_labels = {
+        "text": "📝 متن", "video": "🎥 ویدیو", "audio": "🎵 صوت",
+        "voice": "🎤 ویس", "document": "📄 فایل", "photo": "🖼 تصویر",
+    }
+    summary = ""
+    for i, b in enumerate(lesson_contents, 1):
+        summary += f"  {i}. {type_labels.get(b['type'], b['type'])} ✅\n"
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="➕ اضافه کردن محتوای دیگر", callback_data="edit_content:more")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✅ ذخیره", callback_data="edit_content:done")
+    )
+
+    await message.answer(
+        f"✅ محتوا اضافه شد!\n\n{summary}\n"
+        "آیا می‌خواهید محتوای دیگری اضافه کنید؟",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "edit_content:more")
+@admin_only
+async def edit_content_add_more(callback: CallbackQuery, state: FSMContext):
+    """Add more content blocks in edit mode"""
+    await callback.answer()
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 متن", callback_data="edit_ctype:text"),
+        InlineKeyboardButton(text="🎥 ویدیو", callback_data="edit_ctype:video"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 صوت", callback_data="edit_ctype:audio"),
+        InlineKeyboardButton(text="🎤 ویس", callback_data="edit_ctype:voice"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📄 فایل", callback_data="edit_ctype:document"),
+        InlineKeyboardButton(text="🖼 تصویر", callback_data="edit_ctype:photo"),
+    )
+
+    await callback.message.answer(
+        "نوع محتوای بعدی را انتخاب کنید:",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "edit_content:done")
+@admin_only
+async def edit_content_done(callback: CallbackQuery, state: FSMContext):
+    """Save edited multi-content to lesson"""
+    await callback.answer()
+
+    data = await state.get_data()
+    lesson_id = data.get("edit_lesson_id")
+    lesson_contents = data.get("lesson_contents", [])
+    await state.clear()
+
+    if not lesson_contents:
+        await callback.message.answer("⚠️ هیچ محتوایی اضافه نشد.", reply_markup=get_admin_main_menu())
+        return
+
+    # Determine primary type from first block
+    first_block = lesson_contents[0]
+    content_type_map = {
+        "text": ContentType.TEXT, "video": ContentType.VIDEO,
+        "audio": ContentType.AUDIO, "voice": ContentType.VOICE,
+        "document": ContentType.DOCUMENT, "photo": ContentType.PHOTO,
+    }
+    primary_type = content_type_map.get(first_block.get("type", "text"), ContentType.TEXT)
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            await callback.message.answer("❌ درس یافت نشد.", reply_markup=get_admin_main_menu())
+            return
+
+        # Update lesson
+        lesson.content_type = primary_type
+        lesson.file_id = first_block.get("file_id")
+        lesson.text_content = first_block.get("text")
+        lesson.contents = lesson_contents
+        await session.commit()
+
+        await callback.message.answer(
+            f"✅ محتوای درس «{lesson.title}» با {len(lesson_contents)} بخش ویرایش شد.",
+            reply_markup=get_admin_main_menu()
+        )
 
 
 @router.callback_query(F.data == "admin:lesson:reorder")
@@ -613,7 +1386,7 @@ async def _show_reorder_lessons(callback: CallbackQuery):
         if not lessons or len(lessons) < 2:
             await callback.message.edit_text(
                 "⚠️ حداقل ۲ درس برای تغییر ترتیب نیاز است.",
-                reply_markup=get_lesson_management_keyboard()
+                reply_markup=get_back_keyboard()
             )
             return
 
@@ -920,9 +1693,12 @@ async def view_user(callback: CallbackQuery, user_id: int = None):
             for key, value in user.registration_data.items():
                 text += f"  • {key}: {value}\n"
 
-        await callback.message.edit_text(
-            text, reply_markup=get_user_actions_keyboard(user_id)
-        )
+        try:
+            await callback.message.edit_text(
+                text, reply_markup=get_user_actions_keyboard(user_id)
+            )
+        except TelegramBadRequest:
+            pass  # Same content, ignore
 
 
 @router.callback_query(F.data.startswith("admin:user:message:"))
@@ -1386,7 +2162,7 @@ async def _save_registration_field(message: Message, state: FSMContext):
 @admin_only
 @log_errors
 async def list_registration_fields(callback: CallbackQuery):
-    """List all registration fields"""
+    """List all registration fields with action buttons"""
     await callback.answer()
 
     async with async_session_maker() as session:
@@ -1400,15 +2176,21 @@ async def list_registration_fields(callback: CallbackQuery):
             )
             return
 
-        text = "📝 <b>فیلدهای ثبت‌نام</b>\n\n"
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        text = "📝 <b>فیلدهای ثبت‌نام</b>\n\nبرای مدیریت روی هر فیلد کلیک کنید:"
+        builder = InlineKeyboardBuilder()
         for f in fields:
             required = "✅" if f.is_required else "❌"
-            text += f"{f.order}. {f.field_label} ({f.field_type.value}) - اجباری: {required}\n"
+            active = "🟢" if f.is_active else "🔴"
+            builder.row(InlineKeyboardButton(
+                text=f"{active} {f.order}. {f.field_label} ({f.field_type.value}) {required}",
+                callback_data=f"admin:field:view:{f.id}"
+            ))
+        builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back"))
 
-        await callback.message.edit_text(
-            text,
-            reply_markup=get_registration_fields_keyboard()
-        )
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "admin:field:reorder")
@@ -1512,6 +2294,529 @@ async def cancel_field_operation(callback: CallbackQuery, state: FSMContext):
 
 
 # ===========================
+# FIELD VIEW / EDIT / TOGGLE / DELETE
+# ===========================
+
+@router.callback_query(F.data.startswith("admin:field:view:"))
+@admin_only
+@log_errors
+async def view_field(callback: CallbackQuery, field_id: int = None):
+    """View a registration field details"""
+    if field_id is None:
+        field_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(RegistrationField).where(RegistrationField.id == field_id)
+        )
+        field = result.scalar_one_or_none()
+
+        if not field:
+            await callback.message.edit_text("❌ فیلد یافت نشد.")
+            return
+
+        required = "✅ بله" if field.is_required else "❌ خیر"
+        active = "✅ فعال" if field.is_active else "❌ غیرفعال"
+        options_text = ""
+        if field.options and field.options.get("choices"):
+            options_text = f"\n📋 گزینه‌ها: {', '.join(field.options['choices'])}"
+
+        text = (
+            f"📝 <b>جزئیات فیلد</b>\n\n"
+            f"📛 شناسه: {field.field_name}\n"
+            f"🏷 عنوان: {field.field_label}\n"
+            f"📦 نوع: {field.field_type.value}\n"
+            f"📌 اجباری: {required}\n"
+            f"🔄 وضعیت: {active}\n"
+            f"📋 ترتیب: {field.order}"
+            f"{options_text}"
+        )
+
+        await callback.message.edit_text(
+            text, reply_markup=get_field_actions_keyboard(field_id)
+        )
+
+
+@router.callback_query(F.data.startswith("admin:field:togglereq:"))
+@admin_only
+@log_errors
+async def toggle_field_required(callback: CallbackQuery):
+    """Toggle field required status"""
+    field_id = int(callback.data.split(":")[3])
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(RegistrationField).where(RegistrationField.id == field_id)
+        )
+        field = result.scalar_one_or_none()
+        if field:
+            field.is_required = not field.is_required
+            await session.commit()
+            status = "اجباری ✅" if field.is_required else "اختیاری ❌"
+            await callback.answer(f"وضعیت: {status}")
+
+    # Refresh view
+    await view_field(callback, field_id=field_id)
+
+
+@router.callback_query(F.data.startswith("admin:field:toggle:"))
+@admin_only
+@log_errors
+async def toggle_field_active(callback: CallbackQuery):
+    """Toggle field active/inactive"""
+    field_id = int(callback.data.split(":")[3])
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(RegistrationField).where(RegistrationField.id == field_id)
+        )
+        field = result.scalar_one_or_none()
+        if field:
+            field.is_active = not field.is_active
+            await session.commit()
+            status = "فعال ✅" if field.is_active else "غیرفعال ❌"
+            await callback.answer(f"وضعیت: {status}")
+
+    await view_field(callback, field_id=field_id)
+
+
+@router.callback_query(F.data.startswith("admin:field:del:"))
+@admin_only
+@log_errors
+async def delete_field(callback: CallbackQuery):
+    """Delete a registration field"""
+    field_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(RegistrationField).where(RegistrationField.id == field_id)
+        )
+        field = result.scalar_one_or_none()
+        if field:
+            await session.delete(field)
+            await session.commit()
+            await callback.message.edit_text(
+                "✅ فیلد حذف شد.",
+                reply_markup=get_registration_fields_keyboard()
+            )
+        else:
+            await callback.message.edit_text("❌ فیلد یافت نشد.")
+
+
+@router.callback_query(F.data.startswith("admin:field:editlbl:"))
+@admin_only
+@log_errors
+async def edit_field_label_start(callback: CallbackQuery, state: FSMContext):
+    """Start editing field label"""
+    field_id = int(callback.data.split(":")[3])
+    await callback.answer()
+    await state.update_data(edit_field_id=field_id)
+    await callback.message.answer(
+        "📝 عنوان جدید فیلد را وارد کنید:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_field_edit_label)
+
+
+@router.message(AdminStates.waiting_field_edit_label)
+async def process_field_edit_label(message: Message, state: FSMContext):
+    """Process new field label"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    field_id = data["edit_field_id"]
+    await state.clear()
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(RegistrationField).where(RegistrationField.id == field_id)
+        )
+        field = result.scalar_one_or_none()
+        if field:
+            field.field_label = message.text.strip()
+            await session.commit()
+            await message.answer(
+                f"✅ عنوان فیلد به «{field.field_label}» تغییر کرد.",
+                reply_markup=get_admin_main_menu()
+            )
+        else:
+            await message.answer("❌ فیلد یافت نشد.", reply_markup=get_admin_main_menu())
+
+
+# ===========================
+# FORM BUILDER (for FORM lesson type)
+# ===========================
+
+@router.message(AdminStates.waiting_form_field_label)
+async def form_builder_field_label(message: Message, state: FSMContext):
+    """Process form field label in form builder"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    await state.update_data(current_form_field_label=message.text.strip())
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 متن", callback_data="formft:text"),
+        InlineKeyboardButton(text="🔢 عدد", callback_data="formft:number"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="☑️ انتخابی", callback_data="formft:select"),
+    )
+
+    await message.answer("نوع فیلد را انتخاب کنید:", reply_markup=builder.as_markup())
+    await state.set_state(AdminStates.waiting_form_field_type)
+
+
+@router.callback_query(F.data.startswith("formft:"), AdminStates.waiting_form_field_type)
+async def form_builder_field_type(callback: CallbackQuery, state: FSMContext):
+    """Process form field type"""
+    field_type = callback.data.split(":")[1]
+    await callback.answer()
+    await state.update_data(current_form_field_type=field_type)
+
+    if field_type == "select":
+        await callback.message.answer(
+            "📋 گزینه‌ها را با کاما جدا کرده وارد کنید:\nمثال: تهران، اصفهان، شیراز",
+            reply_markup=get_cancel_keyboard()
+        )
+        await state.set_state(AdminStates.waiting_form_field_options)
+    else:
+        # Save field and ask for more
+        await _save_form_field_and_ask_more(callback.message, state)
+
+
+@router.message(AdminStates.waiting_form_field_options)
+async def form_builder_field_options(message: Message, state: FSMContext):
+    """Process form field select options"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    options = [o.strip() for o in message.text.split(",") if o.strip()]
+    await state.update_data(current_form_field_options=options)
+    await _save_form_field_and_ask_more(message, state)
+
+
+async def _save_form_field_and_ask_more(message: Message, state: FSMContext):
+    """Save current form field and ask if more needed"""
+    data = await state.get_data()
+    fields = data.get("form_fields", [])
+
+    field = {
+        "name": f"field_{len(fields) + 1}",
+        "label": data["current_form_field_label"],
+        "type": data["current_form_field_type"],
+    }
+    if data.get("current_form_field_options"):
+        field["options"] = data["current_form_field_options"]
+
+    fields.append(field)
+    await state.update_data(
+        form_fields=fields,
+        current_form_field_label=None,
+        current_form_field_type=None,
+        current_form_field_options=None,
+    )
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="➕ افزودن فیلد دیگر", callback_data="form_add_more"),
+        InlineKeyboardButton(text="✅ اتمام فرم", callback_data="form_done"),
+    )
+
+    fields_text = "\n".join([f"  {i+1}. {f['label']} ({f['type']})" for i, f in enumerate(fields)])
+    await message.answer(
+        f"✅ فیلد «{field['label']}» اضافه شد.\n\n"
+        f"📋 فیلدهای فرم:\n{fields_text}\n\n"
+        "آیا فیلد دیگری اضافه می‌کنید؟",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "form_add_more")
+async def form_add_more_field(callback: CallbackQuery, state: FSMContext):
+    """Add another form field"""
+    await callback.answer()
+    await callback.message.answer(
+        "📝 عنوان فیلد بعدی را وارد کنید:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_form_field_label)
+
+
+@router.callback_query(F.data == "form_done")
+async def form_builder_done(callback: CallbackQuery, state: FSMContext):
+    """Form building complete, continue to description"""
+    await callback.answer()
+    await callback.message.answer(
+        "📝 توضیحات فرم را وارد کنید (یا /skip برای رد شدن):",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_lesson_description)
+
+
+# ===========================
+# QUIZ MANAGEMENT
+# ===========================
+
+@router.callback_query(F.data.startswith("admin:lesson:quiz:"))
+@admin_only
+@log_errors
+async def manage_lesson_quiz(callback: CallbackQuery, state: FSMContext):
+    """Manage quiz for a lesson"""
+    lesson_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+
+        if not lesson:
+            await callback.message.edit_text("❌ درس یافت نشد.")
+            return
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        if lesson.quiz_data and lesson.quiz_data.get("questions"):
+            # Show existing quiz
+            questions = lesson.quiz_data["questions"]
+            passing = lesson.quiz_data.get("passing_score", 100)
+            text = (
+                f"📝 <b>آزمون درس «{lesson.title}»</b>\n\n"
+                f"✅ تعداد سوالات: {len(questions)}\n"
+                f"📊 حداقل نمره قبولی: {passing}%\n\n"
+            )
+            for i, q in enumerate(questions, 1):
+                correct_opt = q["options"][q["correct"]] if q["correct"] < len(q["options"]) else "?"
+                text += f"<b>{i}.</b> {q['text']}\n   ✅ جواب: {correct_opt}\n"
+
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="🗑 حذف آزمون", callback_data=f"admin:quiz:del:{lesson_id}"),
+                InlineKeyboardButton(text="✏️ ساخت مجدد", callback_data=f"admin:quiz:new:{lesson_id}"),
+            )
+            builder.row(
+                InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:lesson:view:{lesson_id}")
+            )
+            await callback.message.edit_text(text, reply_markup=builder.as_markup())
+        else:
+            # No quiz - offer to create
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="➕ ساخت آزمون", callback_data=f"admin:quiz:new:{lesson_id}"),
+            )
+            builder.row(
+                InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:lesson:view:{lesson_id}")
+            )
+            await callback.message.edit_text(
+                f"📝 درس «{lesson.title}» آزمون ندارد.\n\n"
+                "آزمون باعث می‌شود کاربر بعد از مشاهده درس به سوالات پاسخ دهد.\n"
+                "اگر نمره کافی بگیرد، درس تایید می‌شود.",
+                reply_markup=builder.as_markup()
+            )
+
+
+@router.callback_query(F.data.startswith("admin:quiz:del:"))
+@admin_only
+@log_errors
+async def delete_quiz(callback: CallbackQuery):
+    """Delete quiz from a lesson"""
+    lesson_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if lesson:
+            lesson.quiz_data = None
+            await session.commit()
+
+    await callback.message.edit_text(
+        "✅ آزمون حذف شد.",
+        reply_markup=get_back_keyboard()
+    )
+
+
+@router.callback_query(F.data.startswith("admin:quiz:new:"))
+@admin_only
+@log_errors
+async def start_quiz_creation(callback: CallbackQuery, state: FSMContext):
+    """Start creating a new quiz"""
+    lesson_id = int(callback.data.split(":")[3])
+    await callback.answer()
+    await state.update_data(quiz_lesson_id=lesson_id, quiz_questions=[])
+    await callback.message.answer(
+        "📝 <b>ساخت آزمون</b>\n\n"
+        "حداقل درصد قبولی را وارد کنید (مثلاً: 70 یا 100):",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_quiz_passing_score)
+
+
+@router.message(AdminStates.waiting_quiz_passing_score)
+async def process_quiz_passing_score(message: Message, state: FSMContext):
+    """Process quiz passing score"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    try:
+        score = int(message.text)
+        if score < 1 or score > 100:
+            raise ValueError
+    except (ValueError, TypeError):
+        await message.answer("⚠️ لطفاً عددی بین 1 تا 100 وارد کنید:")
+        return
+
+    await state.update_data(quiz_passing_score=score)
+    await message.answer(
+        "📝 متن سوال اول را وارد کنید:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_quiz_question_text)
+
+
+@router.message(AdminStates.waiting_quiz_question_text)
+async def process_quiz_question_text(message: Message, state: FSMContext):
+    """Process quiz question text"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    await state.update_data(current_q_text=message.text.strip())
+    await message.answer(
+        "📋 گزینه‌ها را هر کدام در یک خط بنویسید (حداقل ۲ گزینه):\n\n"
+        "مثال:\nتهران\nاصفهان\nشیراز",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_quiz_options)
+
+
+@router.message(AdminStates.waiting_quiz_options)
+async def process_quiz_options(message: Message, state: FSMContext):
+    """Process quiz question options"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer("❌ لغو شد.", reply_markup=get_admin_main_menu())
+        return
+
+    options = [line.strip() for line in message.text.strip().split("\n") if line.strip()]
+    if len(options) < 2:
+        await message.answer("⚠️ حداقل ۲ گزینه وارد کنید (هر کدام در یک خط):")
+        return
+
+    await state.update_data(current_q_options=options)
+
+    # Show options as buttons to select correct answer
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    for i, opt in enumerate(options):
+        builder.row(InlineKeyboardButton(text=f"✅ {opt}", callback_data=f"quizc:{i}"))
+
+    await message.answer(
+        "✅ <b>گزینه صحیح را انتخاب کنید:</b>",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("quizc:"))
+async def select_correct_answer(callback: CallbackQuery, state: FSMContext):
+    """Select correct answer for quiz question"""
+    correct_idx = int(callback.data.split(":")[1])
+    await callback.answer("✅ ثبت شد")
+
+    data = await state.get_data()
+    questions = data.get("quiz_questions", [])
+    questions.append({
+        "text": data["current_q_text"],
+        "options": data["current_q_options"],
+        "correct": correct_idx,
+    })
+    await state.update_data(
+        quiz_questions=questions,
+        current_q_text=None,
+        current_q_options=None,
+    )
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="➕ سوال بعدی", callback_data="quiz_more"),
+        InlineKeyboardButton(text="✅ ذخیره آزمون", callback_data="quiz_save"),
+    )
+
+    await callback.message.answer(
+        f"✅ سوال {len(questions)} اضافه شد.\n"
+        f"📊 تعداد سوالات: {len(questions)}\n\n"
+        "آیا سوال دیگری اضافه می‌کنید؟",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "quiz_more")
+async def quiz_add_more(callback: CallbackQuery, state: FSMContext):
+    """Add more quiz questions"""
+    await callback.answer()
+    data = await state.get_data()
+    q_num = len(data.get("quiz_questions", [])) + 1
+    await callback.message.answer(
+        f"📝 متن سوال {q_num} را وارد کنید:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_quiz_question_text)
+
+
+@router.callback_query(F.data == "quiz_save")
+@admin_only
+async def quiz_save(callback: CallbackQuery, state: FSMContext):
+    """Save quiz to lesson"""
+    await callback.answer()
+    data = await state.get_data()
+    lesson_id = data.get("quiz_lesson_id")
+    questions = data.get("quiz_questions", [])
+    passing_score = data.get("quiz_passing_score", 100)
+    await state.clear()
+
+    if not questions:
+        await callback.message.answer("❌ آزمون بدون سوال ذخیره نشد.", reply_markup=get_admin_main_menu())
+        return
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if lesson:
+            lesson.quiz_data = {
+                "passing_score": passing_score,
+                "questions": questions,
+            }
+            await session.commit()
+            await callback.message.answer(
+                f"✅ آزمون با {len(questions)} سوال و حداقل نمره {passing_score}% ذخیره شد.",
+                reply_markup=get_admin_main_menu()
+            )
+        else:
+            await callback.message.answer("❌ درس یافت نشد.", reply_markup=get_admin_main_menu())
+
+
+# ===========================
 # REPORTS & ANALYTICS
 # ===========================
 
@@ -1588,10 +2893,41 @@ async def export_analytics(callback: CallbackQuery):
 @log_errors
 async def webhook_menu(message: Message):
     """Show webhook management menu"""
-    await message.answer(
-        "🔗 <b>مدیریت وبهوک‌ها</b>\n\nیک گزینه را انتخاب کنید:",
-        reply_markup=get_webhook_keyboard()
-    )
+    async with async_session_maker() as session:
+        webhook_service = WebhookService(session)
+        webhooks = await webhook_service.get_all_webhooks()
+
+        text = "🔗 <b>مدیریت وبهوک‌ها</b>\n\n"
+
+        if webhooks:
+            for wh in webhooks:
+                status = "✅" if wh.is_active else "❌"
+                text += f"{status} <b>{wh.name}</b>\n  🌐 {wh.url}\n\n"
+        else:
+            text += "📭 هنوز وبهوکی تعریف نشده.\n\n"
+
+        text += (
+            "📋 <b>ساختار استاندارد وبهوک:</b>\n"
+            "هر رویداد با فرمت زیر ارسال می‌شود:\n\n"
+            "<code>{\n"
+            '  "event": "user_registered",\n'
+            '  "bot": "bot_name",\n'
+            '  "timestamp": "2026-...",\n'
+            '  "user": { telegram_id, username,\n'
+            '    first_name, registration_data,\n'
+            '    tags, is_completed, ... },\n'
+            '  "data": { ... }\n'
+            "}</code>\n\n"
+            "<b>رویدادها:</b>\n"
+            "• user_registered\n"
+            "• lesson_sent\n"
+            "• lesson_completed\n"
+            "• quiz_passed / quiz_failed\n"
+            "• form_submitted\n"
+            "• course_completed"
+        )
+
+    await message.answer(text, reply_markup=get_webhook_keyboard())
 
 
 @router.callback_query(F.data == "admin:webhook:add")
@@ -1601,7 +2937,8 @@ async def add_webhook_start(callback: CallbackQuery, state: FSMContext):
     """Start adding a webhook"""
     await callback.answer()
     await callback.message.answer(
-        "🔗 نام وبهوک را وارد کنید:\nمثال: user_registered, lesson_completed",
+        "🔗 <b>افزودن وبهوک جدید</b>\n\n"
+        "نام وبهوک را وارد کنید (مثل: n8n, crm, zapier):",
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(AdminStates.waiting_webhook_name)
@@ -1649,12 +2986,12 @@ async def process_webhook_url(message: Message, state: FSMContext):
 @admin_only
 @log_errors
 async def list_webhooks(callback: CallbackQuery):
-    """List all webhooks"""
+    """List all webhooks with management options"""
     await callback.answer()
 
     async with async_session_maker() as session:
         webhook_service = WebhookService(session)
-        webhooks = await webhook_service.get_active_webhooks()
+        webhooks = await webhook_service.get_all_webhooks()
 
         if not webhooks:
             await callback.message.edit_text(
@@ -1663,12 +3000,59 @@ async def list_webhooks(callback: CallbackQuery):
             )
             return
 
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        builder = InlineKeyboardBuilder()
         text = "🔗 <b>لیست وبهوک‌ها</b>\n\n"
         for wh in webhooks:
             status = "✅" if wh.is_active else "❌"
-            text += f"{status} <b>{wh.name}</b>\n  🌐 {wh.url}\n  📋 {wh.method}\n\n"
+            text += f"{status} <b>{wh.name}</b>\n  🌐 {wh.url}\n\n"
+            toggle_label = "❌ غیرفعال" if wh.is_active else "✅ فعال"
+            builder.row(
+                InlineKeyboardButton(text=f"🔄 {wh.name}: {toggle_label}", callback_data=f"admin:wh:toggle:{wh.id}"),
+                InlineKeyboardButton(text=f"🗑 حذف", callback_data=f"admin:wh:delete:{wh.id}"),
+            )
 
-        await callback.message.edit_text(text, reply_markup=get_webhook_keyboard())
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        )
+
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("admin:wh:toggle:"))
+@admin_only
+@log_errors
+async def toggle_webhook_status(callback: CallbackQuery):
+    """Toggle webhook active/inactive"""
+    webhook_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        webhook_service = WebhookService(session)
+        webhook = await webhook_service.toggle_webhook(webhook_id)
+        if webhook:
+            status = "فعال ✅" if webhook.is_active else "غیرفعال ❌"
+            await callback.message.answer(f"🔄 وبهوک «{webhook.name}» {status} شد.")
+
+    await list_webhooks(callback)
+
+
+@router.callback_query(F.data.startswith("admin:wh:delete:"))
+@admin_only
+@log_errors
+async def delete_webhook_endpoint(callback: CallbackQuery):
+    """Delete a webhook"""
+    webhook_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        webhook_service = WebhookService(session)
+        await webhook_service.delete_webhook(webhook_id)
+
+    await callback.message.answer("🗑 وبهوک حذف شد.")
+    await list_webhooks(callback)
 
 
 @router.callback_query(F.data == "admin:webhook:test")

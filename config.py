@@ -15,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # Telegram Bot
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "course_bot")
 ADMIN_USER_IDS = [
     int(uid.strip())
     for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
