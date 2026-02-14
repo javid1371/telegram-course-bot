@@ -1476,6 +1476,7 @@ async def delete_lesson_execute(callback: CallbackQuery):
 @log_errors
 async def cancel_delete_lesson(callback: CallbackQuery):
     """Cancel lesson deletion"""
+    lesson_id = int(callback.data.split(":")[2])
     await callback.answer(ADMIN["operation_cancelled"])
     await view_lesson(callback, lesson_id=lesson_id)
 

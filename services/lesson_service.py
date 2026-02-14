@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Lesson, UserProgress, User, ContentType, Course
+from database.models import Lesson, UserProgress, User, ContentType, Course, QuizAttempt, FormResponse
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,35 @@ class LessonService:
         return course
 
     async def delete_course(self, course_id: int) -> bool:
-        """Delete a course and its lessons"""
+        """Delete a course and its lessons, cleaning up all references"""
         course = await self.get_course_by_id(course_id)
         if course:
+            # Get all lesson IDs for this course
+            result = await self.session.execute(
+                select(Lesson.id).where(Lesson.course_id == course_id)
+            )
+            lesson_ids = [r[0] for r in result.all()]
+
+            if lesson_ids:
+                # Clean up FK references to lessons
+                await self.session.execute(
+                    delete(QuizAttempt).where(QuizAttempt.lesson_id.in_(lesson_ids))
+                )
+                await self.session.execute(
+                    delete(FormResponse).where(FormResponse.lesson_id.in_(lesson_ids))
+                )
+                await self.session.execute(
+                    delete(UserProgress).where(UserProgress.lesson_id.in_(lesson_ids))
+                )
+                await self.session.execute(
+                    update(User).where(User.current_lesson_id.in_(lesson_ids)).values(current_lesson_id=None)
+                )
+
+            # Clean up course FK references
+            await self.session.execute(
+                update(User).where(User.current_course_id == course_id).values(current_course_id=None)
+            )
+
             await self.session.delete(course)
             await self.session.commit()
             return True
@@ -229,9 +255,23 @@ class LessonService:
         return lesson
 
     async def delete_lesson(self, lesson_id: int) -> bool:
-        """Delete a lesson"""
+        """Delete a lesson, cleaning up all references"""
         lesson = await self.get_lesson_by_id(lesson_id)
         if lesson:
+            # Clean up FK references
+            await self.session.execute(
+                delete(QuizAttempt).where(QuizAttempt.lesson_id == lesson_id)
+            )
+            await self.session.execute(
+                delete(FormResponse).where(FormResponse.lesson_id == lesson_id)
+            )
+            await self.session.execute(
+                delete(UserProgress).where(UserProgress.lesson_id == lesson_id)
+            )
+            await self.session.execute(
+                update(User).where(User.current_lesson_id == lesson_id).values(current_lesson_id=None)
+            )
+
             await self.session.delete(lesson)
             await self.session.commit()
             return True
