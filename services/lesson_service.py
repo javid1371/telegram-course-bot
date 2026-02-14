@@ -216,6 +216,7 @@ class LessonService:
         cta_text: Optional[str] = None,
         cta_url: Optional[str] = None,
         delay_hours: int = 0,
+        view_deadline_hours: Optional[int] = None,
     ) -> Lesson:
         """Create a new lesson"""
         order_query = select(func.max(Lesson.order))
@@ -233,6 +234,7 @@ class LessonService:
             text_content=text_content,
             order=max_order + 1,
             delay_hours=delay_hours,
+            view_deadline_hours=view_deadline_hours,
             cta_text=cta_text,
             cta_url=cta_url,
         )

@@ -34,6 +34,11 @@ from utils.decorators import admin_only, log_errors
 from utils.helpers import format_number, format_duration, truncate_text
 import config
 from messages import ADMIN, ADMIN_BUTTONS, USER_BUTTONS, GENERAL, DELAY, CONTENT_TYPES
+from text_manager import (
+    load_overrides, set_override, delete_override, get_overrides_count,
+    CATEGORY_LABELS,
+)
+import messages as all_messages
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -122,6 +127,12 @@ class AdminStates(StatesGroup):
     waiting_course_description = State()
     waiting_course_edit_title = State()
     waiting_course_edit_description = State()
+
+    # Text editing
+    waiting_text_edit_value = State()
+
+    # Lesson deadline
+    waiting_lesson_deadline = State()
 
 
 # ===========================
@@ -861,8 +872,37 @@ async def process_lesson_delay(message: Message, state: FSMContext):
 
     await state.update_data(lesson_delay_minutes=delay_minutes)
 
+    # Ask for viewing deadline
+    await message.answer(
+        ADMIN["lesson_enter_deadline"],
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_lesson_deadline)
+
+
+@router.message(AdminStates.waiting_lesson_deadline)
+async def process_lesson_deadline(message: Message, state: FSMContext):
+    """Process lesson viewing deadline in hours"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer(GENERAL["cancelled"], reply_markup=get_admin_main_menu())
+        return
+
+    try:
+        deadline_hours = int(message.text)
+        if deadline_hours < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        await message.answer(ADMIN["lesson_deadline_error"])
+        return
+
+    # 0 means no deadline
+    view_deadline = deadline_hours if deadline_hours > 0 else None
+    await state.update_data(lesson_deadline_hours=view_deadline)
+
     # Save lesson
     data = await state.get_data()
+    delay_minutes = data.get("lesson_delay_minutes", 0)
     await state.clear()
 
     content_type_map = {
@@ -896,6 +936,7 @@ async def process_lesson_delay(message: Message, state: FSMContext):
             file_id=primary_file_id,
             text_content=primary_text,
             delay_hours=delay_minutes,
+            view_deadline_hours=data.get("lesson_deadline_hours"),
         )
 
         # Save multi-content blocks
@@ -914,6 +955,10 @@ async def process_lesson_delay(message: Message, state: FSMContext):
         content_count = len(contents) if contents else 1
         content_info = f"📦 تعداد محتوا: {content_count}" if content_count > 1 else f"📦 نوع: {primary_type}"
 
+        # Deadline info
+        deadline_val = data.get("lesson_deadline_hours")
+        deadline_text = ADMIN["lesson_deadline_hours"].format(hours=deadline_val) if deadline_val else ADMIN["lesson_deadline_none"]
+
         from aiogram.types import InlineKeyboardButton
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
@@ -924,11 +969,15 @@ async def process_lesson_delay(message: Message, state: FSMContext):
             InlineKeyboardButton(text=ADMIN["lesson_back_to_panel"], callback_data="admin:back")
         )
 
+        created_text = ADMIN["lesson_created"].format(
+            title=lesson.title, order=lesson.order,
+            content_info=content_info, delay=delay_text
+        )
+        created_text += "\n" + ADMIN["lesson_deadline_info"].format(deadline=deadline_text)
+        created_text += "\n\n" + ADMIN["lesson_add_quiz_prompt"]
+
         await message.answer(
-            ADMIN["lesson_created"].format(
-                title=lesson.title, order=lesson.order,
-                content_info=content_info, delay=delay_text
-            ) + "\n\n" + ADMIN["lesson_add_quiz_prompt"],
+            created_text,
             reply_markup=builder.as_markup()
         )
 
@@ -1003,7 +1052,17 @@ async def view_lesson(callback: CallbackQuery, lesson_id: int = None):
             + ADMIN["lesson_view_content"].format(content=content_info) + "\n"
             + ADMIN["lesson_view_status"].format(status=status) + "\n"
             + ADMIN["lesson_view_delay"].format(delay=delay_text) + "\n"
-            + ADMIN["lesson_view_desc"].format(desc=truncate_text(lesson.description or ADMIN["lesson_view_no_desc"], 200)) + "\n\n"
+        )
+
+        # Deadline info
+        if lesson.view_deadline_hours:
+            dl_text = ADMIN["lesson_deadline_hours"].format(hours=lesson.view_deadline_hours)
+        else:
+            dl_text = ADMIN["lesson_deadline_none"]
+        text += ADMIN["lesson_deadline_info"].format(deadline=dl_text) + "\n"
+
+        text += (
+            ADMIN["lesson_view_desc"].format(desc=truncate_text(lesson.description or ADMIN["lesson_view_no_desc"], 200)) + "\n\n"
             + ADMIN["lesson_view_stats"] + "\n"
             + "  " + ADMIN["lesson_view_started"].format(count=stats['started']) + "\n"
             + "  " + ADMIN["lesson_view_completed"].format(count=stats['completed']) + "\n"
@@ -1059,6 +1118,9 @@ async def edit_lesson(callback: CallbackQuery, state: FSMContext):
     builder.row(
         InlineKeyboardButton(text=ADMIN_BUTTONS["edit_cta_text"], callback_data=f"admin:lesson:editf:cta_text:{lesson_id}"),
         InlineKeyboardButton(text=ADMIN_BUTTONS["edit_cta_url"], callback_data=f"admin:lesson:editf:cta_url:{lesson_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["edit_deadline"], callback_data=f"admin:lesson:editf:view_deadline_hours:{lesson_id}"),
     )
     builder.row(
         InlineKeyboardButton(text=GENERAL["back"], callback_data=f"admin:lesson:view:{lesson_id}")
@@ -1145,6 +1207,15 @@ async def process_lesson_edit_value(message: Message, state: FSMContext):
         return
     elif field_name in ("cta_text", "cta_url"):
         update_data[field_name] = None if message.text == "/skip" else message.text
+    elif field_name == "view_deadline_hours":
+        try:
+            val = int(message.text)
+            if val < 0:
+                raise ValueError
+            update_data["view_deadline_hours"] = val if val > 0 else None
+        except (ValueError, TypeError):
+            await message.answer(ADMIN["lesson_deadline_error"], reply_markup=get_admin_main_menu())
+            return
 
     async with async_session_maker() as session:
         lesson_service = LessonService(session)
@@ -3173,6 +3244,10 @@ async def test_webhooks(callback: CallbackQuery):
 @log_errors
 async def settings_menu(message: Message):
     """Show settings"""
+    from text_manager import get_overrides_count
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
     text = (
         ADMIN["settings_header"] + "\n\n"
         + ADMIN["settings_token"].format(token='...' + config.BOT_TOKEN[-10:] if config.BOT_TOKEN else ADMIN["settings_token_not_set"]) + "\n"
@@ -3182,7 +3257,20 @@ async def settings_menu(message: Message):
         + ADMIN["settings_broadcast_rate"].format(rate=config.BROADCAST_RATE_LIMIT) + "\n"
         + ADMIN["settings_log_level"].format(level=config.LOG_LEVEL) + "\n"
     )
-    await message.answer(text)
+
+    builder = InlineKeyboardBuilder()
+    overrides = get_overrides_count()
+    btn_text = ADMIN_BUTTONS["edit_texts"]
+    if overrides > 0:
+        btn_text += f" ({overrides})"
+    builder.row(
+        InlineKeyboardButton(text=btn_text, callback_data="admin:texts:main")
+    )
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
+    )
+
+    await message.answer(text, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "admin:back")
@@ -3194,6 +3282,323 @@ async def go_back(callback: CallbackQuery, state: FSMContext):
         ADMIN["panel_header"],
         reply_markup=get_admin_main_menu()
     )
+
+
+# ===========================
+# TEXT EDITOR (Admin edits bot texts from Telegram)
+# ===========================
+
+@router.callback_query(F.data == "admin:texts:main")
+@admin_only
+@log_errors
+async def text_editor_main(callback: CallbackQuery, state: FSMContext):
+    """Show text editor categories"""
+    await state.clear()
+    await callback.answer()
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    for cat_key, cat_label in CATEGORY_LABELS.items():
+        # Get the SmartDict for this category
+        smart_dict = getattr(all_messages, cat_key, None)
+        if smart_dict is None:
+            continue
+        editable_count = len(smart_dict.get_editable_keys()) if hasattr(smart_dict, 'get_editable_keys') else 0
+        # Count overrides for this category
+        overridden = sum(1 for k in smart_dict.get_editable_keys() if smart_dict.is_overridden(k)) if hasattr(smart_dict, 'is_overridden') else 0
+        suffix = f" ✏️{overridden}" if overridden > 0 else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{cat_label} ({editable_count}){suffix}",
+                callback_data=f"admin:texts:cat:{cat_key}"
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
+    )
+
+    text = ADMIN["text_editor_header"]
+    override_count = get_overrides_count()
+    if override_count > 0:
+        text += "\n\n" + ADMIN["text_editor_overrides"].format(count=override_count)
+
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except TelegramBadRequest:
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("admin:texts:cat:"))
+@admin_only
+@log_errors
+async def text_editor_category(callback: CallbackQuery, state: FSMContext):
+    """Show editable keys for a category"""
+    cat_key = callback.data.split(":")[3]
+    await callback.answer()
+
+    smart_dict = getattr(all_messages, cat_key, None)
+    if smart_dict is None:
+        await callback.message.edit_text("❌ دسته یافت نشد.")
+        return
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    editable_keys = smart_dict.get_editable_keys()
+
+    # Paginate keys (15 per page)
+    page = 0
+    page_size = 15
+    total_pages = max(1, (len(editable_keys) + page_size - 1) // page_size)
+    paged_keys = editable_keys[page * page_size:(page + 1) * page_size]
+
+    builder = InlineKeyboardBuilder()
+    for key in paged_keys:
+        is_edited = smart_dict.is_overridden(key)
+        prefix = "✏️ " if is_edited else ""
+        # Truncate long keys
+        display_key = key if len(key) <= 25 else key[:22] + "..."
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{display_key}",
+                callback_data=f"admin:texts:view:{cat_key}:{key}"
+            )
+        )
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text=ADMIN_BUTTONS["prev_page"], callback_data=f"admin:texts:page:{cat_key}:{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text=ADMIN_BUTTONS["next_page"], callback_data=f"admin:texts:page:{cat_key}:{page + 1}"))
+        builder.row(*nav)
+
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:texts:main")
+    )
+
+    cat_label = CATEGORY_LABELS.get(cat_key, cat_key)
+    try:
+        await callback.message.edit_text(
+            ADMIN["text_category_header"].format(category=cat_label),
+            reply_markup=builder.as_markup()
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data.startswith("admin:texts:page:"))
+@admin_only
+@log_errors
+async def text_editor_page(callback: CallbackQuery, state: FSMContext):
+    """Paginate text keys"""
+    parts = callback.data.split(":")
+    cat_key = parts[3]
+    page = int(parts[4])
+    await callback.answer()
+
+    smart_dict = getattr(all_messages, cat_key, None)
+    if smart_dict is None:
+        return
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    editable_keys = smart_dict.get_editable_keys()
+    page_size = 15
+    total_pages = max(1, (len(editable_keys) + page_size - 1) // page_size)
+    paged_keys = editable_keys[page * page_size:(page + 1) * page_size]
+
+    builder = InlineKeyboardBuilder()
+    for key in paged_keys:
+        is_edited = smart_dict.is_overridden(key)
+        prefix = "✏️ " if is_edited else ""
+        display_key = key if len(key) <= 25 else key[:22] + "..."
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{display_key}",
+                callback_data=f"admin:texts:view:{cat_key}:{key}"
+            )
+        )
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text=ADMIN_BUTTONS["prev_page"], callback_data=f"admin:texts:page:{cat_key}:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_pages}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text=ADMIN_BUTTONS["next_page"], callback_data=f"admin:texts:page:{cat_key}:{page + 1}"))
+    if nav:
+        builder.row(*nav)
+
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:texts:main")
+    )
+
+    cat_label = CATEGORY_LABELS.get(cat_key, cat_key)
+    try:
+        await callback.message.edit_text(
+            ADMIN["text_category_header"].format(category=cat_label),
+            reply_markup=builder.as_markup()
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data.startswith("admin:texts:view:"))
+@admin_only
+@log_errors
+async def text_editor_view_key(callback: CallbackQuery, state: FSMContext):
+    """View current value of a text key"""
+    parts = callback.data.split(":")
+    cat_key = parts[3]
+    text_key = parts[4]
+    await callback.answer()
+
+    smart_dict = getattr(all_messages, cat_key, None)
+    if smart_dict is None:
+        return
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    cat_label = CATEGORY_LABELS.get(cat_key, cat_key)
+    text = ADMIN["text_view_header"].format(key=text_key, category=cat_label)
+
+    default_val = smart_dict.get_default(text_key)
+    is_edited = smart_dict.is_overridden(text_key)
+
+    if is_edited:
+        current_val = smart_dict[text_key]
+        text += ADMIN["text_view_default"].format(default_value=default_val)
+        text += ADMIN["text_view_current"].format(current_value=current_val)
+    else:
+        text += ADMIN["text_view_same"].format(value=default_val)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN["text_edit_btn"],
+            callback_data=f"admin:texts:edit:{cat_key}:{text_key}"
+        )
+    )
+    if is_edited:
+        builder.row(
+            InlineKeyboardButton(
+                text=ADMIN["text_reset_btn"],
+                callback_data=f"admin:texts:reset:{cat_key}:{text_key}"
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN["text_back_to_category"],
+            callback_data=f"admin:texts:cat:{cat_key}"
+        )
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except TelegramBadRequest:
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("admin:texts:edit:"))
+@admin_only
+@log_errors
+async def text_editor_start_edit(callback: CallbackQuery, state: FSMContext):
+    """Start editing a text value"""
+    parts = callback.data.split(":")
+    cat_key = parts[3]
+    text_key = parts[4]
+    await callback.answer()
+
+    await state.update_data(text_edit_category=cat_key, text_edit_key=text_key)
+    await state.set_state(AdminStates.waiting_text_edit_value)
+
+    await callback.message.edit_text(
+        ADMIN["text_edit_prompt"],
+    )
+
+
+@router.message(AdminStates.waiting_text_edit_value)
+@admin_only
+async def text_editor_save(message: Message, state: FSMContext):
+    """Save edited text value"""
+    if message.text == "❌ انصراف":
+        await state.clear()
+        await message.answer(GENERAL["cancelled"], reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    cat_key = data.get("text_edit_category")
+    text_key = data.get("text_edit_key")
+    await state.clear()
+
+    if not cat_key or not text_key:
+        await message.answer(GENERAL["error"], reply_markup=get_admin_main_menu())
+        return
+
+    new_value = message.text
+    await set_override(cat_key, text_key, new_value)
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN["text_back_to_category"],
+            callback_data=f"admin:texts:cat:{cat_key}"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:texts:main")
+    )
+
+    await message.answer(
+        ADMIN["text_saved"],
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("admin:texts:reset:"))
+@admin_only
+@log_errors
+async def text_editor_reset_key(callback: CallbackQuery, state: FSMContext):
+    """Reset text to default value"""
+    parts = callback.data.split(":")
+    cat_key = parts[3]
+    text_key = parts[4]
+    await callback.answer()
+
+    await delete_override(cat_key, text_key)
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN["text_back_to_category"],
+            callback_data=f"admin:texts:cat:{cat_key}"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:texts:main")
+    )
+
+    try:
+        await callback.message.edit_text(
+            ADMIN["text_reset"],
+            reply_markup=builder.as_markup()
+        )
+    except TelegramBadRequest:
+        await callback.message.answer(
+            ADMIN["text_reset"],
+            reply_markup=builder.as_markup()
+        )
 
 
 @router.callback_query(F.data == "noop")

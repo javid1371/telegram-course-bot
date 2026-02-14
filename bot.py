@@ -46,6 +46,12 @@ async def on_startup(bot: Bot):
             logger.info(f"Attempt {attempt}/{max_retries} to connect to database...")
             await init_db()
             logger.info("✅ Database initialized successfully")
+
+            # Load text overrides from database
+            from text_manager import load_overrides
+            await load_overrides()
+            logger.info("✅ Text overrides loaded")
+
             break
         except Exception as e:
             logger.warning(f"Failed to initialize database (attempt {attempt}/{max_retries}): {e}")

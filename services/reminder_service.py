@@ -12,7 +12,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database.models import User, Lesson, ScheduledMessage, MessageStatus, ContentType
+from database.models import User, Lesson, ScheduledMessage, MessageStatus, ContentType, UserProgress
 from services.lesson_service import LessonService
 import config
 from messages import REMINDERS, USER, USER_BUTTONS
@@ -326,3 +326,123 @@ class ReminderService:
         else:
             text = caption or block.get("text", "📝")
             await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+
+    async def check_lesson_deadlines(self) -> dict:
+        """
+        Check for users who have uncompleted lessons with deadlines.
+        Send reminders at 50%, 75%, and 100% of the deadline.
+        Uses message_type="deadline_50", "deadline_75", "deadline_100" to track.
+        """
+        now = datetime.utcnow()
+        sent = 0
+        failed = 0
+
+        # Find all lessons with deadlines
+        lesson_result = await self.session.execute(
+            select(Lesson).where(
+                Lesson.view_deadline_hours.isnot(None),
+                Lesson.is_active == True,
+            )
+        )
+        deadline_lessons = list(lesson_result.scalars().all())
+
+        if not deadline_lessons:
+            return {"sent": 0, "failed": 0}
+
+        for lesson in deadline_lessons:
+            deadline_hours = lesson.view_deadline_hours
+            if not deadline_hours or deadline_hours <= 0:
+                continue
+
+            # Find users who started but haven't completed this lesson
+            progress_result = await self.session.execute(
+                select(UserProgress).join(User).where(
+                    UserProgress.lesson_id == lesson.id,
+                    UserProgress.completed_at.is_(None),
+                    User.is_active == True,
+                )
+            )
+            uncompleted = list(progress_result.scalars().all())
+
+            for progress in uncompleted:
+                if not progress.started_at:
+                    continue
+
+                elapsed = now - progress.started_at.replace(tzinfo=None)
+                elapsed_hours = elapsed.total_seconds() / 3600
+                percent = (elapsed_hours / deadline_hours) * 100
+
+                # Determine which reminder tier to send
+                reminder_tier = None
+                if percent >= 100:
+                    reminder_tier = "deadline_100"
+                elif percent >= 75:
+                    reminder_tier = "deadline_75"
+                elif percent >= 50:
+                    reminder_tier = "deadline_50"
+
+                if not reminder_tier:
+                    continue
+
+                # Check if already sent this tier
+                existing = await self.session.execute(
+                    select(func.count(ScheduledMessage.id)).where(
+                        ScheduledMessage.user_id == progress.user_id,
+                        ScheduledMessage.message_type == reminder_tier,
+                        ScheduledMessage.status == MessageStatus.SENT,
+                        ScheduledMessage.message.contains(f"lesson:{lesson.id}"),
+                    )
+                )
+                if (existing.scalar() or 0) > 0:
+                    continue
+
+                # Get user info
+                user_result = await self.session.execute(
+                    select(User).where(User.id == progress.user_id)
+                )
+                user = user_result.scalar_one_or_none()
+                if not user:
+                    continue
+
+                name = user.first_name or REMINDERS["default_name"]
+                hours_left = max(0, int(deadline_hours - elapsed_hours))
+
+                # Choose reminder template
+                template_key = f"{reminder_tier.replace('deadline_', 'deadline_reminder_')}"
+                template = REMINDERS.get(template_key, REMINDERS["deadline_reminder_100"])
+
+                msg_text = template.format(
+                    name=name,
+                    lesson_title=lesson.title,
+                    hours_left=hours_left,
+                )
+
+                try:
+                    await self.bot.send_message(
+                        chat_id=user.telegram_user_id,
+                        text=msg_text,
+                    )
+
+                    # Log the reminder
+                    reminder_log = ScheduledMessage(
+                        user_id=user.id,
+                        message=f"lesson:{lesson.id} - {msg_text[:100]}",
+                        message_type=reminder_tier,
+                        send_at=now,
+                        status=MessageStatus.SENT,
+                        sent_at=now,
+                    )
+                    self.session.add(reminder_log)
+                    sent += 1
+                    logger.info(
+                        f"Deadline reminder ({reminder_tier}) sent to user {user.telegram_user_id} "
+                        f"for lesson {lesson.id}"
+                    )
+                except Exception as e:
+                    failed += 1
+                    logger.warning(
+                        f"Failed to send deadline reminder to {user.telegram_user_id}: {e}"
+                    )
+
+        await self.session.commit()
+        return {"sent": sent, "failed": failed}

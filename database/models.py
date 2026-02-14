@@ -5,8 +5,9 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import (
     BigInteger, String, Boolean, Integer, Text, DateTime,
-    ForeignKey, JSON, ARRAY, Float, Enum as SQLEnum
+    ForeignKey, JSON, ARRAY, Float, Enum as SQLEnum, UniqueConstraint
 )
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 import enum
@@ -171,6 +172,9 @@ class Lesson(Base):
 
     # Delay before sending next lesson (in minutes, 0 = instant)
     delay_hours: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Deadline for viewing this lesson (in hours, None = no deadline)
+    view_deadline_hours: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Call to Action
     cta_text: Mapped[Optional[str]] = mapped_column(String(255))
@@ -375,3 +379,24 @@ class FormResponse(Base):
 
     def __repr__(self):
         return f"<FormResponse user={self.user_id} lesson={self.lesson_id}>"
+
+
+# ===========================
+# BOT TEXT OVERRIDE MODEL
+# ===========================
+class BotText(Base):
+    __tablename__ = "bot_texts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Unique constraint on category+key
+    __table_args__ = (
+        UniqueConstraint('category', 'key', name='uq_bot_texts_category_key'),
+    )
+
+    def __repr__(self):
+        return f"<BotText {self.category}.{self.key}>"

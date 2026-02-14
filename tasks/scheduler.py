@@ -74,6 +74,24 @@ def setup_scheduler(bot: Bot):
         except Exception as e:
             logger.error(f"Error processing scheduled messages: {e}")
 
+    @scheduler.scheduled_job(
+        IntervalTrigger(minutes=30),
+        id="check_lesson_deadlines",
+        name="Check lesson deadlines and send reminders",
+    )
+    async def check_lesson_deadlines_job():
+        """Check for lesson deadline reminders"""
+        try:
+            async with async_session_maker() as session:
+                reminder_service = ReminderService(session, bot)
+                result = await reminder_service.check_lesson_deadlines()
+                if result["sent"] > 0 or result["failed"] > 0:
+                    logger.info(
+                        f"Deadline reminders: {result['sent']} sent, {result['failed']} failed"
+                    )
+        except Exception as e:
+            logger.error(f"Error checking lesson deadlines: {e}")
+
     return scheduler
 
 
