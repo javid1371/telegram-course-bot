@@ -104,6 +104,7 @@ class AdminStates(StatesGroup):
     waiting_quiz_passing_score = State()
     waiting_quiz_question_text = State()
     waiting_quiz_options = State()
+    waiting_quiz_question_type = State()  # single or multi-select
 
     # Form builder
     waiting_form_field_label = State()
@@ -2568,8 +2569,15 @@ async def manage_lesson_quiz(callback: CallbackQuery, state: FSMContext):
                 ) + "\n\n"
             )
             for i, q in enumerate(questions, 1):
-                correct_opt = q["options"][q["correct"]] if q["correct"] < len(q["options"]) else "?"
-                text += f"<b>{i}.</b> {q['text']}\n   " + ADMIN["quiz_correct_answer"].format(answer=correct_opt) + "\n"
+                is_multi = q.get("multi_select", False)
+                if is_multi:
+                    correct_indices = q["correct"] if isinstance(q["correct"], list) else [q["correct"]]
+                    correct_opts = [q["options"][c] for c in correct_indices if c < len(q["options"])]
+                    correct_text = "، ".join(correct_opts)
+                    text += f"<b>{i}.</b> ☑️ {q['text']}\n   " + ADMIN["quiz_correct_answer"].format(answer=correct_text) + "\n"
+                else:
+                    correct_opt = q["options"][q["correct"]] if q["correct"] < len(q["options"]) else "?"
+                    text += f"<b>{i}.</b> 🔘 {q['text']}\n   " + ADMIN["quiz_correct_answer"].format(answer=correct_opt) + "\n"
 
             builder = InlineKeyboardBuilder()
             builder.row(
@@ -2686,22 +2694,131 @@ async def process_quiz_options(message: Message, state: FSMContext):
 
     await state.update_data(current_q_options=options)
 
-    # Show options as buttons to select correct answer
+    # Ask question type: single or multi-select
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=ADMIN["quiz_type_single"], callback_data="quiz_type:single"),
+        InlineKeyboardButton(text=ADMIN["quiz_type_multi"], callback_data="quiz_type:multi"),
+    )
+    await message.answer(
+        ADMIN["quiz_question_type"],
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("quiz_type:"))
+async def select_question_type(callback: CallbackQuery, state: FSMContext):
+    """Handle question type selection (single or multi)"""
+    q_type = callback.data.split(":")[1]
+    await callback.answer()
+
+    data = await state.get_data()
+    options = data.get("current_q_options", [])
+    await state.update_data(current_q_type=q_type)
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    if q_type == "multi":
+        # Multi-select: allow toggling multiple correct answers
+        await state.update_data(current_q_correct_multi=[])
+        builder = InlineKeyboardBuilder()
+        for i, opt in enumerate(options):
+            builder.row(InlineKeyboardButton(text=f"⬜️ {opt}", callback_data=f"quizmc:{i}"))
+        builder.row(InlineKeyboardButton(text=ADMIN["quiz_confirm_correct_multi"], callback_data="quizmc_done"))
+        await callback.message.answer(
+            ADMIN["quiz_select_correct_multi"],
+            reply_markup=builder.as_markup()
+        )
+    else:
+        # Single select: pick one correct answer
+        builder = InlineKeyboardBuilder()
+        for i, opt in enumerate(options):
+            builder.row(InlineKeyboardButton(text=f"✅ {opt}", callback_data=f"quizc:{i}"))
+        await callback.message.answer(
+            ADMIN["quiz_select_correct"],
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data.startswith("quizmc:"))
+async def toggle_multi_correct(callback: CallbackQuery, state: FSMContext):
+    """Toggle a correct answer for multi-select question"""
+    opt_idx = int(callback.data.split(":")[1])
+    await callback.answer()
+
+    data = await state.get_data()
+    options = data.get("current_q_options", [])
+    selected = data.get("current_q_correct_multi", [])
+
+    if opt_idx in selected:
+        selected.remove(opt_idx)
+    else:
+        selected.append(opt_idx)
+
+    await state.update_data(current_q_correct_multi=selected)
+
+    # Rebuild keyboard with updated toggles
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     for i, opt in enumerate(options):
-        builder.row(InlineKeyboardButton(text=f"✅ {opt}", callback_data=f"quizc:{i}"))
+        icon = "✅" if i in selected else "⬜️"
+        builder.row(InlineKeyboardButton(text=f"{icon} {opt}", callback_data=f"quizmc:{i}"))
+    builder.row(InlineKeyboardButton(text=ADMIN["quiz_confirm_correct_multi"], callback_data="quizmc_done"))
 
-    await message.answer(
-        ADMIN["quiz_select_correct"],
+    try:
+        await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "quizmc_done")
+async def confirm_multi_correct(callback: CallbackQuery, state: FSMContext):
+    """Confirm multi-select correct answers and save question"""
+    data = await state.get_data()
+    selected = data.get("current_q_correct_multi", [])
+
+    if not selected:
+        await callback.answer(ADMIN["quiz_multi_select_at_least"])
+        return
+
+    await callback.answer(ADMIN["quiz_answer_saved"])
+
+    questions = data.get("quiz_questions", [])
+    questions.append({
+        "text": data["current_q_text"],
+        "options": data["current_q_options"],
+        "correct": sorted(selected),
+        "multi_select": True,
+    })
+    await state.update_data(
+        quiz_questions=questions,
+        current_q_text=None,
+        current_q_options=None,
+        current_q_type=None,
+        current_q_correct_multi=None,
+    )
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["next_question"], callback_data="quiz_more"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["save_quiz"], callback_data="quiz_save"),
+    )
+
+    await callback.message.answer(
+        ADMIN["quiz_question_added"].format(n=len(questions)),
         reply_markup=builder.as_markup()
     )
 
 
 @router.callback_query(F.data.startswith("quizc:"))
 async def select_correct_answer(callback: CallbackQuery, state: FSMContext):
-    """Select correct answer for quiz question"""
+    """Select correct answer for single-select quiz question"""
     correct_idx = int(callback.data.split(":")[1])
     await callback.answer(ADMIN["quiz_answer_saved"])
 
@@ -2711,11 +2828,13 @@ async def select_correct_answer(callback: CallbackQuery, state: FSMContext):
         "text": data["current_q_text"],
         "options": data["current_q_options"],
         "correct": correct_idx,
+        "multi_select": False,
     })
     await state.update_data(
         quiz_questions=questions,
         current_q_text=None,
         current_q_options=None,
+        current_q_type=None,
     )
 
     from aiogram.types import InlineKeyboardButton

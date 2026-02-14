@@ -256,14 +256,23 @@ class UserService:
         return result.scalar() or 0
 
     async def reset_user_progress(self, user_id: int) -> bool:
-        """Reset all progress for a user"""
+        """Reset all progress for a user (lessons, quizzes, forms, courses)"""
+        from database.models import QuizAttempt, FormResponse
         await self.session.execute(
             delete(UserProgress).where(UserProgress.user_id == user_id)
+        )
+        await self.session.execute(
+            delete(QuizAttempt).where(QuizAttempt.user_id == user_id)
+        )
+        await self.session.execute(
+            delete(FormResponse).where(FormResponse.user_id == user_id)
         )
         user = await self.get_user_by_id(user_id)
         if user:
             user.current_lesson_id = None
+            user.current_course_id = None
             user.is_completed = False
+            user.completed_courses = {}
             await self.session.commit()
             return True
         return False

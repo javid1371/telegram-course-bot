@@ -15,7 +15,7 @@ from database.models import ContentType, ScheduledMessage, MessageStatus, QuizAt
 from services.user_service import UserService
 from services.lesson_service import LessonService
 from services.webhook_service import WebhookService
-from utils.keyboards import get_main_menu_keyboard, get_lesson_keyboard
+from utils.keyboards import get_main_menu_keyboard, get_lesson_keyboard, get_confirm_keyboard
 from utils.decorators import registered_only, log_errors, rate_limit
 from utils.helpers import calculate_progress, format_duration
 import config
@@ -602,29 +602,166 @@ async def _start_quiz(message: Message, state: FSMContext, lesson, user_id: int)
 
 
 async def _send_quiz_question(message: Message, questions: list, q_idx: int, lesson_id: int):
-    """Send a quiz question with options"""
+    """Send a quiz question with options (single or multi-select)"""
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     question = questions[q_idx]
     text = question.get("text", "")
     options = question.get("options", [])
+    is_multi = question.get("multi_select", False)
 
     q_text = USER["quiz_question"].format(idx=q_idx + 1, total=len(questions), text=text)
+    if is_multi:
+        q_text += "\n\n" + USER["quiz_multi_select_hint"]
 
     builder = InlineKeyboardBuilder()
     option_labels = ["🅰️", "🅱️", "🅲", "🅳", "🅴", "🅵"]
 
-    for opt_idx, opt in enumerate(options):
-        label = option_labels[opt_idx] if opt_idx < len(option_labels) else f"{opt_idx + 1}."
+    if is_multi:
+        # Multi-select: toggle buttons + confirm
+        for opt_idx, opt in enumerate(options):
+            label = option_labels[opt_idx] if opt_idx < len(option_labels) else f"{opt_idx + 1}."
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"⬜️ {label} {opt}",
+                    callback_data=f"qm:{lesson_id}:{q_idx}:{opt_idx}"
+                )
+            )
         builder.row(
             InlineKeyboardButton(
-                text=f"{label} {opt}",
-                callback_data=f"qa:{lesson_id}:{q_idx}:{opt_idx}"
+                text=USER["quiz_confirm_selection"],
+                callback_data=f"qmc:{lesson_id}:{q_idx}"
             )
         )
+    else:
+        # Single select
+        for opt_idx, opt in enumerate(options):
+            label = option_labels[opt_idx] if opt_idx < len(option_labels) else f"{opt_idx + 1}."
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{label} {opt}",
+                    callback_data=f"qa:{lesson_id}:{q_idx}:{opt_idx}"
+                )
+            )
 
     await message.answer(q_text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("qm:"))
+async def quiz_multi_toggle(callback: CallbackQuery, state: FSMContext):
+    """Toggle option in multi-select quiz question"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[1])
+    q_idx = int(parts[2])
+    opt_idx = int(parts[3])
+    await callback.answer()
+
+    data = await state.get_data()
+    if not data or data.get("quiz_lesson_id") != lesson_id:
+        await callback.message.answer(USER["quiz_invalid"])
+        return
+
+    questions = data.get("quiz_questions", [])
+    if q_idx >= len(questions):
+        return
+
+    # Get or init multi-select state
+    multi_selected = data.get("quiz_multi_selected", [])
+    if opt_idx in multi_selected:
+        multi_selected.remove(opt_idx)
+    else:
+        multi_selected.append(opt_idx)
+    await state.update_data(quiz_multi_selected=multi_selected)
+
+    # Rebuild keyboard
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    question = questions[q_idx]
+    options = question.get("options", [])
+    option_labels = ["🅰️", "🅱️", "🅲", "🅳", "🅴", "🅵"]
+
+    builder = InlineKeyboardBuilder()
+    for i, opt in enumerate(options):
+        label = option_labels[i] if i < len(option_labels) else f"{i + 1}."
+        icon = "✅" if i in multi_selected else "⬜️"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{icon} {label} {opt}",
+                callback_data=f"qm:{lesson_id}:{q_idx}:{i}"
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text=USER["quiz_confirm_selection"],
+            callback_data=f"qmc:{lesson_id}:{q_idx}"
+        )
+    )
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("qmc:"))
+async def quiz_multi_confirm(callback: CallbackQuery, state: FSMContext):
+    """Confirm multi-select quiz answer"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[1])
+    q_idx = int(parts[2])
+
+    data = await state.get_data()
+    if not data or data.get("quiz_lesson_id") != lesson_id:
+        await callback.message.answer(USER["quiz_invalid"])
+        return
+
+    multi_selected = sorted(data.get("quiz_multi_selected", []))
+    if not multi_selected:
+        await callback.answer(USER["quiz_select_at_least_one"])
+        return
+
+    await callback.answer()
+
+    questions = data.get("quiz_questions", [])
+    answers = data.get("quiz_answers", [])
+
+    if q_idx >= len(questions):
+        return
+
+    question = questions[q_idx]
+    correct = question.get("correct", [])
+    if not isinstance(correct, list):
+        correct = [correct]
+    correct = sorted(correct)
+    is_correct = (multi_selected == correct)
+
+    # Store answer
+    answers.append({
+        "question_idx": q_idx,
+        "selected": multi_selected,
+        "correct": correct,
+        "is_correct": is_correct,
+        "multi_select": True,
+    })
+    await state.update_data(quiz_answers=answers, quiz_current=q_idx + 1, quiz_multi_selected=[])
+
+    # Show feedback
+    opts = question.get("options", [])
+    if is_correct:
+        await callback.message.answer(USER["quiz_multi_correct"])
+    else:
+        correct_labels = [opts[c] for c in correct if c < len(opts)]
+        await callback.message.answer(
+            USER["quiz_multi_wrong"].format(answers="، ".join(correct_labels))
+        )
+
+    next_idx = q_idx + 1
+    if next_idx < len(questions):
+        await _send_quiz_question(callback.message, questions, next_idx, lesson_id)
+    else:
+        await _finish_quiz(callback.message, state, answers, data)
 
 
 @router.callback_query(F.data.startswith("qa:"))
@@ -1018,3 +1155,56 @@ async def cmd_help(message: Message):
     """Handle /help command"""
     text = USER["help_text"]
     await message.answer(text)
+
+
+# ===========================
+# RESET PROGRESS
+# ===========================
+
+@router.message(Command("reset"))
+@log_errors
+async def cmd_reset(message: Message):
+    """Handle /reset command - reset user progress"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        user = await user_service.get_user_by_telegram_id(message.from_user.id)
+        if not user:
+            await message.answer(USER["please_register"])
+            return
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["confirm_yes"], callback_data="user:reset:confirm"),
+        InlineKeyboardButton(text=GENERAL["confirm_no"], callback_data="user:reset:cancel")
+    )
+    await message.answer(USER["reset_confirm"], reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "user:reset:confirm")
+async def confirm_reset(callback: CallbackQuery):
+    """Confirm user progress reset"""
+    await callback.answer()
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            return
+
+        if await user_service.reset_user_progress(user.id):
+            await callback.message.edit_text(USER["reset_done"])
+            await callback.message.answer(
+                USER["reset_done"],
+                reply_markup=get_main_menu_keyboard()
+            )
+        else:
+            await callback.message.edit_text(USER["reset_error"])
+
+
+@router.callback_query(F.data == "user:reset:cancel")
+async def cancel_reset(callback: CallbackQuery):
+    """Cancel user progress reset"""
+    await callback.answer()
+    await callback.message.edit_text(USER["reset_cancelled"])
