@@ -74,15 +74,16 @@ MAX_CAPTION_LENGTH = 1024
 BROADCAST_SLEEP_SECONDS = 0.05  # 20 messages per second (safe limit)
 FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50 MB
 
-# Messages
+# Messages - centralized in messages.py, kept here for backward compatibility
+from messages import REGISTRATION, USER, ADMIN as ADMIN_MESSAGES
 MESSAGES = {
-    "welcome": "🎓 به دوره آموزشی ما خوش آمدید!\n\nبرای شروع، لطفاً اطلاعات خود را وارد کنید.",
-    "registration_complete": "✅ ثبت‌نام شما با موفقیت انجام شد!\n\nدرس اول به زودی برای شما ارسال می‌شود.",
-    "lesson_sent": "📚 درس {lesson_number} - {lesson_title}\n\n{description}",
-    "lesson_completed": "✅ تبریک! درس {lesson_number} را تکمیل کردید.\n\n🎯 پیشرفت شما: {progress}%",
-    "course_completed": "🎉 تبریک! شما دوره را با موفقیت تکمیل کردید!\n\n🏆 آفرین!",
-    "admin_welcome": "👋 سلام ادمین عزیز!\n\nبه پنل مدیریت خوش آمدید.",
-    "unauthorized": "⛔️ شما اجازه دسترسی به این بخش را ندارید.",
+    "welcome": REGISTRATION["welcome"],
+    "registration_complete": REGISTRATION["registration_complete"],
+    "lesson_sent": USER["lesson_sent"],
+    "lesson_completed": USER["lesson_completed"],
+    "course_completed": USER["course_completed"],
+    "admin_welcome": ADMIN_MESSAGES["welcome"],
+    "unauthorized": REGISTRATION.get("unauthorized", "⛔️ شما اجازه دسترسی به این بخش را ندارید."),
     "error": "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
 }
 

@@ -15,42 +15,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.models import User, Lesson, ScheduledMessage, MessageStatus, ContentType
 from services.lesson_service import LessonService
 import config
+from messages import REMINDERS, USER, USER_BUTTONS
 
 logger = logging.getLogger(__name__)
 
-# Smart reminder messages - varied and friendly
-REMINDER_MESSAGES = [
-    (
-        "👋 سلام {name}!\n\n"
-        "مدتیه که سری به دوره نزدید.\n"
-        "درس‌های جالبی منتظر شماست! 📚\n\n"
-        "📚 ادامه دوره"
-    ),
-    (
-        "🌟 {name} عزیز!\n\n"
-        "پیشرفتت عالی بوده ولی کمی متوقف شدی.\n"
-        "فقط {remaining} درس تا تکمیل دوره مونده! 💪\n\n"
-        "📚 ادامه دوره"
-    ),
-    (
-        "📖 سلام {name}!\n\n"
-        "یادت نره که {progress}% دوره رو تکمیل کردی.\n"
-        "بیا ادامه بدیم! 🚀\n\n"
-        "📚 ادامه دوره"
-    ),
-    (
-        "💡 {name} جان!\n\n"
-        "آخرین فعالیتت {days_ago} روز پیش بود.\n"
-        "درس بعدی منتظرته، فقط یه کلیک فاصله داری! ✨\n\n"
-        "📚 ادامه دوره"
-    ),
-    (
-        "🎯 {name} عزیز!\n\n"
-        "هم‌کلاسی‌هات دارن پیشرفت می‌کنن.\n"
-        "بیا عقب نمونی! 😊\n\n"
-        "📚 ادامه دوره"
-    ),
-]
+# Smart reminder messages - from centralized config
+REMINDER_MESSAGES = REMINDERS["templates"]
 
 
 class ReminderService:
@@ -80,7 +50,7 @@ class ReminderService:
         """Generate a personalized smart reminder message"""
         lesson_service = LessonService(self.session)
 
-        name = user.first_name or "دوست"
+        name = user.first_name or REMINDERS["default_name"]
         days_ago = (datetime.utcnow() - user.last_activity_at).days if user.last_activity_at else 0
 
         # Get progress for the user's current course, or overall
@@ -272,7 +242,7 @@ class ReminderService:
 
         # Build caption
         description = next_lesson.description or ""
-        lesson_text = config.MESSAGES["lesson_sent"].format(
+        lesson_text = USER["lesson_sent"].format(
             lesson_number=next_lesson.order,
             lesson_title=next_lesson.title,
             description=description,
@@ -282,7 +252,7 @@ class ReminderService:
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(
-                text="✅ دیدم، ادامه بده",
+                text=USER_BUTTONS["lesson_seen_delayed"],
                 callback_data=f"confirm_lesson:{next_lesson.id}"
             )
         )
@@ -321,11 +291,10 @@ class ReminderService:
         elif next_lesson.content_type == ContentType.PHOTO and next_lesson.file_id:
             await self.bot.send_photo(chat_id=chat_id, photo=next_lesson.file_id, caption=lesson_text, reply_markup=keyboard)
         elif next_lesson.content_type == ContentType.FORM:
-            form_text = (
-                f"📋 <b>درس {next_lesson.order}: {next_lesson.title}</b>\n\n"
-                f"{next_lesson.description or ''}\n\n"
-                "📝 این درس شامل یک فرم است.\n"
-                "برای پر کردن فرم روی دکمه «📚 ادامه دوره» کلیک کنید."
+            form_text = REMINDERS["form_lesson"].format(
+                order=next_lesson.order,
+                title=next_lesson.title,
+                description=next_lesson.description or '',
             )
             await self.bot.send_message(chat_id=chat_id, text=form_text)
         else:

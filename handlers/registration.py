@@ -17,6 +17,7 @@ from utils.keyboards import get_main_menu_keyboard, get_cancel_keyboard
 from utils.validators import validate_field_value, ValidationError
 from utils.helpers import parse_tracking_link
 import config
+from messages import REGISTRATION, ADMIN, USER_BUTTONS, GENERAL
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -38,13 +39,12 @@ async def cmd_start(message: Message, state: FSMContext):
             # User already registered
             if message.from_user.id in config.ADMIN_USER_IDS:
                 await message.answer(
-                    config.MESSAGES["admin_welcome"],
+                    ADMIN["welcome"],
                     reply_markup=get_main_menu_keyboard()
                 )
             else:
                 await message.answer(
-                    f"👋 خوش برگشتید {user.first_name or ''}!\n\n"
-                    "از منوی زیر می‌توانید ادامه دوره را دنبال کنید.",
+                    REGISTRATION["welcome_back"].format(name=user.first_name or ''),
                     reply_markup=get_main_menu_keyboard()
                 )
             return
@@ -71,7 +71,7 @@ async def cmd_start(message: Message, state: FSMContext):
             await webhook_service.send_webhook("user_registered", new_user)
 
             await message.answer(
-                config.MESSAGES["registration_complete"],
+                REGISTRATION["registration_complete"],
                 reply_markup=get_main_menu_keyboard()
             )
             return
@@ -95,7 +95,7 @@ async def cmd_start(message: Message, state: FSMContext):
             referral=referral,
         )
 
-        await message.answer(config.MESSAGES["welcome"])
+        await message.answer(REGISTRATION["welcome"])
 
         # Send first field prompt (use dict version, not ORM object)
         first_field = fields_data[0]
@@ -110,12 +110,12 @@ async def cmd_start(message: Message, state: FSMContext):
         await state.set_state(RegistrationStates.waiting_for_field)
 
 
-@router.message(RegistrationStates.waiting_for_field, F.text == "❌ انصراف")
+@router.message(RegistrationStates.waiting_for_field, F.text == USER_BUTTONS["cancel"])
 async def cancel_registration(message: Message, state: FSMContext):
     """Cancel registration"""
     await state.clear()
     await message.answer(
-        "❌ ثبت‌نام لغو شد.\n\nبرای شروع مجدد دستور /start را ارسال کنید.",
+        REGISTRATION["registration_cancelled"],
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -152,7 +152,7 @@ async def process_registration_field(message: Message, state: FSMContext):
     except ValidationError as e:
         # Validation failed - ask again
         await message.answer(
-            f"⚠️ {str(e)}\n\nلطفاً دوباره وارد کنید:"
+            REGISTRATION["validation_error"].format(error=str(e))
         )
         return
 
@@ -209,7 +209,7 @@ async def process_registration_field(message: Message, state: FSMContext):
             await webhook_service.send_webhook("user_registered", new_user)
 
         await message.answer(
-            config.MESSAGES["registration_complete"],
+            REGISTRATION["registration_complete"],
             reply_markup=get_main_menu_keyboard()
         )
 
@@ -269,27 +269,21 @@ async def process_select_field(callback: CallbackQuery, state: FSMContext):
             await webhook_service.send_webhook("user_registered", new_user)
 
         await callback.message.answer(
-            config.MESSAGES["registration_complete"],
+            REGISTRATION["registration_complete"],
             reply_markup=get_main_menu_keyboard()
         )
 
 
 def _get_field_prompt(field: dict) -> str:
     """Generate prompt text for a registration field"""
-    required = " (اجباری)" if field["is_required"] else " (اختیاری)"
-    prompt = f"📝 {field['field_label']}{required}\n\n"
-
-    type_hints = {
-        "text": "متن را وارد کنید:",
-        "number": "عدد را وارد کنید:",
-        "email": "ایمیل خود را وارد کنید:\nمثال: example@gmail.com",
-        "phone": "شماره موبایل خود را وارد کنید:\nمثال: 09123456789",
-        "date": "تاریخ را وارد کنید:\nفرمت: YYYY/MM/DD",
-        "select": "یکی از گزینه‌ها را انتخاب کنید:",
-    }
-
-    prompt += type_hints.get(field["field_type"], "مقدار را وارد کنید:")
-    return prompt
+    required = REGISTRATION["field_required"] if field["is_required"] else REGISTRATION["field_optional"]
+    hints = REGISTRATION["field_hints"]
+    hint = hints.get(field["field_type"], hints["default"])
+    return REGISTRATION["field_prompt"].format(
+        label=field['field_label'],
+        required=required,
+        hint=hint,
+    )
 
 
 def _get_field_keyboard(field: dict):

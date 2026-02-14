@@ -7,6 +7,8 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
+from messages import USER_BUTTONS, ADMIN_BUTTONS, GENERAL
+
 
 # ===========================
 # USER KEYBOARDS
@@ -16,12 +18,12 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
     """Main menu for users"""
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text="📚 ادامه دوره"),
-        KeyboardButton(text="📊 پیشرفت من")
+        KeyboardButton(text=USER_BUTTONS["continue_course"]),
+        KeyboardButton(text=USER_BUTTONS["my_progress"])
     )
     builder.row(
-        KeyboardButton(text="ℹ️ درباره دوره"),
-        KeyboardButton(text="📞 پشتیبانی")
+        KeyboardButton(text=USER_BUTTONS["about_course"]),
+        KeyboardButton(text=USER_BUTTONS["support"])
     )
     return builder.as_markup(resize_keyboard=True)
 
@@ -33,7 +35,7 @@ def get_lesson_keyboard(lesson_id: int, cta_text: str = None, cta_url: str = Non
     # Confirmation button
     builder.row(
         InlineKeyboardButton(
-            text="✅ درس رو دیدم",
+            text=USER_BUTTONS["lesson_seen"],
             callback_data=f"confirm_lesson:{lesson_id}"
         )
     )
@@ -51,8 +53,8 @@ def get_confirm_keyboard(action: str, data: str = "") -> InlineKeyboardMarkup:
     """Generic confirmation keyboard"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✅ بله", callback_data=f"confirm:{action}:{data}"),
-        InlineKeyboardButton(text="❌ خیر", callback_data=f"cancel:{action}:{data}")
+        InlineKeyboardButton(text=GENERAL["confirm_yes"], callback_data=f"confirm:{action}:{data}"),
+        InlineKeyboardButton(text=GENERAL["confirm_no"], callback_data=f"cancel:{action}:{data}")
     )
     return builder.as_markup()
 
@@ -65,20 +67,20 @@ def get_admin_main_menu() -> ReplyKeyboardMarkup:
     """Admin panel main menu"""
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text="📊 داشبورد"),
-        KeyboardButton(text="👥 کاربران")
+        KeyboardButton(text=ADMIN_BUTTONS["dashboard"]),
+        KeyboardButton(text=ADMIN_BUTTONS["users"])
     )
     builder.row(
-        KeyboardButton(text="📚 درس‌ها"),
-        KeyboardButton(text="📝 فیلدهای ثبت‌نام")
+        KeyboardButton(text=ADMIN_BUTTONS["lessons"]),
+        KeyboardButton(text=ADMIN_BUTTONS["reg_fields"])
     )
     builder.row(
-        KeyboardButton(text="📢 ارسال پیام"),
-        KeyboardButton(text="📈 گزارش‌ها")
+        KeyboardButton(text=ADMIN_BUTTONS["broadcast"]),
+        KeyboardButton(text=ADMIN_BUTTONS["reports"])
     )
     builder.row(
-        KeyboardButton(text="🔗 وبهوک"),
-        KeyboardButton(text="⚙️ تنظیمات")
+        KeyboardButton(text=ADMIN_BUTTONS["webhook"]),
+        KeyboardButton(text=ADMIN_BUTTONS["settings"])
     )
     return builder.as_markup(resize_keyboard=True)
 
@@ -87,16 +89,16 @@ def get_lesson_management_keyboard() -> InlineKeyboardMarkup:
     """Lesson management menu"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="➕ افزودن درس", callback_data="admin:lesson:add")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["add_lesson"], callback_data="admin:lesson:add")
     )
     builder.row(
-        InlineKeyboardButton(text="📋 لیست درس‌ها", callback_data="admin:lesson:list")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["lesson_list"], callback_data="admin:lesson:list")
     )
     builder.row(
-        InlineKeyboardButton(text="🔄 ترتیب درس‌ها", callback_data="admin:lesson:reorder")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["reorder_lessons"], callback_data="admin:lesson:reorder")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
     )
     return builder.as_markup()
 
@@ -116,11 +118,11 @@ def get_lesson_list_keyboard(lessons: list, course_id: int = None) -> InlineKeyb
 
     if course_id:
         builder.row(
-            InlineKeyboardButton(text="🔙 بازگشت به دوره", callback_data=f"admin:course:view:{course_id}")
+            InlineKeyboardButton(text=ADMIN_BUTTONS["back_to_course"], callback_data=f"admin:course:view:{course_id}")
         )
     else:
         builder.row(
-            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:courses")
+            InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:courses")
         )
     return builder.as_markup()
 
@@ -129,23 +131,23 @@ def get_lesson_actions_keyboard(lesson_id: int, course_id: int = None) -> Inline
     """Actions for a specific lesson"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✏️ ویرایش", callback_data=f"admin:lesson:edit:{lesson_id}"),
-        InlineKeyboardButton(text="🔄 تغییر وضعیت", callback_data=f"admin:lesson:toggle:{lesson_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["edit_lesson"], callback_data=f"admin:lesson:edit:{lesson_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_status"], callback_data=f"admin:lesson:toggle:{lesson_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="📝 آزمون", callback_data=f"admin:lesson:quiz:{lesson_id}"),
-        InlineKeyboardButton(text="📊 آمار", callback_data=f"admin:lesson:stats:{lesson_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["quiz"], callback_data=f"admin:lesson:quiz:{lesson_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["stats"], callback_data=f"admin:lesson:stats:{lesson_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🗑 حذف", callback_data=f"admin:lesson:delete:{lesson_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["delete"], callback_data=f"admin:lesson:delete:{lesson_id}")
     )
     if course_id:
         builder.row(
-            InlineKeyboardButton(text="🔙 بازگشت به درس‌ها", callback_data=f"admin:lesson:list:{course_id}")
+            InlineKeyboardButton(text=ADMIN_BUTTONS["back_to_lessons"], callback_data=f"admin:lesson:list:{course_id}")
         )
     else:
         builder.row(
-            InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:courses")
+            InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:courses")
         )
     return builder.as_markup()
 
@@ -154,21 +156,21 @@ def get_user_management_keyboard() -> InlineKeyboardMarkup:
     """User management menu"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="👥 همه کاربران", callback_data="admin:users:all")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["all_users"], callback_data="admin:users:all")
     )
     builder.row(
-        InlineKeyboardButton(text="✅ فعال‌ها", callback_data="admin:users:active"),
-        InlineKeyboardButton(text="❌ غیرفعال‌ها", callback_data="admin:users:inactive")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["active_users"], callback_data="admin:users:active"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["inactive_users"], callback_data="admin:users:inactive")
     )
     builder.row(
-        InlineKeyboardButton(text="🎓 تکمیل کننده‌ها", callback_data="admin:users:completed")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["completed_users"], callback_data="admin:users:completed")
     )
     builder.row(
-        InlineKeyboardButton(text="🔍 جستجو", callback_data="admin:users:search"),
-        InlineKeyboardButton(text="📥 اکسپورت Excel", callback_data="admin:users:export")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["search_users"], callback_data="admin:users:search"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["export_excel"], callback_data="admin:users:export")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
     )
     return builder.as_markup()
 
@@ -177,19 +179,19 @@ def get_user_actions_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Actions for a specific user"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💬 ارسال پیام", callback_data=f"admin:user:message:{user_id}"),
-        InlineKeyboardButton(text="📊 آمار", callback_data=f"admin:user:stats:{user_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["send_message"], callback_data=f"admin:user:message:{user_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["stats"], callback_data=f"admin:user:stats:{user_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🏷 مدیریت تگ‌ها", callback_data=f"admin:user:tags:{user_id}"),
-        InlineKeyboardButton(text="🔄 ریست پیشرفت", callback_data=f"admin:user:reset:{user_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["manage_tags"], callback_data=f"admin:user:tags:{user_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["reset_progress"], callback_data=f"admin:user:reset:{user_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🚫 بلاک", callback_data=f"admin:user:block:{user_id}"),
-        InlineKeyboardButton(text="🗑 حذف", callback_data=f"admin:user:delete:{user_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["block_user"], callback_data=f"admin:user:block:{user_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["delete_user"], callback_data=f"admin:user:delete:{user_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:users:all")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:users:all")
     )
     return builder.as_markup()
 
@@ -198,17 +200,17 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
     """Broadcast message options"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="📢 همه کاربران", callback_data="admin:broadcast:all")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["broadcast_all"], callback_data="admin:broadcast:all")
     )
     builder.row(
-        InlineKeyboardButton(text="✅ فقط فعال‌ها", callback_data="admin:broadcast:active"),
-        InlineKeyboardButton(text="❌ فقط غیرفعال‌ها", callback_data="admin:broadcast:inactive")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["broadcast_active"], callback_data="admin:broadcast:active"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["broadcast_inactive"], callback_data="admin:broadcast:inactive")
     )
     builder.row(
-        InlineKeyboardButton(text="🏷 بر اساس تگ", callback_data="admin:broadcast:bytag")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["broadcast_bytag"], callback_data="admin:broadcast:bytag")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
     )
     return builder.as_markup()
 
@@ -217,16 +219,16 @@ def get_registration_fields_keyboard() -> InlineKeyboardMarkup:
     """Registration fields management"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="➕ افزودن فیلد", callback_data="admin:field:add")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["add_field"], callback_data="admin:field:add")
     )
     builder.row(
-        InlineKeyboardButton(text="📋 لیست فیلدها", callback_data="admin:field:list")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_list"], callback_data="admin:field:list")
     )
     builder.row(
-        InlineKeyboardButton(text="🔄 ترتیب فیلدها", callback_data="admin:field:reorder")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["reorder_fields"], callback_data="admin:field:reorder")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
     )
     return builder.as_markup()
 
@@ -235,15 +237,15 @@ def get_field_actions_keyboard(field_id: int) -> InlineKeyboardMarkup:
     """Actions for a specific registration field"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✏️ ویرایش عنوان", callback_data=f"admin:field:editlbl:{field_id}"),
-        InlineKeyboardButton(text="🔄 تغییر اجباری", callback_data=f"admin:field:togglereq:{field_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["edit_field_label"], callback_data=f"admin:field:editlbl:{field_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_required"], callback_data=f"admin:field:togglereq:{field_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="✅/❌ فعال/غیرفعال", callback_data=f"admin:field:toggle:{field_id}"),
-        InlineKeyboardButton(text="🗑 حذف", callback_data=f"admin:field:del:{field_id}")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_active"], callback_data=f"admin:field:toggle:{field_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["delete_field"], callback_data=f"admin:field:del:{field_id}")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:field:list")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:field:list")
     )
     return builder.as_markup()
 
@@ -252,19 +254,19 @@ def get_field_type_keyboard() -> InlineKeyboardMarkup:
     """Field type selection"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="📝 متن", callback_data="admin:field:type:text"),
-        InlineKeyboardButton(text="🔢 عدد", callback_data="admin:field:type:number")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_text"], callback_data="admin:field:type:text"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_number"], callback_data="admin:field:type:number")
     )
     builder.row(
-        InlineKeyboardButton(text="📧 ایمیل", callback_data="admin:field:type:email"),
-        InlineKeyboardButton(text="📱 شماره تلفن", callback_data="admin:field:type:phone")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_email"], callback_data="admin:field:type:email"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_phone"], callback_data="admin:field:type:phone")
     )
     builder.row(
-        InlineKeyboardButton(text="📅 تاریخ", callback_data="admin:field:type:date"),
-        InlineKeyboardButton(text="☑️ انتخابی", callback_data="admin:field:type:select")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_date"], callback_data="admin:field:type:date"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_select"], callback_data="admin:field:type:select")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:field:cancel")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["field_cancel"], callback_data="admin:field:cancel")
     )
     return builder.as_markup()
 
@@ -273,16 +275,16 @@ def get_webhook_keyboard() -> InlineKeyboardMarkup:
     """Webhook settings menu"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="➕ افزودن وبهوک", callback_data="admin:webhook:add")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["add_webhook"], callback_data="admin:webhook:add")
     )
     builder.row(
-        InlineKeyboardButton(text="📋 لیست وبهوک‌ها", callback_data="admin:webhook:list")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["webhook_list"], callback_data="admin:webhook:list")
     )
     builder.row(
-        InlineKeyboardButton(text="🧪 تست وبهوک", callback_data="admin:webhook:test")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["test_webhook"], callback_data="admin:webhook:test")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
     )
     return builder.as_markup()
 
@@ -291,18 +293,18 @@ def get_stats_keyboard() -> InlineKeyboardMarkup:
     """Statistics menu"""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="📊 امروز", callback_data="admin:stats:today"),
-        InlineKeyboardButton(text="📅 هفته", callback_data="admin:stats:week")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["stats_today"], callback_data="admin:stats:today"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["stats_week"], callback_data="admin:stats:week")
     )
     builder.row(
-        InlineKeyboardButton(text="📆 ماه", callback_data="admin:stats:month"),
-        InlineKeyboardButton(text="📈 کل", callback_data="admin:stats:all")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["stats_month"], callback_data="admin:stats:month"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["stats_all"], callback_data="admin:stats:all")
     )
     builder.row(
-        InlineKeyboardButton(text="📥 اکسپورت داده", callback_data="admin:stats:export")
+        InlineKeyboardButton(text=ADMIN_BUTTONS["export_data"], callback_data="admin:stats:export")
     )
     builder.row(
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back")
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
     )
     return builder.as_markup()
 
@@ -310,14 +312,14 @@ def get_stats_keyboard() -> InlineKeyboardMarkup:
 def get_cancel_keyboard() -> ReplyKeyboardMarkup:
     """Cancel operation keyboard"""
     builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="❌ انصراف"))
+    builder.row(KeyboardButton(text=USER_BUTTONS["cancel"]))
     return builder.as_markup(resize_keyboard=True)
 
 
 def get_back_keyboard() -> InlineKeyboardMarkup:
     """Simple back button"""
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back"))
+    builder.row(InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back"))
     return builder.as_markup()
 
 
@@ -331,14 +333,14 @@ def get_pagination_keyboard(
 
     buttons = []
     if page > 1:
-        buttons.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"{callback_prefix}:{page-1}"))
+        buttons.append(InlineKeyboardButton(text=ADMIN_BUTTONS["prev_page"], callback_data=f"{callback_prefix}:{page-1}"))
 
     buttons.append(InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="noop"))
 
     if page < total_pages:
-        buttons.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"{callback_prefix}:{page+1}"))
+        buttons.append(InlineKeyboardButton(text=ADMIN_BUTTONS["next_page"], callback_data=f"{callback_prefix}:{page+1}"))
 
     builder.row(*buttons)
-    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:back"))
+    builder.row(InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back"))
 
     return builder.as_markup()

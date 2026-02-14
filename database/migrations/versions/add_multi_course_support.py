@@ -1,7 +1,7 @@
 """add multi course support
 
 Revision ID: multicourse001
-Revises: 
+Revises:
 Create Date: 2026-02-11
 
 """

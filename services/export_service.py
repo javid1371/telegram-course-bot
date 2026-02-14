@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import User, Lesson, UserProgress, RegistrationField
 import config
+from messages import EXPORT
 
 logger = logging.getLogger(__name__)
 
@@ -54,17 +55,17 @@ class ExportService:
         data = []
         for user in users:
             row = {
-                "شناسه": user.id,
-                "آیدی تلگرام": user.telegram_user_id,
-                "یوزرنیم": user.username or "-",
-                "نام": user.first_name or "-",
-                "نام خانوادگی": user.last_name or "-",
-                "وضعیت": "فعال" if user.is_active else "غیرفعال",
-                "تکمیل دوره": "بله" if user.is_completed else "خیر",
-                "تگ‌ها": ", ".join(user.tags) if user.tags else "-",
-                "کمپین": user.source_campaign or "-",
-                "تاریخ ثبت‌نام": user.created_at.strftime("%Y/%m/%d %H:%M") if user.created_at else "-",
-                "آخرین فعالیت": user.last_activity_at.strftime("%Y/%m/%d %H:%M") if user.last_activity_at else "-",
+                EXPORT["col_id"]: user.id,
+                EXPORT["col_telegram_id"]: user.telegram_user_id,
+                EXPORT["col_username"]: user.username or "-",
+                EXPORT["col_first_name"]: user.first_name or "-",
+                EXPORT["col_last_name"]: user.last_name or "-",
+                EXPORT["col_status"]: EXPORT["val_active"] if user.is_active else EXPORT["val_inactive"],
+                EXPORT["col_completed"]: EXPORT["val_yes"] if user.is_completed else EXPORT["val_no"],
+                EXPORT["col_tags"]: ", ".join(user.tags) if user.tags else "-",
+                EXPORT["col_campaign"]: user.source_campaign or "-",
+                EXPORT["col_reg_date"]: user.created_at.strftime("%Y/%m/%d %H:%M") if user.created_at else "-",
+                EXPORT["col_last_activity"]: user.last_activity_at.strftime("%Y/%m/%d %H:%M") if user.last_activity_at else "-",
             }
 
             # Add registration data fields
@@ -79,7 +80,7 @@ class ExportService:
         # Write to BytesIO
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="کاربران")
+            df.to_excel(writer, index=False, sheet_name=EXPORT["sheet_users"])
         output.seek(0)
 
         return output
@@ -103,8 +104,8 @@ class ExportService:
         data = []
         for user in users:
             row = {
-                "آیدی تلگرام": user.telegram_user_id,
-                "نام": f"{user.first_name or ''} {user.last_name or ''}".strip() or "-",
+                EXPORT["col_telegram_id"]: user.telegram_user_id,
+                EXPORT["col_name"]: f"{user.first_name or ''} {user.last_name or ''}".strip() or "-",
             }
 
             # Get progress for each lesson
@@ -118,11 +119,11 @@ class ExportService:
                 progress = progress_result.scalar_one_or_none()
 
                 if progress and progress.completed_at:
-                    row[f"درس {lesson.order}: {lesson.title}"] = "✅ تکمیل"
+                    row[f"درس {lesson.order}: {lesson.title}"] = EXPORT["val_completed"]
                 elif progress:
-                    row[f"درس {lesson.order}: {lesson.title}"] = "🔄 در حال مشاهده"
+                    row[f"درس {lesson.order}: {lesson.title}"] = EXPORT["val_in_progress"]
                 else:
-                    row[f"درس {lesson.order}: {lesson.title}"] = "❌ مشاهده نشده"
+                    row[f"درس {lesson.order}: {lesson.title}"] = EXPORT["val_not_started"]
 
             data.append(row)
 
@@ -130,7 +131,7 @@ class ExportService:
 
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="پیشرفت")
+            df.to_excel(writer, index=False, sheet_name=EXPORT["sheet_progress"])
         output.seek(0)
 
         return output
@@ -145,31 +146,31 @@ class ExportService:
         # Dashboard stats
         dashboard = await analytics.get_dashboard_stats()
         dashboard_data = [
-            {"شاخص": "کل کاربران", "مقدار": dashboard["total_users"]},
-            {"شاخص": "کاربران فعال", "مقدار": dashboard["active_users"]},
-            {"شاخص": "تکمیل کننده‌ها", "مقدار": dashboard["completed_courses"]},
-            {"شاخص": "نرخ تکمیل (%)", "مقدار": dashboard["completion_rate"]},
-            {"شاخص": "کاربران جدید امروز", "مقدار": dashboard["today_new_users"]},
-            {"شاخص": "کاربران جدید این هفته", "مقدار": dashboard["week_new_users"]},
+            {EXPORT["col_indicator"]: EXPORT["ind_total_users"], EXPORT["col_value"]: dashboard["total_users"]},
+            {EXPORT["col_indicator"]: EXPORT["ind_active_users"], EXPORT["col_value"]: dashboard["active_users"]},
+            {EXPORT["col_indicator"]: EXPORT["ind_completed_users"], EXPORT["col_value"]: dashboard["completed_courses"]},
+            {EXPORT["col_indicator"]: EXPORT["ind_completion_rate"], EXPORT["col_value"]: dashboard["completion_rate"]},
+            {EXPORT["col_indicator"]: EXPORT["ind_today_new"], EXPORT["col_value"]: dashboard["today_new_users"]},
+            {EXPORT["col_indicator"]: EXPORT["ind_week_new"], EXPORT["col_value"]: dashboard["week_new_users"]},
         ]
 
         # Lesson stats
         lesson_stats = await analytics.get_lesson_completion_stats()
         lesson_data = [
             {
-                "درس": f"{s['order']}. {s['title']}",
-                "شروع شده": s["started"],
-                "تکمیل شده": s["completed"],
-                "نرخ تکمیل (%)": s["completion_rate"],
+                EXPORT["col_lesson"]: f"{s['order']}. {s['title']}",
+                EXPORT["col_started"]: s["started"],
+                EXPORT["col_lesson_completed"]: s["completed"],
+                EXPORT["col_completion_rate"]: s["completion_rate"],
             }
             for s in lesson_stats
         ]
 
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            pd.DataFrame(dashboard_data).to_excel(writer, index=False, sheet_name="داشبورد")
+            pd.DataFrame(dashboard_data).to_excel(writer, index=False, sheet_name=EXPORT["sheet_dashboard"])
             if lesson_data:
-                pd.DataFrame(lesson_data).to_excel(writer, index=False, sheet_name="درس‌ها")
+                pd.DataFrame(lesson_data).to_excel(writer, index=False, sheet_name=EXPORT["sheet_lessons"])
         output.seek(0)
 
         return output

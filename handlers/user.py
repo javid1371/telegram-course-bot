@@ -19,6 +19,7 @@ from utils.keyboards import get_main_menu_keyboard, get_lesson_keyboard
 from utils.decorators import registered_only, log_errors, rate_limit
 from utils.helpers import calculate_progress, format_duration
 import config
+from messages import USER, USER_BUTTONS, GENERAL, CONTENT_TYPES
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -33,7 +34,7 @@ class UserStates(StatesGroup):
 # LESSON DELIVERY
 # ===========================
 
-@router.message(F.text == "📚 ادامه دوره")
+@router.message(F.text == USER_BUTTONS["continue_course"])
 @log_errors
 @rate_limit(2)
 async def continue_course(message: Message, state: FSMContext):
@@ -44,15 +45,13 @@ async def continue_course(message: Message, state: FSMContext):
 
         user = await user_service.get_user_by_telegram_id(message.from_user.id)
         if not user:
-            await message.answer(
-                "⚠️ لطفاً ابتدا ثبت‌نام کنید.\nدستور /start را ارسال کنید."
-            )
+            await message.answer(USER["please_register"])
             return
 
         # Get active courses
         courses = await lesson_service.get_all_courses(active_only=True)
         if not courses:
-            await message.answer("📭 هنوز دوره‌ای فعال نیست. لطفاً بعداً مراجعه کنید.")
+            await message.answer(USER["no_active_course"])
             return
 
         # If user has a current_course_id, use that
@@ -90,7 +89,7 @@ async def continue_course(message: Message, state: FSMContext):
             )
 
         await message.answer(
-            "📚 <b>انتخاب دوره</b>\n\nکدام دوره را می‌خواهید ادامه دهید؟",
+            USER["select_course"],
             reply_markup=builder.as_markup()
         )
 
@@ -111,7 +110,7 @@ async def select_course(callback: CallbackQuery, state: FSMContext):
 
         course = await lesson_service.get_course_by_id(course_id)
         if not course:
-            await callback.message.answer("❌ دوره یافت نشد.")
+            await callback.message.answer(USER["course_not_found"])
             return
 
         user.current_course_id = course.id
@@ -126,8 +125,7 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
     completed_courses = user.completed_courses or {}
     if completed_courses.get(str(course.id), False):
         await message.answer(
-            f"🎉 شما دوره «{course.title}» را تکمیل کرده‌اید!\n\n"
-            "برای انتخاب دوره دیگر، دوباره «📚 ادامه دوره» را بزنید."
+            USER["course_already_completed"].format(title=course.title)
         )
         # Reset current_course_id so next time they see the selection
         user.current_course_id = None
@@ -146,10 +144,7 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
     )
     pending_scheduled = pending_result.scalars().first()
     if pending_scheduled:
-        await message.answer(
-            "⏳ درس بعدی هنوز آماده نیست.\n"
-            "درس بعدی به‌صورت خودکار برای شما ارسال خواهد شد. لطفاً صبور باشید. 🙏"
-        )
+        await message.answer(USER["lesson_not_ready"])
         return
 
     # Get next lesson in this course
@@ -158,9 +153,9 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
     if not next_lesson:
         total = await lesson_service.get_total_lessons_count(course_id=course.id)
         if total == 0:
-            await message.answer(f"📭 دوره «{course.title}» هنوز درسی ندارد.")
+            await message.answer(USER["course_no_lessons"].format(title=course.title))
         else:
-            await message.answer(config.MESSAGES["course_completed"])
+            await message.answer(USER["course_completed"])
             # Mark course as completed
             if not completed_courses.get(str(course.id)):
                 completed_courses[str(course.id)] = True
@@ -207,7 +202,7 @@ async def _send_lesson(message: Message, lesson):
     """Send lesson content based on type"""
     # Prepare lesson header
     description = lesson.description or ""
-    lesson_text = config.MESSAGES["lesson_sent"].format(
+    lesson_text = USER["lesson_sent"].format(
         lesson_number=lesson.order,
         lesson_title=lesson.title,
         description=description,
@@ -356,9 +351,11 @@ async def _start_form_filling(message: Message, state: FSMContext, lesson, user_
 
     # Send intro
     await message.answer(
-        f"📋 <b>{lesson.title}</b>\n\n"
-        f"{lesson.description or ''}\n\n"
-        f"لطفاً به سوالات زیر پاسخ دهید ({len(fields)} سوال):"
+        USER["form_intro"].format(
+            title=lesson.title,
+            description=lesson.description or '',
+            count=len(fields),
+        )
     )
 
     # Ask first field
@@ -373,7 +370,7 @@ async def _ask_form_field(message: Message, field: dict, idx: int, total: int, l
     label = field.get("label", f"سوال {idx + 1}")
     field_type = field.get("type", "text")
 
-    text = f"📝 سوال {idx + 1} از {total}:\n\n<b>{label}</b>"
+    text = USER["form_question"].format(idx=idx + 1, total=total, label=label)
 
     if field_type == "select":
         options = field.get("options", [])
@@ -385,13 +382,13 @@ async def _ask_form_field(message: Message, field: dict, idx: int, total: int, l
                     callback_data=f"fo:{lesson_id}:{idx}:{opt_idx}"
                 )
             )
-        await message.answer(text + "\n\nیکی از گزینه‌ها را انتخاب کنید:", reply_markup=builder.as_markup())
+        await message.answer(text + "\n\n" + USER["form_select_hint"], reply_markup=builder.as_markup())
     else:
         type_hints = {
-            "text": "پاسخ خود را تایپ کنید:",
-            "number": "یک عدد وارد کنید:",
+            "text": USER["form_text_hint"],
+            "number": USER["form_number_hint"],
         }
-        hint = type_hints.get(field_type, "پاسخ خود را وارد کنید:")
+        hint = type_hints.get(field_type, USER["form_default_hint"])
         await message.answer(f"{text}\n\n{hint}")
 
 
@@ -407,7 +404,7 @@ async def form_option_selected(callback: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
     if not data or data.get("form_lesson_id") != lesson_id:
-        await callback.message.answer("⚠️ فرم نامعتبر. لطفاً دوباره تلاش کنید.")
+        await callback.message.answer(USER["form_invalid"])
         return
 
     fields = data.get("form_fields", [])
@@ -468,11 +465,11 @@ async def process_form_text_input(message: Message, state: FSMContext):
                 value = int(value)
             value = str(value)
         except ValueError:
-            await message.answer("⚠️ لطفاً یک عدد معتبر وارد کنید:")
+            await message.answer(USER["form_number_error"])
             return
 
     if not value:
-        await message.answer("⚠️ پاسخ نمی‌تواند خالی باشد. لطفاً دوباره وارد کنید:")
+        await message.answer(USER["form_empty_error"])
         return
 
     # Save response
@@ -513,7 +510,7 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
         await session.commit()
 
         # Show confirmation
-        text = "✅ <b>فرم با موفقیت ارسال شد!</b>\n\n"
+        text = USER["form_submitted"] + "\n\n"
         text += f"📋 {form_title}\n\n"
         for key, val in responses.items():
             text += f"• {key}: {val}\n"
@@ -544,7 +541,7 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
 async def confirm_lesson(callback: CallbackQuery, state: FSMContext):
     """Handle lesson confirmation"""
     lesson_id = int(callback.data.split(":")[1])
-    await callback.answer("✅ تایید شد!")
+    await callback.answer(USER["lesson_confirmed"])
 
     async with async_session_maker() as session:
         user_service = UserService(session)
@@ -593,10 +590,11 @@ async def _start_quiz(message: Message, state: FSMContext, lesson, user_id: int)
     )
 
     await message.answer(
-        f"📝 <b>آزمون درس: {lesson.title}</b>\n\n"
-        f"تعداد سوالات: {len(questions)}\n"
-        f"حد نصاب قبولی: {passing_score}%\n\n"
-        "بیایید شروع کنیم! 🚀"
+        USER["quiz_intro"].format(
+            title=lesson.title,
+            count=len(questions),
+            passing_score=passing_score,
+        )
     )
 
     # Send first question
@@ -612,7 +610,7 @@ async def _send_quiz_question(message: Message, questions: list, q_idx: int, les
     text = question.get("text", "")
     options = question.get("options", [])
 
-    q_text = f"❓ سوال {q_idx + 1} از {len(questions)}:\n\n<b>{text}</b>"
+    q_text = USER["quiz_question"].format(idx=q_idx + 1, total=len(questions), text=text)
 
     builder = InlineKeyboardBuilder()
     option_labels = ["🅰️", "🅱️", "🅲", "🅳", "🅴", "🅵"]
@@ -641,7 +639,7 @@ async def quiz_answer(callback: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
     if not data or data.get("quiz_lesson_id") != lesson_id:
-        await callback.message.answer("⚠️ آزمون نامعتبر. لطفاً درس را دوباره تایید کنید.")
+        await callback.message.answer(USER["quiz_invalid"])
         return
 
     questions = data.get("quiz_questions", [])
@@ -666,10 +664,10 @@ async def quiz_answer(callback: CallbackQuery, state: FSMContext):
     # Show feedback
     option_text = question.get("options", [])[opt_idx] if opt_idx < len(question.get("options", [])) else "?"
     if is_correct:
-        await callback.message.answer(f"✅ صحیح! {option_text}")
+        await callback.message.answer(USER["quiz_correct"].format(answer=option_text))
     else:
         correct_text = question.get("options", [])[correct] if correct < len(question.get("options", [])) else "?"
-        await callback.message.answer(f"❌ اشتباه! پاسخ صحیح: {correct_text}")
+        await callback.message.answer(USER["quiz_wrong"].format(answer=correct_text))
 
     next_idx = q_idx + 1
     if next_idx < len(questions):
@@ -718,12 +716,12 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
         user = user_result.scalar_one_or_none()
 
         if passed:
-            text = (
-                f"🎉 <b>تبریک! آزمون قبول شد!</b>\n\n"
-                f"📝 {quiz_title}\n"
-                f"✅ پاسخ‌های صحیح: {correct_count} از {total}\n"
-                f"📊 نمره: {score}%\n"
-                f"🎯 حد نصاب: {passing_score}%"
+            text = USER["quiz_passed"].format(
+                title=quiz_title,
+                correct=correct_count,
+                total=total,
+                score=score,
+                passing_score=passing_score,
             )
             await message.answer(text)
 
@@ -761,18 +759,17 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
             builder = InlineKeyboardBuilder()
             builder.row(
                 InlineKeyboardButton(
-                    text="🔄 تلاش مجدد",
+                    text=USER["quiz_retry"],
                     callback_data=f"qr:{lesson_id}"
                 )
             )
 
-            text = (
-                f"❌ <b>متأسفانه آزمون قبول نشد.</b>\n\n"
-                f"📝 {quiz_title}\n"
-                f"✅ پاسخ‌های صحیح: {correct_count} از {total}\n"
-                f"📊 نمره: {score}%\n"
-                f"🎯 حد نصاب: {passing_score}%\n\n"
-                f"می‌توانید دوباره تلاش کنید:"
+            text = USER["quiz_failed"].format(
+                title=quiz_title,
+                correct=correct_count,
+                total=total,
+                score=score,
+                passing_score=passing_score,
             )
             await message.answer(text, reply_markup=builder.as_markup())
 
@@ -809,7 +806,7 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
 async def quiz_retry(callback: CallbackQuery, state: FSMContext):
     """Handle quiz retry"""
     lesson_id = int(callback.data.split(":")[1])
-    await callback.answer("🔄 شروع مجدد آزمون...")
+    await callback.answer(USER["quiz_retry_start"])
 
     async with async_session_maker() as session:
         user_service = UserService(session)
@@ -821,7 +818,7 @@ async def quiz_retry(callback: CallbackQuery, state: FSMContext):
 
         lesson = await lesson_service.get_lesson_by_id(lesson_id)
         if not lesson or not lesson.quiz_data:
-            await callback.message.answer("⚠️ آزمون یافت نشد.")
+            await callback.message.answer(USER["quiz_not_found"])
             return
 
         await _start_quiz(callback.message, state, lesson, user.id)
@@ -848,7 +845,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     progress = await lesson_service.get_user_progress(user.id, course_id=course_id)
 
     if progress["remaining"] == 0:
-        await message.answer(config.MESSAGES["course_completed"])
+        await message.answer(USER["course_completed"])
 
         # Send webhook
         await webhook_service.send_webhook(
@@ -877,18 +874,18 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             await session.commit()
 
             await message.answer(
-                config.MESSAGES["lesson_completed"].format(
+                USER["lesson_completed"].format(
                     lesson_number=lesson.order if lesson else "?",
                     progress=progress["progress_percent"],
-                ) + f"\n\n📩 درس بعدی به‌صورت خودکار برای شما ارسال خواهد شد."
+                ) + USER["lesson_completed_auto"]
             )
         else:
             # Instant - tell user to click continue
             await message.answer(
-                config.MESSAGES["lesson_completed"].format(
+                USER["lesson_completed"].format(
                     lesson_number=lesson.order if lesson else "?",
                     progress=progress["progress_percent"],
-                ) + f"\n\n📚 برای دریافت درس بعدی روی «ادامه دوره» کلیک کنید."
+                ) + USER["lesson_completed_manual"]
             )
 
         # Send webhook
@@ -910,7 +907,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
 # PROGRESS
 # ===========================
 
-@router.message(F.text == "📊 پیشرفت من")
+@router.message(F.text == USER_BUTTONS["my_progress"])
 @log_errors
 async def show_progress(message: Message):
     """Show user's progress across all courses"""
@@ -920,7 +917,7 @@ async def show_progress(message: Message):
 
         user = await user_service.get_user_by_telegram_id(message.from_user.id)
         if not user:
-            await message.answer("⚠️ لطفاً ابتدا ثبت‌نام کنید.\nدستور /start را ارسال کنید.")
+            await message.answer(USER["please_register"])
             return
 
         courses = await lesson_service.get_all_courses(active_only=True)
@@ -932,17 +929,17 @@ async def show_progress(message: Message):
             filled = int(progress["progress_percent"] / 10)
             bar = "🟢" * filled + "⚪️" * (10 - filled)
             text = (
-                f"📊 <b>پیشرفت شما</b>\n\n"
-                f"{bar}\n"
-                f"📈 {progress['progress_percent']}% تکمیل شده\n\n"
-                f"✅ درس‌های تکمیل شده: {progress['completed']}\n"
-                f"📚 کل درس‌ها: {progress['total']}\n"
-                f"📋 باقی‌مانده: {progress['remaining']}\n"
+                USER["progress_header"]
+                + f"{bar}\n"
+                + USER["progress_percent"].format(percent=progress['progress_percent']) + "\n\n"
+                + USER["progress_completed"].format(completed=progress['completed']) + "\n"
+                + USER["progress_total"].format(total=progress['total']) + "\n"
+                + USER["progress_remaining"].format(remaining=progress['remaining']) + "\n"
             )
             await message.answer(text)
             return
 
-        text = "📊 <b>پیشرفت شما</b>\n\n"
+        text = USER["progress_header"]
 
         total_all = 0
         completed_all = 0
@@ -954,7 +951,7 @@ async def show_progress(message: Message):
             filled = int(progress["progress_percent"] / 10)
             bar = "🟢" * filled + "⚪️" * (10 - filled)
 
-            status = "🎉 تکمیل شده" if is_done else f"{progress['progress_percent']}%"
+            status = USER["progress_course_status"] if is_done else f"{progress['progress_percent']}%"
             text += (
                 f"📚 <b>{course.title}</b> — {status}\n"
                 f"{bar}\n"
@@ -965,10 +962,10 @@ async def show_progress(message: Message):
             completed_all += progress["completed"]
 
         overall_pct = round(completed_all / total_all * 100) if total_all > 0 else 0
-        text += f"📈 <b>مجموع:</b> {completed_all}/{total_all} درس ({overall_pct}%)"
+        text += USER["progress_summary"].format(completed=completed_all, total=total_all, percent=overall_pct)
 
         if user.is_completed:
-            text += "\n\n🎉 تبریک! شما تمام دوره‌ها را تکمیل کرده‌اید!"
+            text += "\n\n" + USER["progress_all_done"]
 
         await message.answer(text)
 
@@ -977,7 +974,7 @@ async def show_progress(message: Message):
 # ABOUT & SUPPORT
 # ===========================
 
-@router.message(F.text == "ℹ️ درباره دوره")
+@router.message(F.text == USER_BUTTONS["about_course"])
 @log_errors
 async def about_course(message: Message):
     """Show course information"""
@@ -987,37 +984,25 @@ async def about_course(message: Message):
 
         if not courses:
             total = await lesson_service.get_total_lessons_count()
-            text = (
-                f"📚 <b>درباره دوره</b>\n\n"
-                f"تعداد درس‌ها: {total}\n\n"
-                "برای شروع یا ادامه دوره از منوی اصلی استفاده کنید."
-            )
+            text = USER["about_single"].format(total=total)
         else:
-            text = "📚 <b>دوره‌های موجود</b>\n\n"
+            text = USER["about_multi_header"]
             for course in courses:
                 lesson_count = await lesson_service.get_course_lesson_count(course.id)
                 text += f"📖 <b>{course.title}</b>\n"
                 if course.description:
                     text += f"📝 {course.description}\n"
-                text += f"📊 تعداد درس‌ها: {lesson_count}\n\n"
-            text += "برای شروع یا ادامه دوره از منوی اصلی استفاده کنید."
+                text += USER["about_course_lessons"].format(count=lesson_count) + "\n\n"
+            text += USER["about_footer"]
 
         await message.answer(text)
 
 
-@router.message(F.text == "📞 پشتیبانی")
+@router.message(F.text == USER_BUTTONS["support"])
 @log_errors
 async def support(message: Message):
     """Show support info"""
-    await message.answer(
-        "📞 <b>پشتیبانی</b>\n\n"
-        "در صورت وجود مشکل یا سوال، پیام خود را ارسال کنید.\n"
-        "تیم پشتیبانی در اسرع وقت پاسخگو خواهد بود.\n\n"
-        "همچنین می‌توانید از دستورات زیر استفاده کنید:\n"
-        "/start - شروع مجدد\n"
-        "/progress - مشاهده پیشرفت\n"
-        "/help - راهنما"
-    )
+    await message.answer(USER["support_text"])
 
 
 @router.message(Command("progress"))
@@ -1031,14 +1016,5 @@ async def cmd_progress(message: Message):
 @log_errors
 async def cmd_help(message: Message):
     """Handle /help command"""
-    text = (
-        "📖 <b>راهنمای ربات</b>\n\n"
-        "🔹 /start - شروع یا ورود مجدد\n"
-        "🔹 /progress - مشاهده پیشرفت\n"
-        "🔹 /help - این راهنما\n\n"
-        "📚 <b>ادامه دوره</b> - دریافت درس بعدی\n"
-        "📊 <b>پیشرفت من</b> - مشاهده وضعیت پیشرفت\n"
-        "ℹ️ <b>درباره دوره</b> - اطلاعات دوره\n"
-        "📞 <b>پشتیبانی</b> - ارتباط با پشتیبانی"
-    )
+    text = USER["help_text"]
     await message.answer(text)

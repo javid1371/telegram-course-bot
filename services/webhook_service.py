@@ -117,7 +117,7 @@ class WebhookService:
     def _build_event_payload(self, event: str, user: User, extra_data: dict = None) -> dict:
         """
         Build standardized webhook payload.
-        
+
         Structure:
         {
             "event": "user_registered",
@@ -147,7 +147,7 @@ class WebhookService:
     ) -> bool:
         """
         Send event to ALL active webhook endpoints.
-        
+
         Events:
         - user_registered: New user signed up
         - lesson_sent: Lesson delivered to user
