@@ -144,7 +144,40 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
     )
     pending_scheduled = pending_result.scalars().first()
     if pending_scheduled:
-        await message.answer(USER["lesson_not_ready"])
+        # Calculate remaining time
+        remaining_seconds = int((pending_scheduled.send_at - datetime.utcnow()).total_seconds())
+        remaining_text = format_duration(max(remaining_seconds, 0))
+
+        # Check if course allows 2x
+        if course.allow_2x:
+            ds_courses = user.double_speed_courses or {}
+            ds_data = ds_courses.get(str(course.id), {})
+            is_2x_active = isinstance(ds_data, dict) and ds_data.get("active", False)
+
+            from aiogram.types import InlineKeyboardButton
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            builder = InlineKeyboardBuilder()
+
+            if is_2x_active:
+                builder.row(InlineKeyboardButton(
+                    text=USER["speed_2x_deactivate_btn"],
+                    callback_data=f"speed_2x:off:{course.id}",
+                ))
+                await message.answer(
+                    USER["lesson_not_ready_2x_active"].format(remaining=remaining_text),
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                builder.row(InlineKeyboardButton(
+                    text=USER["speed_2x_activate_btn"],
+                    callback_data=f"speed_2x:on:{course.id}",
+                ))
+                await message.answer(
+                    USER["lesson_not_ready_2x_offer"].format(remaining=remaining_text),
+                    reply_markup=builder.as_markup(),
+                )
+        else:
+            await message.answer(USER["lesson_not_ready_time"].format(remaining=remaining_text))
         return
 
     # Get next lesson in this course
@@ -196,6 +229,38 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
             "has_form": bool(next_lesson.form_data),
         }
     )
+
+
+# ===========================
+# 2x SPEED
+# ===========================
+
+@router.callback_query(F.data.startswith("speed_2x:"))
+async def toggle_speed_2x(callback: CallbackQuery):
+    """Activate or deactivate 2x speed for a course"""
+    parts = callback.data.split(":")
+    action = parts[1]  # "on" or "off"
+    course_id = int(parts[2])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            return
+
+        ds_courses = user.double_speed_courses or {}
+
+        if action == "on":
+            ds_courses[str(course_id)] = {"active": True, "bonus_delivered": False}
+            user.double_speed_courses = ds_courses
+            await session.commit()
+            await callback.message.edit_text(USER["speed_2x_activated"])
+        else:
+            ds_courses[str(course_id)] = {"active": False, "bonus_delivered": False}
+            user.double_speed_courses = ds_courses
+            await session.commit()
+            await callback.message.edit_text(USER["speed_2x_deactivated"])
 
 
 async def _send_lesson(message: Message, lesson):
@@ -998,8 +1063,71 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     else:
         lesson = current_lesson
 
-        if delay_minutes > 0:
-            # Schedule next lesson delivery
+        # Check if 2x speed is active for this course
+        ds_courses = user.double_speed_courses or {}
+        ds_data = ds_courses.get(str(course_id), {})
+        is_2x = isinstance(ds_data, dict) and ds_data.get("active", False)
+        bonus_delivered = isinstance(ds_data, dict) and ds_data.get("bonus_delivered", False)
+
+        if delay_minutes > 0 and is_2x and not bonus_delivered:
+            # 2x mode: deliver bonus lesson immediately instead of scheduling
+            # Mark this as the first of the pair
+            ds_data["bonus_delivered"] = True
+            ds_courses[str(course_id)] = ds_data
+            user.double_speed_courses = ds_courses
+            await session.commit()
+
+            # Show completion of current lesson + bonus notice
+            await message.answer(
+                USER["lesson_completed"].format(
+                    lesson_number=lesson.order if lesson else "?",
+                    progress=progress["progress_percent"],
+                ) + USER["lesson_completed_2x_bonus"]
+            )
+
+            # Get and deliver the bonus lesson immediately
+            bonus_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
+            if bonus_lesson:
+                await lesson_service.mark_lesson_started(user.id, bonus_lesson.id)
+                user.current_lesson_id = bonus_lesson.id
+                await session.commit()
+
+                if bonus_lesson.content_type == ContentType.FORM and bonus_lesson.form_data:
+                    # Can't auto-start form without FSM state; tell user to click continue
+                    await message.answer(
+                        USER["lesson_completed_manual"]
+                    )
+                else:
+                    await _send_lesson(message, bonus_lesson)
+            else:
+                # No more lessons — course completed
+                await message.answer(USER["course_completed"])
+
+        elif delay_minutes > 0 and is_2x and bonus_delivered:
+            # 2x mode: this is the bonus being confirmed → schedule with normal delay
+            ds_data["bonus_delivered"] = False
+            ds_courses[str(course_id)] = ds_data
+            user.double_speed_courses = ds_courses
+
+            send_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
+            scheduled = ScheduledMessage(
+                user_id=user.id,
+                message="__next_lesson__",
+                message_type="next_lesson",
+                send_at=send_at,
+            )
+            session.add(scheduled)
+            await session.commit()
+
+            await message.answer(
+                USER["lesson_completed"].format(
+                    lesson_number=lesson.order if lesson else "?",
+                    progress=progress["progress_percent"],
+                ) + USER["lesson_completed_auto"]
+            )
+
+        elif delay_minutes > 0:
+            # Normal delay (no 2x)
             send_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
             scheduled = ScheduledMessage(
                 user_id=user.id,

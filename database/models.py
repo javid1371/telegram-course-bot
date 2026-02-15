@@ -94,6 +94,9 @@ class Course(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     order: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Allow users to activate 2x speed (get 2 lessons per delivery)
+    allow_2x: Mapped[bool] = mapped_column(Boolean, default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -127,6 +130,9 @@ class User(Base):
 
     # Per-course completion tracking {course_id: true/false}
     completed_courses: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+
+    # 2x speed: {"course_id": {"active": true, "bonus_delivered": false}}
+    double_speed_courses: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
 
     # Marketing & Analytics
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))

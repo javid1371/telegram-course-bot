@@ -443,7 +443,8 @@ async def view_course(callback: CallbackQuery):
         text = (
             ADMIN["course_view_header"].format(title=course.title) + "\n"
             + ADMIN["course_view_desc"].format(description=course.description or '---') + "\n"
-            + ADMIN["course_view_status"].format(status=status) + "\n\n"
+            + ADMIN["course_view_status"].format(status=status) + "\n"
+            + ADMIN["course_view_2x"].format(status="فعال ✅" if course.allow_2x else "غیرفعال ❌") + "\n\n"
             + ADMIN["course_view_stats_header"] + "\n"
             + "  " + ADMIN["course_view_lesson_count"].format(count=stats['total_lessons']) + "\n"
             + "  " + ADMIN["course_view_enrolled"].format(count=stats['enrolled']) + "\n"
@@ -471,6 +472,7 @@ async def view_course(callback: CallbackQuery):
             InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_course"], callback_data=f"admin:course:toggle:{course_id}")
         )
         builder.row(
+            InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_2x"], callback_data=f"admin:course:toggle_2x:{course_id}"),
             InlineKeyboardButton(text=ADMIN_BUTTONS["delete_course"], callback_data=f"admin:course:delete:{course_id}")
         )
         builder.row(
@@ -498,6 +500,27 @@ async def toggle_course(callback: CallbackQuery):
             status = ADMIN["course_toggled_active"] if course.is_active else ADMIN["course_toggled_inactive"]
             await callback.message.answer(
                 ADMIN["course_toggled"].format(title=course.title, status=status),
+                reply_markup=get_admin_main_menu()
+            )
+
+
+@router.callback_query(F.data.startswith("admin:course:toggle_2x:"))
+@admin_only
+@log_errors
+async def toggle_course_2x(callback: CallbackQuery):
+    """Toggle course 2x speed option"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.get_course_by_id(course_id)
+        if course:
+            course.allow_2x = not course.allow_2x
+            await session.commit()
+            status = ADMIN["course_2x_enabled"] if course.allow_2x else ADMIN["course_2x_disabled"]
+            await callback.message.answer(
+                ADMIN["course_2x_toggled"].format(title=course.title, status=status),
                 reply_markup=get_admin_main_menu()
             )
 
