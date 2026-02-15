@@ -134,6 +134,9 @@ class AdminStates(StatesGroup):
     # Lesson deadline
     waiting_lesson_deadline = State()
 
+    # Fast track delay
+    waiting_fast_track_delay = State()
+
 
 # ===========================
 # ADMIN ENTRY
@@ -444,7 +447,11 @@ async def view_course(callback: CallbackQuery):
             ADMIN["course_view_header"].format(title=course.title) + "\n"
             + ADMIN["course_view_desc"].format(description=course.description or '---') + "\n"
             + ADMIN["course_view_status"].format(status=status) + "\n"
-            + ADMIN["course_view_2x"].format(status="فعال ✅" if course.allow_2x else "غیرفعال ❌") + "\n\n"
+            + ADMIN["course_view_2x"].format(status="فعال ✅" if course.allow_2x else "غیرفعال ❌") + "\n"
+            + ADMIN["course_view_fast_track"].format(
+                status="فعال ✅" if course.allow_fast_track else "غیرفعال ❌",
+                delay=course.fast_track_delay,
+            ) + "\n\n"
             + ADMIN["course_view_stats_header"] + "\n"
             + "  " + ADMIN["course_view_lesson_count"].format(count=stats['total_lessons']) + "\n"
             + "  " + ADMIN["course_view_enrolled"].format(count=stats['enrolled']) + "\n"
@@ -473,6 +480,10 @@ async def view_course(callback: CallbackQuery):
         )
         builder.row(
             InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_2x"], callback_data=f"admin:course:toggle_2x:{course_id}"),
+            InlineKeyboardButton(text=ADMIN_BUTTONS["toggle_fast_track"], callback_data=f"admin:course:toggle_ft:{course_id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text=ADMIN_BUTTONS["edit_fast_track_delay"], callback_data=f"admin:course:ft_delay:{course_id}"),
             InlineKeyboardButton(text=ADMIN_BUTTONS["delete_course"], callback_data=f"admin:course:delete:{course_id}")
         )
         builder.row(
@@ -521,6 +532,68 @@ async def toggle_course_2x(callback: CallbackQuery):
             status = ADMIN["course_2x_enabled"] if course.allow_2x else ADMIN["course_2x_disabled"]
             await callback.message.answer(
                 ADMIN["course_2x_toggled"].format(title=course.title, status=status),
+                reply_markup=get_admin_main_menu()
+            )
+
+
+@router.callback_query(F.data.startswith("admin:course:toggle_ft:"))
+@admin_only
+@log_errors
+async def toggle_course_fast_track(callback: CallbackQuery):
+    """Toggle course fast track option"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.get_course_by_id(course_id)
+        if course:
+            course.allow_fast_track = not course.allow_fast_track
+            await session.commit()
+            status = ADMIN["course_fast_track_enabled"] if course.allow_fast_track else ADMIN["course_fast_track_disabled"]
+            await callback.message.answer(
+                ADMIN["course_fast_track_toggled"].format(title=course.title, status=status),
+                reply_markup=get_admin_main_menu()
+            )
+
+
+@router.callback_query(F.data.startswith("admin:course:ft_delay:"))
+@admin_only
+@log_errors
+async def edit_fast_track_delay_start(callback: CallbackQuery, state: FSMContext):
+    """Start editing fast track delay"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+    await state.update_data(ft_delay_course_id=course_id)
+    await state.set_state(AdminStates.waiting_fast_track_delay)
+    await callback.message.answer(ADMIN["course_fast_track_delay_prompt"])
+
+
+@router.message(AdminStates.waiting_fast_track_delay)
+@admin_only
+@log_errors
+async def process_fast_track_delay(message: Message, state: FSMContext):
+    """Process fast track delay input"""
+    data = await state.get_data()
+    course_id = data.get("ft_delay_course_id")
+    await state.clear()
+
+    try:
+        delay = int(message.text.strip())
+        if delay < 0:
+            raise ValueError
+    except (ValueError, AttributeError):
+        await message.answer(ADMIN["course_fast_track_delay_error"], reply_markup=get_admin_main_menu())
+        return
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        course = await lesson_service.get_course_by_id(course_id)
+        if course:
+            course.fast_track_delay = delay
+            await session.commit()
+            await message.answer(
+                ADMIN["course_fast_track_delay_updated"].format(delay=delay),
                 reply_markup=get_admin_main_menu()
             )
 

@@ -148,15 +148,58 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
         remaining_seconds = int((pending_scheduled.send_at - datetime.utcnow()).total_seconds())
         remaining_text = format_duration(max(remaining_seconds, 0))
 
-        # Check if course allows 2x
-        if course.allow_2x:
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+
+        # Check fast track
+        ft_courses = user.fast_track_courses or {}
+        is_ft_active = ft_courses.get(str(course.id), False)
+
+        if course.allow_fast_track:
+            if is_ft_active:
+                builder.row(InlineKeyboardButton(
+                    text=USER["fast_track_deactivate_btn"],
+                    callback_data=f"fast_track:off:{course.id}",
+                ))
+                await message.answer(
+                    USER["fast_track_active"].format(
+                        remaining=remaining_text,
+                        fast_delay=course.fast_track_delay,
+                    ),
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                builder.row(InlineKeyboardButton(
+                    text=USER["fast_track_activate_btn"],
+                    callback_data=f"fast_track:on:{course.id}",
+                ))
+                # Also offer 2x if allowed
+                if course.allow_2x:
+                    ds_courses = user.double_speed_courses or {}
+                    ds_data = ds_courses.get(str(course.id), {})
+                    is_2x_active = isinstance(ds_data, dict) and ds_data.get("active", False)
+                    if is_2x_active:
+                        builder.row(InlineKeyboardButton(
+                            text=USER["speed_2x_deactivate_btn"],
+                            callback_data=f"speed_2x:off:{course.id}",
+                        ))
+                    else:
+                        builder.row(InlineKeyboardButton(
+                            text=USER["speed_2x_activate_btn"],
+                            callback_data=f"speed_2x:on:{course.id}",
+                        ))
+                await message.answer(
+                    USER["fast_track_offer"].format(
+                        remaining=remaining_text,
+                        fast_delay=course.fast_track_delay,
+                    ),
+                    reply_markup=builder.as_markup(),
+                )
+        elif course.allow_2x:
             ds_courses = user.double_speed_courses or {}
             ds_data = ds_courses.get(str(course.id), {})
             is_2x_active = isinstance(ds_data, dict) and ds_data.get("active", False)
-
-            from aiogram.types import InlineKeyboardButton
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            builder = InlineKeyboardBuilder()
 
             if is_2x_active:
                 builder.row(InlineKeyboardButton(
@@ -261,6 +304,43 @@ async def toggle_speed_2x(callback: CallbackQuery):
             user.double_speed_courses = ds_courses
             await session.commit()
             await callback.message.edit_text(USER["speed_2x_deactivated"])
+
+
+# ===========================
+# FAST TRACK
+# ===========================
+
+@router.callback_query(F.data.startswith("fast_track:"))
+async def toggle_fast_track(callback: CallbackQuery):
+    """Activate or deactivate fast track for a course"""
+    parts = callback.data.split(":")
+    action = parts[1]  # "on" or "off"
+    course_id = int(parts[2])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        lesson_service = LessonService(session)
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            return
+
+        course = await lesson_service.get_course_by_id(course_id)
+        ft_courses = user.fast_track_courses or {}
+
+        if action == "on":
+            ft_courses[str(course_id)] = True
+            user.fast_track_courses = ft_courses
+            await session.commit()
+            fast_delay = course.fast_track_delay if course else 5
+            await callback.message.edit_text(
+                USER["fast_track_activated"].format(fast_delay=fast_delay)
+            )
+        else:
+            ft_courses[str(course_id)] = False
+            user.fast_track_courses = ft_courses
+            await session.commit()
+            await callback.message.edit_text(USER["fast_track_deactivated"])
 
 
 async def _send_lesson(message: Message, lesson):
@@ -638,7 +718,7 @@ async def _start_quiz(message: Message, state: FSMContext, lesson, user_id: int)
     """Start quiz for a lesson"""
     quiz_data = lesson.quiz_data
     questions = quiz_data.get("questions", [])
-    passing_score = quiz_data.get("passing_score", 70)
+    passing_score = 100  # Always require perfect score
 
     if not questions:
         return
@@ -817,10 +897,7 @@ async def quiz_multi_confirm(callback: CallbackQuery, state: FSMContext):
     if is_correct:
         await callback.message.answer(USER["quiz_multi_correct"])
     else:
-        correct_labels = [opts[c] for c in correct if c < len(opts)]
-        await callback.message.answer(
-            USER["quiz_multi_wrong"].format(answers="، ".join(correct_labels))
-        )
+        await callback.message.answer(USER["quiz_multi_wrong"])
 
     next_idx = q_idx + 1
     if next_idx < len(questions):
@@ -866,10 +943,9 @@ async def quiz_answer(callback: CallbackQuery, state: FSMContext):
     # Show feedback
     option_text = question.get("options", [])[opt_idx] if opt_idx < len(question.get("options", [])) else "?"
     if is_correct:
-        await callback.message.answer(USER["quiz_correct"].format(answer=option_text))
+        await callback.message.answer(USER["quiz_correct"])
     else:
-        correct_text = question.get("options", [])[correct] if correct < len(question.get("options", [])) else "?"
-        await callback.message.answer(USER["quiz_wrong"].format(answer=correct_text))
+        await callback.message.answer(USER["quiz_wrong"])
 
     next_idx = q_idx + 1
     if next_idx < len(questions):
@@ -887,7 +963,7 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
 
     lesson_id = quiz_data.get("quiz_lesson_id")
     user_id = quiz_data.get("quiz_user_id")
-    passing_score = quiz_data.get("quiz_passing_score", 70)
+    passing_score = 100  # Always require perfect score
     quiz_title = quiz_data.get("quiz_title", "")
 
     total = len(answers)
@@ -1042,6 +1118,14 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     current_lesson = await lesson_service.get_lesson_by_id(lesson_id)
     delay_minutes = current_lesson.delay_hours if current_lesson else 0
     course_id = current_lesson.course_id if current_lesson else None
+
+    # Check if fast track is active — override delay
+    ft_courses = user.fast_track_courses or {}
+    is_ft_active = ft_courses.get(str(course_id), False) if course_id else False
+    if is_ft_active and delay_minutes > 0:
+        course = await lesson_service.get_course_by_id(course_id) if course_id else None
+        if course and course.allow_fast_track:
+            delay_minutes = course.fast_track_delay
 
     # Get progress (course-specific)
     progress = await lesson_service.get_user_progress(user.id, course_id=course_id)

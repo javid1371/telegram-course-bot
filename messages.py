@@ -89,6 +89,8 @@ ADMIN_BUTTONS = SmartDict("ADMIN_BUTTONS", {
     "toggle_course": "🔄 تغییر وضعیت",
     "delete_course": "🗑 حذف دوره",
     "toggle_2x": "⚡ تغییر حالت ×۲",
+    "toggle_fast_track": "🚀 تغییر حالت فشرده",
+    "edit_fast_track_delay": "⏱ فاصله فشرده",
 
     # مدیریت کاربران
     "all_users": "👥 همه کاربران",
@@ -232,6 +234,15 @@ USER = SmartDict("USER", {
     "speed_2x_activate_btn": "⚡ فعال‌سازی حالت ×۲",
     "speed_2x_deactivate_btn": "❌ غیرفعال‌سازی ×۲",
     "lesson_completed_2x_bonus": "\n\n🎁 <b>حالت ×۲:</b> درس بعدی هم الان ارسال می‌شه!",
+
+    # حالت فشرده (Fast Track)
+    "fast_track_offer": "⏳ درس بعدی تا <b>{remaining}</b> دیگه ارسال می‌شه.\n\n🚀 می‌خوای همه درس‌ها رو سریع‌تر ببینی؟\nبا فعال‌کردن <b>حالت فشرده</b>، فاصله بین درس‌ها به {fast_delay} دقیقه کاهش پیدا می‌کنه!",
+    "fast_track_active": "⏳ درس بعدی تا <b>{remaining}</b> دیگه ارسال می‌شه.\n\n🚀 <b>حالت فشرده فعاله!</b> فاصله بین درس‌ها: {fast_delay} دقیقه",
+    "fast_track_activated": "🚀 حالت فشرده فعال شد!\n\nاز درس بعدی، فاصله بین درس‌ها به {fast_delay} دقیقه کاهش پیدا می‌کنه.\n\n⚠️ برای رفتن به درس بعدی باید آزمون هر درس رو با نمره کامل پاس کنید.",
+    "fast_track_deactivated": "✅ حالت فشرده غیرفعال شد.\nبرمی‌گردید به سرعت عادی دوره.",
+    "fast_track_activate_btn": "🚀 فعال‌سازی حالت فشرده",
+    "fast_track_deactivate_btn": "❌ غیرفعال‌سازی حالت فشرده",
+
     "course_no_lessons": "📭 دوره «{title}» هنوز درسی ندارد.",
     "lesson_sent": "📚 درس {lesson_number} - {lesson_title}\n\n{description}",
     "lesson_completed": "✅ تبریک! درس {lesson_number} را تکمیل کردید.\n\n🎯 پیشرفت شما: {progress}%",
@@ -256,8 +267,8 @@ USER = SmartDict("USER", {
     "quiz_intro": "📝 <b>آزمون درس: {title}</b>\n\nتعداد سوالات: {count}\nحد نصاب قبولی: {passing_score}%\n\nبیایید شروع کنیم! 🚀",
     "quiz_question": "❓ سوال {idx} از {total}:\n\n<b>{text}</b>",
     "quiz_invalid": "⚠️ آزمون نامعتبر. لطفاً درس را دوباره تایید کنید.",
-    "quiz_correct": "✅ صحیح! {answer}",
-    "quiz_wrong": "❌ اشتباه! پاسخ صحیح: {answer}",
+    "quiz_correct": "✅ صحیح! آفرین!",
+    "quiz_wrong": "❌ اشتباه! این پاسخ صحیح نیست.",
     "quiz_passed": "🎉 <b>تبریک! آزمون قبول شد!</b>\n\n📝 {title}\n✅ پاسخ‌های صحیح: {correct} از {total}\n📊 نمره: {score}%\n🎯 حد نصاب: {passing_score}%",
     "quiz_failed": "❌ <b>متأسفانه آزمون قبول نشد.</b>\n\n📝 {title}\n✅ پاسخ‌های صحیح: {correct} از {total}\n📊 نمره: {score}%\n🎯 حد نصاب: {passing_score}%\n\nمی‌توانید دوباره تلاش کنید:",
     "quiz_retry": "🔄 تلاش مجدد",
@@ -268,7 +279,7 @@ USER = SmartDict("USER", {
     "quiz_multi_select_hint": "🔘 چند گزینه صحیح وجود دارد. گزینه‌های مورد نظر را انتخاب کنید و سپس «✅ تایید» را بزنید.",
     "quiz_confirm_selection": "✅ تایید انتخاب",
     "quiz_multi_correct": "✅ صحیح! شما همه گزینه‌های درست را انتخاب کردید.",
-    "quiz_multi_wrong": "❌ اشتباه! پاسخ‌های صحیح: {answers}",
+    "quiz_multi_wrong": "❌ اشتباه! انتخاب شما صحیح نیست.",
     "quiz_select_at_least_one": "⚠️ حداقل یک گزینه را انتخاب کنید.",
 
     # پیشرفت
@@ -399,6 +410,7 @@ ADMIN = SmartDict("ADMIN", {
     "course_view_desc": "📝 {description}",
     "course_view_status": "📊 وضعیت: {status}",
     "course_view_2x": "⚡ حالت ×۲: {status}",
+    "course_view_fast_track": "🚀 حالت فشرده: {status} ({delay} دقیقه)",
     "course_view_stats_header": "📈 <b>آمار:</b>",
     "course_view_lesson_count": "📖 تعداد درس: {count}",
     "course_view_enrolled": "👥 ثبت‌نام شده: {count}",
@@ -412,6 +424,12 @@ ADMIN = SmartDict("ADMIN", {
     "course_2x_toggled": "⚡ حالت ×۲ دوره «{title}» {status} شد.",
     "course_2x_enabled": "فعال ✅",
     "course_2x_disabled": "غیرفعال ❌",
+    "course_fast_track_toggled": "🚀 حالت فشرده دوره «{title}» {status} شد.",
+    "course_fast_track_enabled": "فعال ✅",
+    "course_fast_track_disabled": "غیرفعال ❌",
+    "course_fast_track_delay_prompt": "⏱ فاصله زمانی حالت فشرده را به دقیقه وارد کنید:\n(پیش‌فرض: 5 دقیقه)",
+    "course_fast_track_delay_updated": "✅ فاصله حالت فشرده به {delay} دقیقه تغییر یافت.",
+    "course_fast_track_delay_error": "⚠️ عدد نامعتبر. لغو شد.",
     "course_delete_confirm": "⚠️ آیا مطمئنید که می‌خواهید دوره «{title}» و تمام درس‌هایش را حذف کنید؟",
     "course_deleted": "✅ دوره حذف شد.",
     "course_edit_title": "✏️ عنوان جدید دوره را وارد کنید:",

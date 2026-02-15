@@ -97,6 +97,10 @@ class Course(Base):
     # Allow users to activate 2x speed (get 2 lessons per delivery)
     allow_2x: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Allow users to activate fast track (reduced delay)
+    allow_fast_track: Mapped[bool] = mapped_column(Boolean, default=False)
+    fast_track_delay: Mapped[int] = mapped_column(Integer, default=5)  # minutes
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -133,6 +137,9 @@ class User(Base):
 
     # 2x speed: {"course_id": {"active": true, "bonus_delivered": false}}
     double_speed_courses: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+
+    # Fast track: {"course_id": true}
+    fast_track_courses: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
 
     # Marketing & Analytics
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
