@@ -152,11 +152,10 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
 
-        # Check fast track
-        ft_courses = user.fast_track_courses or {}
-        is_ft_active = ft_courses.get(str(course.id), False)
-
+        # Show only one speed option (fast track takes priority over 2x)
         if course.allow_fast_track:
+            ft_courses = user.fast_track_courses or {}
+            is_ft_active = ft_courses.get(str(course.id), False)
             if is_ft_active:
                 builder.row(InlineKeyboardButton(
                     text=USER["fast_track_deactivate_btn"],
@@ -174,21 +173,6 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
                     text=USER["fast_track_activate_btn"],
                     callback_data=f"fast_track:on:{course.id}",
                 ))
-                # Also offer 2x if allowed
-                if course.allow_2x:
-                    ds_courses = user.double_speed_courses or {}
-                    ds_data = ds_courses.get(str(course.id), {})
-                    is_2x_active = isinstance(ds_data, dict) and ds_data.get("active", False)
-                    if is_2x_active:
-                        builder.row(InlineKeyboardButton(
-                            text=USER["speed_2x_deactivate_btn"],
-                            callback_data=f"speed_2x:off:{course.id}",
-                        ))
-                    else:
-                        builder.row(InlineKeyboardButton(
-                            text=USER["speed_2x_activate_btn"],
-                            callback_data=f"speed_2x:on:{course.id}",
-                        ))
                 await message.answer(
                     USER["fast_track_offer"].format(
                         remaining=remaining_text,
@@ -353,10 +337,14 @@ async def _send_lesson(message: Message, lesson):
         description=description,
     )
 
+    has_quiz = bool(lesson.quiz_data and lesson.quiz_data.get("questions"))
+    has_delay = bool(lesson.delay_hours and lesson.delay_hours > 0)
     keyboard = get_lesson_keyboard(
         lesson.id,
         cta_text=lesson.cta_text,
         cta_url=lesson.cta_url,
+        has_quiz=has_quiz,
+        has_delay=has_delay,
     )
 
     # Multi-content delivery
@@ -714,11 +702,22 @@ async def confirm_lesson(callback: CallbackQuery, state: FSMContext):
 # QUIZ FLOW
 # ===========================
 
-async def _start_quiz(message: Message, state: FSMContext, lesson, user_id: int):
-    """Start quiz for a lesson"""
+async def _start_quiz(message: Message, state: FSMContext, lesson, user_id: int, retry_indices: list = None):
+    """Start quiz for a lesson, optionally retrying only specific questions"""
     quiz_data = lesson.quiz_data
-    questions = quiz_data.get("questions", [])
+    all_questions = quiz_data.get("questions", [])
     passing_score = 100  # Always require perfect score
+
+    if not all_questions:
+        return
+
+    # Subset for retry
+    if retry_indices:
+        questions = [all_questions[i] for i in retry_indices if i < len(all_questions)]
+        original_indices = [i for i in retry_indices if i < len(all_questions)]
+    else:
+        questions = all_questions
+        original_indices = list(range(len(questions)))
 
     if not questions:
         return
@@ -728,25 +727,36 @@ async def _start_quiz(message: Message, state: FSMContext, lesson, user_id: int)
         quiz_lesson_id=lesson.id,
         quiz_user_id=user_id,
         quiz_questions=questions,
+        quiz_all_questions=all_questions,
+        quiz_original_indices=original_indices,
         quiz_passing_score=passing_score,
         quiz_answers=[],
         quiz_current=0,
         quiz_title=lesson.title,
     )
 
-    await message.answer(
-        USER["quiz_intro"].format(
-            title=lesson.title,
-            count=len(questions),
-            passing_score=passing_score,
+    if retry_indices:
+        await message.answer(
+            USER["quiz_retry_intro"].format(
+                title=lesson.title,
+                count=len(questions),
+            )
         )
-    )
+    else:
+        await message.answer(
+            USER["quiz_intro"].format(
+                title=lesson.title,
+                count=len(questions),
+                passing_score=passing_score,
+            )
+        )
 
     # Send first question
-    await _send_quiz_question(message, questions, 0, lesson.id)
+    total_all = len(all_questions)
+    await _send_quiz_question(message, questions, 0, lesson.id, original_indices=original_indices, total_all=total_all)
 
 
-async def _send_quiz_question(message: Message, questions: list, q_idx: int, lesson_id: int):
+async def _send_quiz_question(message: Message, questions: list, q_idx: int, lesson_id: int, original_indices: list = None, total_all: int = None):
     """Send a quiz question with options (single or multi-select)"""
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -756,7 +766,15 @@ async def _send_quiz_question(message: Message, questions: list, q_idx: int, les
     options = question.get("options", [])
     is_multi = question.get("multi_select", False)
 
-    q_text = USER["quiz_question"].format(idx=q_idx + 1, total=len(questions), text=text)
+    # Display with original numbering for retries
+    if original_indices and total_all:
+        display_idx = original_indices[q_idx] + 1
+        display_total = total_all
+    else:
+        display_idx = q_idx + 1
+        display_total = len(questions)
+
+    q_text = USER["quiz_question"].format(idx=display_idx, total=display_total, text=text)
     if is_multi:
         q_text += "\n\n" + USER["quiz_multi_select_hint"]
 
@@ -901,7 +919,9 @@ async def quiz_multi_confirm(callback: CallbackQuery, state: FSMContext):
 
     next_idx = q_idx + 1
     if next_idx < len(questions):
-        await _send_quiz_question(callback.message, questions, next_idx, lesson_id)
+        original_indices = data.get("quiz_original_indices")
+        total_all = len(data.get("quiz_all_questions", questions))
+        await _send_quiz_question(callback.message, questions, next_idx, lesson_id, original_indices=original_indices, total_all=total_all)
     else:
         await _finish_quiz(callback.message, state, answers, data)
 
@@ -950,7 +970,9 @@ async def quiz_answer(callback: CallbackQuery, state: FSMContext):
     next_idx = q_idx + 1
     if next_idx < len(questions):
         # Next question
-        await _send_quiz_question(callback.message, questions, next_idx, lesson_id)
+        original_indices = data.get("quiz_original_indices")
+        total_all = len(data.get("quiz_all_questions", questions))
+        await _send_quiz_question(callback.message, questions, next_idx, lesson_id, original_indices=original_indices, total_all=total_all)
     else:
         # Quiz finished
         await _finish_quiz(callback.message, state, answers, data)
@@ -1013,8 +1035,8 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
                     opts = q.get("options", [])
                     detailed_answers.append({
                         "question": q.get("text", ""),
-                        "selected_answer": opts[ans["selected"]] if ans["selected"] < len(opts) else "",
-                        "correct_answer": opts[ans["correct"]] if ans["correct"] < len(opts) else "",
+                        "selected_answer": opts[ans["selected"]] if isinstance(ans["selected"], int) and ans["selected"] < len(opts) else str(ans["selected"]),
+                        "correct_answer": opts[ans["correct"]] if isinstance(ans["correct"], int) and ans["correct"] < len(opts) else str(ans["correct"]),
                         "is_correct": ans["is_correct"],
                     })
                 await webhook_service.send_webhook(
@@ -1034,11 +1056,27 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
                 # Complete the lesson
                 await _complete_lesson_flow(message, user, lesson_id, session)
         else:
+            # Collect wrong question indices (map to original)
+            original_indices = quiz_data.get("quiz_original_indices")
+            wrong_positions = [a["question_idx"] for a in answers if not a.get("is_correct")]
+            if original_indices:
+                wrong_original = [original_indices[p] for p in wrong_positions if p < len(original_indices)]
+            else:
+                wrong_original = wrong_positions
+            wrong_numbers = "، ".join(str(i + 1) for i in wrong_original)
+            wrong_csv = ",".join(str(i) for i in wrong_original)
+
             builder = InlineKeyboardBuilder()
             builder.row(
                 InlineKeyboardButton(
                     text=USER["quiz_retry"],
-                    callback_data=f"qr:{lesson_id}"
+                    callback_data=f"qr:{lesson_id}:{wrong_csv}"
+                )
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text=USER["quiz_review_lesson"],
+                    callback_data=f"review_lesson:{lesson_id}"
                 )
             )
 
@@ -1049,6 +1087,7 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
                 score=score,
                 passing_score=passing_score,
             )
+            text += USER["quiz_wrong_hint"].format(wrong_numbers=wrong_numbers)
             await message.answer(text, reply_markup=builder.as_markup())
 
             # Send webhook
@@ -1061,8 +1100,8 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
                     opts = q.get("options", [])
                     detailed_answers.append({
                         "question": q.get("text", ""),
-                        "selected_answer": opts[ans["selected"]] if ans["selected"] < len(opts) else "",
-                        "correct_answer": opts[ans["correct"]] if ans["correct"] < len(opts) else "",
+                        "selected_answer": opts[ans["selected"]] if isinstance(ans["selected"], int) and ans["selected"] < len(opts) else str(ans["selected"]),
+                        "correct_answer": opts[ans["correct"]] if isinstance(ans["correct"], int) and ans["correct"] < len(opts) else str(ans["correct"]),
                         "is_correct": ans["is_correct"],
                     })
                 await webhook_service.send_webhook(
@@ -1082,8 +1121,16 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
 
 @router.callback_query(F.data.startswith("qr:"))
 async def quiz_retry(callback: CallbackQuery, state: FSMContext):
-    """Handle quiz retry"""
-    lesson_id = int(callback.data.split(":")[1])
+    """Handle quiz retry — optionally only wrong questions"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[1])
+    retry_indices = None
+    if len(parts) > 2 and parts[2]:
+        try:
+            retry_indices = [int(x) for x in parts[2].split(",")]
+        except ValueError:
+            retry_indices = None
+
     await callback.answer(USER["quiz_retry_start"])
 
     async with async_session_maker() as session:
@@ -1099,7 +1146,23 @@ async def quiz_retry(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer(USER["quiz_not_found"])
             return
 
-        await _start_quiz(callback.message, state, lesson, user.id)
+        await _start_quiz(callback.message, state, lesson, user.id, retry_indices=retry_indices)
+
+
+@router.callback_query(F.data.startswith("review_lesson:"))
+async def review_lesson(callback: CallbackQuery):
+    """Re-send lesson for review before quiz retry"""
+    lesson_id = int(callback.data.split(":")[1])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            await callback.message.answer(GENERAL["not_found"])
+            return
+
+        await _send_lesson(callback.message, lesson)
 
 
 # ===========================
@@ -1131,7 +1194,37 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     progress = await lesson_service.get_user_progress(user.id, course_id=course_id)
 
     if progress["remaining"] == 0:
-        await message.answer(USER["course_completed"])
+        # Mark course as completed
+        completed_courses = user.completed_courses or {}
+        if course_id and not completed_courses.get(str(course_id)):
+            completed_courses[str(course_id)] = True
+            user.completed_courses = completed_courses
+            all_active = await lesson_service.get_all_courses(active_only=True)
+            all_done = all(completed_courses.get(str(c.id), False) for c in all_active)
+            user.is_completed = all_done
+            user.current_course_id = None
+            await session.commit()
+
+        # Check for other incomplete courses
+        completed_courses = user.completed_courses or {}
+        all_courses = await lesson_service.get_all_courses(active_only=True)
+        next_courses = [c for c in all_courses if not completed_courses.get(str(c.id), False)]
+
+        if next_courses:
+            from aiogram.types import InlineKeyboardButton
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            builder = InlineKeyboardBuilder()
+            for nc in next_courses[:3]:
+                builder.row(InlineKeyboardButton(
+                    text=f"📚 {nc.title}",
+                    callback_data=f"select_course:{nc.id}",
+                ))
+            await message.answer(
+                USER["course_completed"] + USER["course_completed_next"],
+                reply_markup=builder.as_markup(),
+            )
+        else:
+            await message.answer(USER["course_completed_all_done"])
 
         # Send webhook
         await webhook_service.send_webhook(
@@ -1229,13 +1322,36 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                 ) + USER["lesson_completed_auto"]
             )
         else:
-            # Instant - tell user to click continue
-            await message.answer(
-                USER["lesson_completed"].format(
-                    lesson_number=lesson.order if lesson else "?",
-                    progress=progress["progress_percent"],
-                ) + USER["lesson_completed_manual"]
+            # Instant — auto-deliver next lesson
+            completion_text = USER["lesson_completed"].format(
+                lesson_number=lesson.order if lesson else "?",
+                progress=progress["progress_percent"],
             )
+            next_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
+            if next_lesson and next_lesson.content_type == ContentType.FORM and next_lesson.form_data:
+                # Form lessons need FSM — show inline button
+                from aiogram.types import InlineKeyboardButton
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(
+                    text=USER["next_lesson_btn"],
+                    callback_data=f"select_course:{course_id}",
+                ))
+                await message.answer(
+                    completion_text + USER["lesson_completed_manual"],
+                    reply_markup=builder.as_markup(),
+                )
+            elif next_lesson:
+                await message.answer(completion_text)
+                # Auto-deliver next lesson
+                await lesson_service.mark_lesson_started(user.id, next_lesson.id)
+                user.current_lesson_id = next_lesson.id
+                await session.commit()
+                await _send_lesson(message, next_lesson)
+            else:
+                await message.answer(
+                    completion_text + USER["lesson_completed_manual"]
+                )
 
         # Send webhook
         await webhook_service.send_webhook(

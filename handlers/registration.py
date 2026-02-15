@@ -98,6 +98,10 @@ async def cmd_start(message: Message, state: FSMContext):
                 REGISTRATION["registration_complete"],
                 reply_markup=get_main_menu_keyboard()
             )
+
+            # Onboarding + auto-deliver first lesson
+            await message.answer(REGISTRATION["onboarding"])
+            await _auto_send_first_lesson(message, message.from_user.id)
             return
 
         # Start registration process
@@ -248,6 +252,10 @@ async def process_registration_field(message: Message, state: FSMContext):
             reply_markup=get_main_menu_keyboard()
         )
 
+        # Onboarding + auto-deliver first lesson
+        await message.answer(REGISTRATION["onboarding"])
+        await _auto_send_first_lesson(message, message.from_user.id)
+
 
 @router.callback_query(F.data.startswith("reg_select:"))
 async def process_select_field(callback: CallbackQuery, state: FSMContext):
@@ -308,6 +316,10 @@ async def process_select_field(callback: CallbackQuery, state: FSMContext):
             reply_markup=get_main_menu_keyboard()
         )
 
+        # Onboarding + auto-deliver first lesson
+        await callback.message.answer(REGISTRATION["onboarding"])
+        await _auto_send_first_lesson(callback.message, callback.from_user.id)
+
 
 def _get_field_prompt(field: dict) -> str:
     """Generate prompt text for a registration field"""
@@ -355,3 +367,37 @@ def _get_field_keyboard(field: dict):
         )
 
     return builder.as_markup()
+
+
+async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
+    """Auto-deliver first lesson after registration (onboarding)"""
+    try:
+        async with async_session_maker() as session:
+            user_service = UserService(session)
+            lesson_service = LessonService(session)
+
+            user = await user_service.get_user_by_telegram_id(telegram_user_id)
+            if not user:
+                return
+
+            courses = await lesson_service.get_all_courses(active_only=True)
+            if not courses:
+                return
+
+            # Auto-select first course
+            course = courses[0]
+            user.current_course_id = course.id
+
+            first_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course.id)
+            if not first_lesson:
+                return
+
+            await lesson_service.mark_lesson_started(user.id, first_lesson.id)
+            user.current_lesson_id = first_lesson.id
+            await session.commit()
+
+            # Send lesson content
+            from handlers.user import _send_lesson
+            await _send_lesson(message, first_lesson)
+    except Exception as e:
+        logger.error(f"Error auto-sending first lesson: {e}")

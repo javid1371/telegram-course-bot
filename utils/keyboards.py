@@ -15,30 +15,34 @@ from messages import USER_BUTTONS, ADMIN_BUTTONS, GENERAL
 # ===========================
 
 def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Main menu for users"""
+    """Main menu for users - simplified 3-button layout"""
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text=USER_BUTTONS["continue_course"]),
-        KeyboardButton(text=USER_BUTTONS["my_progress"])
+        KeyboardButton(text=USER_BUTTONS["continue_course"])
     )
     builder.row(
-        KeyboardButton(text=USER_BUTTONS["my_referrals"]),
-        KeyboardButton(text=USER_BUTTONS["about_course"])
-    )
-    builder.row(
+        KeyboardButton(text=USER_BUTTONS["my_progress"]),
         KeyboardButton(text=USER_BUTTONS["support"])
     )
     return builder.as_markup(resize_keyboard=True)
 
 
-def get_lesson_keyboard(lesson_id: int, cta_text: str = None, cta_url: str = None) -> InlineKeyboardMarkup:
-    """Keyboard for lesson confirmation"""
+def get_lesson_keyboard(lesson_id: int, cta_text: str = None, cta_url: str = None, has_quiz: bool = False, has_delay: bool = True) -> InlineKeyboardMarkup:
+    """Keyboard for lesson confirmation with context-aware button text"""
     builder = InlineKeyboardBuilder()
+
+    # Context-aware confirmation button
+    if has_quiz:
+        btn_text = USER_BUTTONS["lesson_seen_quiz"]
+    elif not has_delay:
+        btn_text = USER_BUTTONS["lesson_seen_next"]
+    else:
+        btn_text = USER_BUTTONS["lesson_seen"]
 
     # Confirmation button
     builder.row(
         InlineKeyboardButton(
-            text=USER_BUTTONS["lesson_seen"],
+            text=btn_text,
             callback_data=f"confirm_lesson:{lesson_id}"
         )
     )

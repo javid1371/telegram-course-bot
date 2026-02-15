@@ -44,6 +44,8 @@ USER_BUTTONS = SmartDict("USER_BUTTONS", {
     # دکمه تایید درس
     "lesson_seen": "✅ درس رو دیدم",
     "lesson_seen_delayed": "✅ دیدم، ادامه بده",
+    "lesson_seen_quiz": "✅ دیدم، بریم آزمون 📝",
+    "lesson_seen_next": "✅ دیدم، درس بعدی ➡️",
 
     # دکمه انصراف
     "cancel": "❌ انصراف",
@@ -198,6 +200,7 @@ REGISTRATION = SmartDict("REGISTRATION", {
     "registration_complete": "✅ ثبت‌نام شما با موفقیت انجام شد!\n\nدرس اول به زودی برای شما ارسال می‌شود.",
     "welcome_back": "👋 خوش برگشتید {name}!\n\nاز منوی زیر می‌توانید ادامه دوره را دنبال کنید.",
     "registration_cancelled": "❌ ثبت‌نام لغو شد.\n\nبرای شروع مجدد دستور /start را ارسال کنید.",
+    "onboarding": "🎓 خوش اومدی!\n\n📚 هربار «ادامه دوره» رو بزنی، درس بعدی برات ارسال میشه.\n✅ بعد از هر درس، دکمه «دیدم» رو بزن تا درس بعدی آماده بشه.\n\nبزن بریم! 👇",
     "validation_error": "⚠️ {error}\n\nلطفاً دوباره وارد کنید:",
     "field_prompt": "📝 {label}{required}\n\n{hint}",
     "field_required": " (اجباری)",
@@ -249,6 +252,9 @@ USER = SmartDict("USER", {
     "lesson_completed_auto": "\n\n📩 درس بعدی به‌صورت خودکار برای شما ارسال خواهد شد.",
     "lesson_completed_manual": "\n\n📚 برای دریافت درس بعدی روی «ادامه دوره» کلیک کنید.",
     "course_completed": "🎉 تبریک! شما دوره را با موفقیت تکمیل کردید!\n\n🏆 آفرین!",
+    "course_completed_next": "\n\n📚 دوره‌های دیگه‌ای هم هست. کدوم رو شروع کنی؟",
+    "course_completed_all_done": "🎉 تبریک! شما تمام دوره‌ها رو با موفقیت تکمیل کردید! 🏆",
+    "next_lesson_btn": "📚 درس بعدی",
     "lesson_confirmed": "✅ تایید شد!",
 
     # فرم
@@ -281,6 +287,9 @@ USER = SmartDict("USER", {
     "quiz_multi_correct": "✅ صحیح! شما همه گزینه‌های درست را انتخاب کردید.",
     "quiz_multi_wrong": "❌ اشتباه! انتخاب شما صحیح نیست.",
     "quiz_select_at_least_one": "⚠️ حداقل یک گزینه را انتخاب کنید.",
+    "quiz_wrong_hint": "\n\n📋 سؤالاتی که اشتباه بود: {wrong_numbers}",
+    "quiz_review_lesson": "📖 مرور درس",
+    "quiz_retry_intro": "📝 <b>بازبینی آزمون: {title}</b>\n\n{count} سؤال اشتباه رو دوباره جواب بده.\nباید همه رو صحیح بزنی! 🎯",
 
     # پیشرفت
     "progress_header": "📊 <b>پیشرفت شما</b>\n\n",
