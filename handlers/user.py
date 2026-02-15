@@ -1039,6 +1039,19 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             }
         )
 
+    # Send referral promo at specific lesson milestones
+    # Configurable: show at lesson 3 and lesson 7 (or when ~30%, ~60% done)
+    completed_count = progress.get("completed", 0)
+    referral_promo_lessons = config.REFERRAL_PROMO_LESSONS if hasattr(config, 'REFERRAL_PROMO_LESSONS') else [3, 7]
+    if completed_count in referral_promo_lessons and user.referral_code:
+        referral_link = f"https://t.me/{config.BOT_USERNAME}?start=ref_{user.referral_code}"
+        try:
+            await message.answer(
+                USER["referral_promo"].format(referral_link=referral_link)
+            )
+        except Exception:
+            pass  # Non-critical, don't break flow
+
 
 # ===========================
 # PROGRESS
@@ -1105,6 +1118,66 @@ async def show_progress(message: Message):
             text += "\n\n" + USER["progress_all_done"]
 
         await message.answer(text)
+
+
+# ===========================
+# REFERRAL (USER INVITATION SYSTEM)
+# ===========================
+
+async def _show_referral_page(message: Message):
+    """Show user's referral link and stats"""
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        user = await user_service.get_user_by_telegram_id(message.from_user.id)
+        if not user:
+            await message.answer(USER["please_register"])
+            return
+
+        referral_link = f"https://t.me/{config.BOT_USERNAME}?start=ref_{user.referral_code}"
+        referral_count = await user_service.get_referral_count(user.id)
+
+        text = USER["referral_header"].format(
+            referral_link=referral_link,
+            referral_count=referral_count,
+        )
+
+        if referral_count > 0:
+            text += USER["referral_invite_list"]
+            referrals = await user_service.get_referred_users(user.id)
+            for i, ref in enumerate(referrals[:15], 1):
+                name = f"{ref.first_name or ''} {ref.last_name or ''}".strip() or ref.username or "ناشناس"
+                date = ref.created_at.strftime("%Y/%m/%d") if ref.created_at else "-"
+                text += USER["referral_invite_item"].format(num=i, name=name, date=date)
+        else:
+            text += "\n\n" + USER["referral_no_invites"]
+
+        from aiogram.types import InlineKeyboardButton, SwitchInlineQueryChosenChat
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        builder = InlineKeyboardBuilder()
+        share_text = USER["referral_share_text"].format(referral_link=referral_link)
+        builder.row(
+            InlineKeyboardButton(
+                text=USER["referral_share_btn"],
+                switch_inline_query=share_text,
+            )
+        )
+
+        await message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.message(F.text == USER_BUTTONS["my_referrals"])
+@log_errors
+async def show_referrals(message: Message):
+    """Show referral page from button"""
+    await _show_referral_page(message)
+
+
+@router.message(Command("referral"))
+@log_errors
+async def cmd_referral(message: Message):
+    """Handle /referral command"""
+    await _show_referral_page(message)
 
 
 # ===========================

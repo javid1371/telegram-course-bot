@@ -1735,6 +1735,19 @@ async def view_user(callback: CallbackQuery, user_id: int = None):
             for key, value in user.registration_data.items():
                 text += f"  • {key}: {value}\n"
 
+        # Referral stats
+        referral_count = await user_service.get_referral_count(user_id)
+        text += "\n" + ADMIN["referral_stats_header"] + "\n"
+        text += "  " + ADMIN["referral_stats_code"].format(code=user.referral_code or '-') + "\n"
+        text += "  " + ADMIN["referral_stats_count"].format(count=referral_count) + "\n"
+        if user.referred_by:
+            referrer = await user_service.get_referrer(user_id)
+            if referrer:
+                ref_name = f"{referrer.first_name or ''} {referrer.last_name or ''}".strip() or referrer.username or "-"
+                text += "  " + ADMIN["referral_stats_referred_by"].format(name=ref_name, id=referrer.telegram_user_id) + "\n"
+        else:
+            text += "  " + ADMIN["referral_stats_none"] + "\n"
+
         try:
             await callback.message.edit_text(
                 text, reply_markup=get_user_actions_keyboard(user_id)

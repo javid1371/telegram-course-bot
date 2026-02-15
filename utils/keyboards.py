@@ -22,7 +22,10 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text=USER_BUTTONS["my_progress"])
     )
     builder.row(
-        KeyboardButton(text=USER_BUTTONS["about_course"]),
+        KeyboardButton(text=USER_BUTTONS["my_referrals"]),
+        KeyboardButton(text=USER_BUTTONS["about_course"])
+    )
+    builder.row(
         KeyboardButton(text=USER_BUTTONS["support"])
     )
     return builder.as_markup(resize_keyboard=True)

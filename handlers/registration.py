@@ -58,13 +58,37 @@ async def cmd_start(message: Message, state: FSMContext):
 
         if not reg_fields:
             # No registration fields configured - auto register
+            # Find referred_by user
+            referred_by = None
+            if referral:
+                from sqlalchemy import select as sa_select
+                from database.models import User
+                ref_result = await session.execute(
+                    sa_select(User).where(User.referral_code == referral)
+                )
+                ref_user = ref_result.scalar_one_or_none()
+                if ref_user:
+                    referred_by = ref_user.id
+
             new_user = await user_service.create_user(
                 telegram_user_id=message.from_user.id,
                 username=message.from_user.username,
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name,
                 source_campaign=campaign,
+                referred_by=referred_by,
             )
+
+            # Notify referral welcome
+            if referred_by and ref_user:
+                inviter_name = ref_user.first_name or ref_user.username or ""
+                from messages import USER as USER_MSG
+                try:
+                    await message.answer(
+                        USER_MSG["referral_welcome_bonus"].format(inviter_name=inviter_name)
+                    )
+                except Exception:
+                    pass
 
             # Send webhook if configured
             webhook_service = WebhookService(session)
@@ -207,6 +231,17 @@ async def process_registration_field(message: Message, state: FSMContext):
             # Send webhook
             webhook_service = WebhookService(session)
             await webhook_service.send_webhook("user_registered", new_user)
+
+        # Notify referral welcome
+        if referred_by:
+            from messages import USER as USER_MSG
+            inviter_name = ref_user.first_name or ref_user.username or "" if ref_user else ""
+            try:
+                await message.answer(
+                    USER_MSG["referral_welcome_bonus"].format(inviter_name=inviter_name)
+                )
+            except Exception:
+                pass
 
         await message.answer(
             REGISTRATION["registration_complete"],

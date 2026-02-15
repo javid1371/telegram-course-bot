@@ -50,6 +50,9 @@ USER_BUTTONS = SmartDict("USER_BUTTONS", {
 
     # ریست
     "reset_progress": "🔄 ریست پیشرفت",
+
+    # دعوت دوستان
+    "my_referrals": "👥 دعوت دوستان",
 })
 
 
@@ -281,6 +284,33 @@ USER = SmartDict("USER", {
     "reset_cancelled": "❌ ریست لغو شد.",
     "reset_error": "❌ خطا در ریست پیشرفت. لطفاً دوباره تلاش کنید.",
 
+    # دعوت دوستان (ریفرال)
+    "referral_header": (
+        "👥 <b>دعوت دوستان</b>\n\n"
+        "با دعوت دوستانتان به دوره، هم شما و هم دوستتان از این دوره بهره‌مند می‌شید!\n\n"
+        "🔗 <b>لینک اختصاصی شما:</b>\n"
+        "<code>{referral_link}</code>\n\n"
+        "👆 روی لینک بزنید تا کپی بشه، بعد برای دوستاتون بفرستید.\n\n"
+        "📊 <b>آمار دعوت‌های شما:</b>\n"
+        "👥 تعداد دعوت شده: <b>{referral_count}</b> نفر"
+    ),
+    "referral_no_invites": "هنوز کسی رو دعوت نکردید!",
+    "referral_invite_list": "\n\n📋 <b>لیست افراد دعوت شده:</b>",
+    "referral_invite_item": "\n  {num}. {name} — {date}",
+    "referral_share_btn": "📤 ارسال لینک",
+    "referral_share_text": (
+        "🎓 سلام! من دارم یه دوره آموزشی عالی رو تو تلگرام می‌گذرونم.\n"
+        "اگه دوست داری تو هم شرکت کنی، از لینک زیر استفاده کن:\n\n"
+        "{referral_link}"
+    ),
+    "referral_promo": (
+        "🌟 <b>دوستانت رو هم دعوت کن!</b>\n\n"
+        "اگه از دوره خوشت اومده، لینک اختصاصیت رو با دوستات به اشتراک بذار:\n\n"
+        "🔗 <code>{referral_link}</code>\n\n"
+        "از منوی «👥 دعوت دوستان» می‌تونی آمار دعوت‌هات رو ببینی."
+    ),
+    "referral_welcome_bonus": "✨ شما توسط {inviter_name} دعوت شدید!",
+
     # پشتیبانی
     "support_text": (
         "📞 <b>پشتیبانی</b>\n\n"
@@ -298,10 +328,12 @@ USER = SmartDict("USER", {
         "📖 <b>راهنمای ربات</b>\n\n"
         "🔹 /start - شروع یا ورود مجدد\n"
         "🔹 /progress - مشاهده پیشرفت\n"
+        "🔹 /referral - لینک دعوت دوستان\n"
         "🔹 /reset - ریست کامل پیشرفت\n"
         "🔹 /help - این راهنما\n\n"
         "📚 <b>ادامه دوره</b> - دریافت درس بعدی\n"
         "📊 <b>پیشرفت من</b> - مشاهده وضعیت پیشرفت\n"
+        "👥 <b>دعوت دوستان</b> - لینک دعوت و آمار\n"
         "ℹ️ <b>درباره دوره</b> - اطلاعات دوره\n"
         "📞 <b>پشتیبانی</b> - ارتباط با پشتیبانی"
     ),
@@ -607,6 +639,13 @@ ADMIN = SmartDict("ADMIN", {
     "webhook_deleted": "🗑 وبهوک حذف شد.",
     "webhook_testing": "در حال تست...",
     "webhook_test_header": "🧪 <b>نتایج تست وبهوک‌ها</b>",
+
+    # ریفرال (ادمین)
+    "referral_stats_header": "👥 <b>آمار ریفرال:</b>",
+    "referral_stats_code": "🔗 کد: <code>{code}</code>",
+    "referral_stats_count": "👥 دعوت شده: {count} نفر",
+    "referral_stats_referred_by": "📨 دعوت کننده: {name} (#{id})",
+    "referral_stats_none": "❌ توسط کسی دعوت نشده",
 
     # تنظیمات
     "settings_header": "⚙️ <b>تنظیمات</b>",

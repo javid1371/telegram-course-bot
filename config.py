@@ -50,6 +50,12 @@ MAX_LESSONS_PER_USER = int(os.getenv("MAX_LESSONS_PER_USER", "100"))
 REMINDER_DAYS = int(os.getenv("REMINDER_DAYS", "3"))
 BROADCAST_RATE_LIMIT = int(os.getenv("BROADCAST_RATE_LIMIT", "30"))
 
+# Referral promo: show referral invitation at these lesson completion milestones
+# Comma-separated lesson numbers (e.g., "3,7")
+REFERRAL_PROMO_LESSONS = [
+    int(x.strip()) for x in os.getenv("REFERRAL_PROMO_LESSONS", "3,7").split(",") if x.strip()
+]
+
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = os.getenv("LOG_FILE", "bot.log")

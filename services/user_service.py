@@ -276,3 +276,27 @@ class UserService:
             await self.session.commit()
             return True
         return False
+
+    async def get_referral_count(self, user_id: int) -> int:
+        """Get number of users referred by this user"""
+        result = await self.session.execute(
+            select(func.count(User.id)).where(User.referred_by == user_id)
+        )
+        return result.scalar() or 0
+
+    async def get_referred_users(self, user_id: int, limit: int = 20) -> list:
+        """Get list of users referred by this user"""
+        result = await self.session.execute(
+            select(User)
+            .where(User.referred_by == user_id)
+            .order_by(User.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def get_referrer(self, user_id: int):
+        """Get the user who referred this user"""
+        user = await self.get_user_by_id(user_id)
+        if user and user.referred_by:
+            return await self.get_user_by_id(user.referred_by)
+        return None
