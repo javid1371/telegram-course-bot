@@ -268,6 +268,29 @@ class WebhookSetting(Base):
 
 
 # ===========================
+# WEBHOOK FAILED EVENT MODEL
+# ===========================
+class WebhookFailedEvent(Base):
+    """Queue for webhook events that failed delivery — retried by scheduler"""
+    __tablename__ = "webhook_failed_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    webhook_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    webhook_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    def __repr__(self):
+        return f"<WebhookFailedEvent {self.event_id} - {self.event_type}>"
+
+
+# ===========================
 # CAMPAIGN MODEL
 # ===========================
 class Campaign(Base):

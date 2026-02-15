@@ -1,6 +1,6 @@
 """
 Task scheduler - APScheduler jobs for periodic tasks
-Reminders, daily stats, scheduled messages
+Reminders, daily stats, scheduled messages, webhook retries
 """
 import logging
 from datetime import datetime
@@ -12,6 +12,7 @@ from aiogram import Bot
 from database import async_session_maker
 from services.reminder_service import ReminderService
 from services.analytics_service import AnalyticsService
+from services.event_emitter import retry_failed_events, check_inactive_users
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,43 @@ def setup_scheduler(bot: Bot):
                     )
         except Exception as e:
             logger.error(f"Error checking lesson deadlines: {e}")
+
+    # ── Webhook retry & inactivity jobs ──
+
+    @scheduler.scheduled_job(
+        IntervalTrigger(minutes=5),
+        id="retry_failed_webhooks",
+        name="Retry failed webhook events",
+    )
+    async def retry_failed_webhooks_job():
+        """Retry webhook events that failed delivery"""
+        try:
+            async with async_session_maker() as session:
+                result = await retry_failed_events(session)
+                if result["retried"] > 0:
+                    logger.info(
+                        f"Webhook retry: {result['retried']} processed, "
+                        f"{result['resolved']} resolved, {result['abandoned']} abandoned"
+                    )
+        except Exception as e:
+            logger.error(f"Error retrying failed webhooks: {e}")
+
+    @scheduler.scheduled_job(
+        CronTrigger(hour="*/12"),  # Every 12 hours
+        id="check_inactivity",
+        name="Check for inactive users and emit webhook",
+    )
+    async def check_inactivity_job():
+        """Emit inactivity.timeout for users inactive 48h+"""
+        try:
+            async with async_session_maker() as session:
+                result = await check_inactive_users(session)
+                if result["emitted"] > 0:
+                    logger.info(
+                        f"Inactivity check: {result['emitted']} timeout events emitted"
+                    )
+        except Exception as e:
+            logger.error(f"Error checking inactivity: {e}")
 
     return scheduler
 

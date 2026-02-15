@@ -14,7 +14,7 @@ from database import async_session_maker
 from database.models import ContentType, ScheduledMessage, MessageStatus, QuizAttempt, FormResponse
 from services.user_service import UserService
 from services.lesson_service import LessonService
-from services.webhook_service import WebhookService
+from services.event_emitter import emit
 from utils.keyboards import get_main_menu_keyboard, get_lesson_keyboard, get_confirm_keyboard
 from utils.decorators import registered_only, log_errors, rate_limit
 from utils.helpers import calculate_progress, format_duration
@@ -115,6 +115,12 @@ async def select_course(callback: CallbackQuery, state: FSMContext):
 
         user.current_course_id = course.id
         await session.commit()
+
+        # Emit course.select event
+        await emit(
+            "course", "select", user, session,
+            course={"id": course.id, "title": course.title},
+        )
 
         await _continue_specific_course(callback.message, state, user, course, session, lesson_service)
 
@@ -242,19 +248,19 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
         await _send_lesson(message, next_lesson)
 
     # Send webhook
-    webhook_service = WebhookService(session)
-    await webhook_service.send_webhook(
-        "lesson_sent",
-        user,
-        extra_data={
-            "lesson_id": next_lesson.id,
-            "lesson_title": next_lesson.title,
-            "lesson_order": next_lesson.order,
-            "course_id": course.id,
-            "course_title": course.title,
+    await emit(
+        "lesson", "open", user, session,
+        course={"id": course.id, "title": course.title},
+        lesson={
+            "id": next_lesson.id,
+            "title": next_lesson.title,
+            "order": next_lesson.order,
+            "type": next_lesson.content_type.value,
+        },
+        extra_payload={
             "has_quiz": bool(next_lesson.quiz_data),
             "has_form": bool(next_lesson.form_data),
-        }
+        },
     )
 
 
@@ -282,11 +288,21 @@ async def toggle_speed_2x(callback: CallbackQuery):
             ds_courses[str(course_id)] = {"active": True, "bonus_delivered": False}
             user.double_speed_courses = ds_courses
             await session.commit()
+            await emit(
+                "speed", "change", user, session,
+                course={"id": course_id},
+                extra_payload={"mode": "2x", "enabled": True},
+            )
             await callback.message.edit_text(USER["speed_2x_activated"])
         else:
             ds_courses[str(course_id)] = {"active": False, "bonus_delivered": False}
             user.double_speed_courses = ds_courses
             await session.commit()
+            await emit(
+                "speed", "change", user, session,
+                course={"id": course_id},
+                extra_payload={"mode": "2x", "enabled": False},
+            )
             await callback.message.edit_text(USER["speed_2x_deactivated"])
 
 
@@ -317,6 +333,11 @@ async def toggle_fast_track(callback: CallbackQuery):
             user.fast_track_courses = ft_courses
             await session.commit()
             fast_delay = course.fast_track_delay if course else 5
+            await emit(
+                "speed", "change", user, session,
+                course={"id": course_id, "title": course.title if course else ""},
+                extra_payload={"mode": "fast_track", "enabled": True, "delay_minutes": fast_delay},
+            )
             await callback.message.edit_text(
                 USER["fast_track_activated"].format(fast_delay=fast_delay)
             )
@@ -324,6 +345,11 @@ async def toggle_fast_track(callback: CallbackQuery):
             ft_courses[str(course_id)] = False
             user.fast_track_courses = ft_courses
             await session.commit()
+            await emit(
+                "speed", "change", user, session,
+                course={"id": course_id, "title": course.title if course else ""},
+                extra_payload={"mode": "fast_track", "enabled": False},
+            )
             await callback.message.edit_text(USER["fast_track_deactivated"])
 
 
@@ -627,7 +653,6 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
     async with async_session_maker() as session:
         user_service = UserService(session)
         lesson_service = LessonService(session)
-        webhook_service = WebhookService(session)
 
         user = await user_service.get_user_by_telegram_id(telegram_user_id)
         if not user:
@@ -650,16 +675,13 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
         await message.answer(text)
 
         # Send webhook
-        await webhook_service.send_webhook(
-            "form_submitted",
-            user,
-            extra_data={
-                "lesson_id": lesson_id,
-                "lesson_title": form_title,
-                "form_title": form_title,
-                "form_fields": list(responses.keys()),
+        await emit(
+            "form", "submit", user, session,
+            lesson={"id": lesson_id, "title": form_title},
+            extra_payload={
                 "form_responses": responses,
-            }
+                "form_fields": list(responses.keys()),
+            },
         )
 
         # Complete the lesson
@@ -689,8 +711,20 @@ async def confirm_lesson(callback: CallbackQuery, state: FSMContext):
         if not current_lesson:
             return
 
+        # Emit lesson.confirm event
+        await emit(
+            "lesson", "confirm", user, session,
+            lesson={"id": lesson_id, "title": current_lesson.title, "order": current_lesson.order},
+        )
+
         # If lesson has a quiz, start quiz instead of completing
         if current_lesson.quiz_data and current_lesson.quiz_data.get("questions"):
+            # Emit quiz.start event
+            await emit(
+                "quiz", "start", user, session,
+                lesson={"id": current_lesson.id, "title": current_lesson.title, "order": current_lesson.order},
+                extra_payload={"total_questions": len(current_lesson.quiz_data.get("questions", []))},
+            )
             await _start_quiz(callback.message, state, current_lesson, user.id)
             return
 
@@ -1027,7 +1061,6 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
 
             # Send webhook
             if user:
-                webhook_service = WebhookService(session)
                 questions = quiz_data.get("quiz_questions", [])
                 detailed_answers = []
                 for ans in answers:
@@ -1039,18 +1072,18 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
                         "correct_answer": opts[ans["correct"]] if isinstance(ans["correct"], int) and ans["correct"] < len(opts) else str(ans["correct"]),
                         "is_correct": ans["is_correct"],
                     })
-                await webhook_service.send_webhook(
-                    "quiz_passed",
-                    user,
-                    extra_data={
-                        "lesson_id": lesson_id,
-                        "quiz_title": quiz_title,
-                        "score": score,
-                        "passing_score": passing_score,
-                        "correct": correct_count,
-                        "total": total,
-                        "answers": detailed_answers,
-                    }
+                await emit(
+                    "quiz", "pass", user, session,
+                    lesson={"id": lesson_id, "title": quiz_title},
+                    extra_payload={
+                        "quiz_result": {
+                            "score": score,
+                            "passing_score": passing_score,
+                            "correct": correct_count,
+                            "total": total,
+                            "answers": detailed_answers,
+                        },
+                    },
                 )
 
                 # Complete the lesson
@@ -1092,7 +1125,6 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
 
             # Send webhook
             if user:
-                webhook_service = WebhookService(session)
                 questions = quiz_data.get("quiz_questions", [])
                 detailed_answers = []
                 for ans in answers:
@@ -1104,18 +1136,19 @@ async def _finish_quiz(message: Message, state: FSMContext, answers: list, quiz_
                         "correct_answer": opts[ans["correct"]] if isinstance(ans["correct"], int) and ans["correct"] < len(opts) else str(ans["correct"]),
                         "is_correct": ans["is_correct"],
                     })
-                await webhook_service.send_webhook(
-                    "quiz_failed",
-                    user,
-                    extra_data={
-                        "lesson_id": lesson_id,
-                        "quiz_title": quiz_title,
-                        "score": score,
-                        "passing_score": passing_score,
-                        "correct": correct_count,
-                        "total": total,
-                        "answers": detailed_answers,
-                    }
+                await emit(
+                    "quiz", "fail", user, session,
+                    lesson={"id": lesson_id, "title": quiz_title},
+                    status="failed",
+                    extra_payload={
+                        "quiz_result": {
+                            "score": score,
+                            "passing_score": passing_score,
+                            "correct": correct_count,
+                            "total": total,
+                            "answers": detailed_answers,
+                        },
+                    },
                 )
 
 
@@ -1146,6 +1179,17 @@ async def quiz_retry(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer(USER["quiz_not_found"])
             return
 
+        # Emit quiz.start for retry
+        await emit(
+            "quiz", "start", user, session,
+            lesson={"id": lesson.id, "title": lesson.title, "order": lesson.order},
+            extra_payload={
+                "is_retry": True,
+                "retry_questions": retry_indices,
+                "total_questions": len(lesson.quiz_data.get("questions", [])),
+            },
+        )
+
         await _start_quiz(callback.message, state, lesson, user.id, retry_indices=retry_indices)
 
 
@@ -1172,7 +1216,6 @@ async def review_lesson(callback: CallbackQuery):
 async def _complete_lesson_flow(message: Message, user, lesson_id: int, session):
     """Handle post-completion: delay, scheduling, webhook"""
     lesson_service = LessonService(session)
-    webhook_service = WebhookService(session)
 
     # Mark lesson as completed
     await lesson_service.mark_lesson_completed(user.id, lesson_id)
@@ -1226,16 +1269,18 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
         else:
             await message.answer(USER["course_completed_all_done"])
 
-        # Send webhook
-        await webhook_service.send_webhook(
-            "course_completed",
-            user,
-            extra_data={
-                "total_lessons": progress.get("total", 0),
-                "completed_at": datetime.utcnow().isoformat(),
-                "course_id": course_id,
-                "course_title": current_lesson.course.title if current_lesson and current_lesson.course else "",
-            }
+        # Send webhook — course.complete
+        await emit(
+            "course", "complete", user, session,
+            course={
+                "id": course_id,
+                "title": current_lesson.course.title if current_lesson and current_lesson.course else "",
+            },
+            progress={
+                "percent": 100,
+                "completed": progress.get("total", 0),
+                "total": progress.get("total", 0),
+            },
         )
     else:
         lesson = current_lesson
@@ -1353,18 +1398,23 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                     completion_text + USER["lesson_completed_manual"]
                 )
 
-        # Send webhook
-        await webhook_service.send_webhook(
-            "lesson_completed",
-            user,
-            extra_data={
-                "lesson_id": lesson_id,
-                "lesson_title": current_lesson.title if current_lesson else "",
-                "lesson_order": current_lesson.order if current_lesson else 0,
-                "progress_percent": progress["progress_percent"],
-                "completed_count": progress.get("completed", 0),
-                "total_lessons": progress.get("total", 0),
-            }
+        # Send webhook — lesson.complete
+        await emit(
+            "lesson", "complete", user, session,
+            course={
+                "id": course_id,
+                "title": current_lesson.course.title if current_lesson and current_lesson.course else "",
+            },
+            lesson={
+                "id": lesson_id,
+                "title": current_lesson.title if current_lesson else "",
+                "order": current_lesson.order if current_lesson else 0,
+            },
+            progress={
+                "percent": progress["progress_percent"],
+                "completed": progress.get("completed", 0),
+                "total": progress.get("total", 0),
+            },
         )
 
     # Send referral promo at specific lesson milestones

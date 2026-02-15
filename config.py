@@ -45,6 +45,19 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8443"))
 
+# Webhook Security — HMAC-SHA256 signing for CRM/n8n verification
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+
+# CRM Field Mapping
+# Keys = registration_data field names
+# Values = CRM field path (e.g. "person.name", "person.phone") or "note"
+# Fields not listed here are automatically included as notes
+FIELD_MAPPING = {
+    "name": "person.name",
+    "phone": "person.phone",
+    "email": "person.email",
+}
+
 # Bot Settings
 MAX_LESSONS_PER_USER = int(os.getenv("MAX_LESSONS_PER_USER", "100"))
 REMINDER_DAYS = int(os.getenv("REMINDER_DAYS", "3"))

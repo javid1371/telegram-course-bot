@@ -14,6 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.models import User, Lesson, ScheduledMessage, MessageStatus, ContentType, UserProgress
 from services.lesson_service import LessonService
+from services.event_emitter import emit
 import config
 from messages import REMINDERS, USER, USER_BUTTONS
 
@@ -124,6 +125,12 @@ class ReminderService:
             )
             self.session.add(reminder_log)
             await self.session.commit()
+
+            # Emit webhook event
+            await emit(
+                "reminder", "sent", user, self.session,
+                extra_payload={"reminder_text": message[:200] if message else ""},
+            )
 
             logger.info(f"Smart reminder sent to user {user.telegram_user_id}")
             return True

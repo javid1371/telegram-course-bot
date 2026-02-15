@@ -12,7 +12,7 @@ from database import async_session_maker
 from database.models import RegistrationField, FieldType
 from services.user_service import UserService
 from services.lesson_service import LessonService
-from services.webhook_service import WebhookService
+from services.event_emitter import emit
 from utils.keyboards import get_main_menu_keyboard, get_cancel_keyboard
 from utils.validators import validate_field_value, ValidationError
 from utils.helpers import parse_tracking_link
@@ -90,9 +90,8 @@ async def cmd_start(message: Message, state: FSMContext):
                 except Exception:
                     pass
 
-            # Send webhook if configured
-            webhook_service = WebhookService(session)
-            await webhook_service.send_webhook("user_registered", new_user)
+            # Send webhook
+            await emit("lead", "register", new_user, session)
 
             await message.answer(
                 REGISTRATION["registration_complete"],
@@ -233,8 +232,7 @@ async def process_registration_field(message: Message, state: FSMContext):
             )
 
             # Send webhook
-            webhook_service = WebhookService(session)
-            await webhook_service.send_webhook("user_registered", new_user)
+            await emit("lead", "register", new_user, session)
 
         # Notify referral welcome
         if referred_by:
@@ -308,8 +306,7 @@ async def process_select_field(callback: CallbackQuery, state: FSMContext):
                 source_campaign=data.get("campaign"),
             )
 
-            webhook_service = WebhookService(session)
-            await webhook_service.send_webhook("user_registered", new_user)
+            await emit("lead", "register", new_user, session)
 
         await callback.message.answer(
             REGISTRATION["registration_complete"],
