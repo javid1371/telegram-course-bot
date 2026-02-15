@@ -81,8 +81,9 @@ def _build_fields_mapping(user: User) -> tuple:
         else:
             note_parts.append(f"{key}: {value}")
 
-    # Always include core Telegram data as CRM fields
+    # Always include core user data as CRM fields
     fields_to_update["person.telegram_id"] = user.telegram_user_id
+    fields_to_update["person.platform"] = getattr(user, "platform", config.PLATFORM)
     if user.username:
         fields_to_update["person.telegram_username"] = user.username
     if user.first_name:
@@ -98,6 +99,7 @@ def _build_user_block(user: User) -> dict:
     """Build the ``user`` section of the event payload."""
     return {
         "telegram_id": user.telegram_user_id,
+        "platform": getattr(user, "platform", config.PLATFORM),
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,
@@ -164,7 +166,8 @@ def build_event_payload(
     body: dict = {
         "event_id": event_id,
         "event_time": datetime.utcnow().isoformat() + "Z",
-        "source": BOT_USERNAME,
+        "source": f"{BOT_USERNAME}@{config.PLATFORM}",
+        "platform": config.PLATFORM,
         "event": {
             "type": event_type,
             "action": action,

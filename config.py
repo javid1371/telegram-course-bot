@@ -13,7 +13,11 @@ load_dotenv()
 # Base Directory
 BASE_DIR = Path(__file__).resolve().parent
 
-# Telegram Bot
+# ── Platform ──────────────────────────────────────────────
+# "telegram" or "bale" — set via PLATFORM env var
+PLATFORM = os.getenv("PLATFORM", "telegram").lower()
+
+# Bot credentials (same env var name for both platforms)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "course_bot")
 ADMIN_USER_IDS = [
@@ -21,6 +25,20 @@ ADMIN_USER_IDS = [
     for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
     if uid.strip()
 ]
+
+# Platform-specific API endpoints
+PLATFORM_API_URLS = {
+    "telegram": "https://api.telegram.org",
+    "bale":     "https://tapi.bale.ai",
+}
+API_BASE_URL = PLATFORM_API_URLS.get(PLATFORM, PLATFORM_API_URLS["telegram"])
+
+# Bale only supports Markdown (not HTML)
+# telegram → "HTML", bale → None (Bale auto-renders Markdown)
+PARSE_MODE = "HTML" if PLATFORM == "telegram" else None
+
+# File download base — used for getFile results
+FILE_BASE_URL = API_BASE_URL
 
 # Database
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -87,11 +105,19 @@ EXPORT_DIR.mkdir(exist_ok=True)
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this")
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "True").lower() == "true"
 
-# Telegram API Limits
+# Platform API Limits
 MAX_MESSAGE_LENGTH = 4096
 MAX_CAPTION_LENGTH = 1024
 BROADCAST_SLEEP_SECONDS = 0.05  # 20 messages per second (safe limit)
 FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50 MB
+
+# Migration: code TTL in seconds (24 hours)
+MIGRATION_CODE_TTL = int(os.getenv("MIGRATION_CODE_TTL", "86400"))
+
+# Sync endpoint — the *other* platform's API for cross-platform sync
+# E.g. on the Bale server this points to the Telegram server REST sync API
+SYNC_PEER_URL = os.getenv("SYNC_PEER_URL", "")  # e.g. https://int-server:8800/sync
+SYNC_SECRET = os.getenv("SYNC_SECRET", "")
 
 # Messages - centralized in messages.py, kept here for backward compatibility
 from messages import REGISTRATION, USER, ADMIN as ADMIN_MESSAGES

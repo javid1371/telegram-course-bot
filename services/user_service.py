@@ -8,6 +8,7 @@ from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import User, RegistrationField, UserProgress, Lesson
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +20,12 @@ class UserService:
         self.session = session
 
     async def get_user_by_telegram_id(self, telegram_user_id: int) -> Optional[User]:
-        """Get user by Telegram user ID"""
+        """Get user by Telegram/Bale user ID on the current platform"""
         result = await self.session.execute(
-            select(User).where(User.telegram_user_id == telegram_user_id)
+            select(User).where(
+                User.telegram_user_id == telegram_user_id,
+                User.platform == config.PLATFORM,
+            )
         )
         return result.scalar_one_or_none()
 
@@ -54,6 +58,7 @@ class UserService:
             source_campaign=source_campaign,
             referred_by=referred_by,
             referral_code=generate_referral_code(telegram_user_id),
+            platform=config.PLATFORM,
         )
         self.session.add(user)
         await self.session.commit()

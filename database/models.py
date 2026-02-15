@@ -118,10 +118,13 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     username: Mapped[Optional[str]] = mapped_column(String(255))
     first_name: Mapped[Optional[str]] = mapped_column(String(255))
     last_name: Mapped[Optional[str]] = mapped_column(String(255))
+
+    # Platform — "telegram" or "bale" (each deploy only writes its own)
+    platform: Mapped[str] = mapped_column(String(20), default="telegram", nullable=False, index=True)
 
     # Dynamic registration data (JSONB for flexible storage)
     registration_data: Mapped[Optional[dict]] = mapped_column(JSON)
@@ -157,8 +160,13 @@ class User(Base):
     current_lesson: Mapped[Optional["Lesson"]] = relationship("Lesson", foreign_keys=[current_lesson_id])
     current_course_rel: Mapped[Optional["Course"]] = relationship("Course", foreign_keys=[current_course_id])
 
+    # Unique constraint: same messenger user ID can exist on both platforms
+    __table_args__ = (
+        UniqueConstraint('telegram_user_id', 'platform', name='uq_user_platform'),
+    )
+
     def __repr__(self):
-        return f"<User {self.telegram_user_id} - {self.first_name}>"
+        return f"<User {self.telegram_user_id}@{self.platform} - {self.first_name}>"
 
 
 # ===========================
@@ -415,6 +423,62 @@ class FormResponse(Base):
 
     def __repr__(self):
         return f"<FormResponse user={self.user_id} lesson={self.lesson_id}>"
+
+
+# ===========================
+# BOT TEXT OVERRIDE MODEL
+# ===========================
+# ===========================
+# MIGRATION CODE MODEL
+# ===========================
+class MigrationCode(Base):
+    """One-time code for migrating a user's progress across platforms.
+    Generated on the *source* platform, claimed on the *target* platform."""
+    __tablename__ = "migration_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    source_platform: Mapped[str] = mapped_column(String(20), nullable=False)  # "telegram" / "bale"
+    source_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Snapshot of data to transfer
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)  # full user + progress dump
+
+    # Status
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    used_by_user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<MigrationCode {self.code} from={self.source_platform}>"
+
+
+# ===========================
+# PLATFORM FILE ID MODEL
+# ===========================
+class PlatformFileId(Base):
+    """Cache of file_id per platform.
+    When a lesson is created on Telegram, its file_id only works on Telegram.
+    On first delivery in Bale the file is re-uploaded and the Bale file_id is stored."""
+    __tablename__ = "platform_file_ids"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lesson_id: Mapped[int] = mapped_column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    block_index: Mapped[int] = mapped_column(Integer, default=0)  # 0 for single-content, N for multi-content
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)  # "telegram" / "bale"
+    file_id: Mapped[str] = mapped_column(String(500), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(50), nullable=False)  # video / photo / audio / etc.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('lesson_id', 'block_index', 'platform', name='uq_platform_file'),
+    )
+
+    def __repr__(self):
+        return f"<PlatformFileId lesson={self.lesson_id} block={self.block_index} {self.platform}>"
 
 
 # ===========================

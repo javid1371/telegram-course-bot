@@ -8,9 +8,12 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 
 import config
 from database import init_db
+from utils.platform import platform_label
+from utils.platform_bot import PlatformBot
 
 
 # Configure logging
@@ -27,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 async def on_startup(bot: Bot):
     """Actions to perform on bot startup"""
-    logger.info("🚀 Starting Telegram Course Bot...")
+    logger.info(f"🚀 Starting Course Bot on {platform_label()}...")
 
     # Validate configuration
     errors = config.validate_config()
@@ -97,10 +100,16 @@ async def main():
     """Main function to run the bot"""
 
     # Initialize bot and dispatcher
-    bot = Bot(
+    # For Bale: use custom API URL via AiohttpSession
+    session = None
+    if config.PLATFORM == "bale":
+        session = AiohttpSession(api=config.API_BASE_URL)
+
+    bot = PlatformBot(
         token=config.BOT_TOKEN,
+        session=session,
         default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML
+            parse_mode=ParseMode.HTML if config.PLATFORM == "telegram" else None
         )
     )
 
@@ -110,9 +119,11 @@ async def main():
     from handlers.registration import router as registration_router
     from handlers.user import router as user_router
     from handlers.admin import router as admin_router
+    from handlers.migration import router as migration_router
 
     dp.include_router(registration_router)
     dp.include_router(admin_router)
+    dp.include_router(migration_router)
     dp.include_router(user_router)  # User router last (catch-all menus)
 
     # Setup scheduler
