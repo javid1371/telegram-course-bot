@@ -100,6 +100,38 @@ services:
       - ./logs:/app/logs
     command: python bot.py
 
+  # Web Admin Panel
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: bale_bot_web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database (same as bot)
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-course_bot}
+      DB_USER: ${DB_USER:-bot_user}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+
+      # Bot token (for file uploads via Bale API)
+      BOT_TOKEN: ${BOT_TOKEN}
+      ADMIN_USER_IDS: ${ADMIN_USER_IDS}
+      PLATFORM: bale
+
+      # Admin panel credentials
+      ADMIN_WEB_USERNAME: ${ADMIN_WEB_USERNAME:-admin}
+      ADMIN_WEB_PASSWORD: ${ADMIN_WEB_PASSWORD:-changeme}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret}
+    ports:
+      - "${WEB_PORT:-8080}:8000"
+    networks:
+      - default
+
 volumes:
   bale_postgres_data:
   bale_redis_data:
