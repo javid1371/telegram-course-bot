@@ -274,6 +274,10 @@ class WebhookSetting(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=3)
     timeout: Mapped[int] = mapped_column(Integer, default=10)  # seconds
 
+    # Event filtering (JSON list of event keys, e.g. ["lead.register", "lesson.complete"])
+    # When NULL or empty → all events are sent to this webhook
+    events: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

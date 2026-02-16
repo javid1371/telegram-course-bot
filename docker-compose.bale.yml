@@ -87,6 +87,10 @@ services:
       SYNC_PEER_URL: ${SYNC_PEER_URL:-}
       SYNC_SECRET: ${SYNC_SECRET:-}
 
+      # ── Cross-platform link (shown to users) ──
+      CROSS_PLATFORM_BOT_LINK: ${CROSS_PLATFORM_BOT_LINK:-}
+      CROSS_PLATFORM_BOT_NAME: ${CROSS_PLATFORM_BOT_NAME:-}
+
       # ── Other ──
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:

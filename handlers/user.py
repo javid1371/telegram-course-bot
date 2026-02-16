@@ -1618,6 +1618,19 @@ async def support(message: Message):
                     )
                 )
 
+        # Cross-platform bot link button
+        cross_link = config.CROSS_PLATFORM_BOT_LINK
+        if cross_link:
+            from messages import CROSS_PLATFORM
+            btn_text = (
+                CROSS_PLATFORM["btn_join_bale"]
+                if config.PLATFORM == "telegram"
+                else CROSS_PLATFORM["btn_join_telegram"]
+            )
+            builder.row(
+                InlineKeyboardButton(text=btn_text, url=cross_link)
+            )
+
         if builder.export():
             await message.answer(text, reply_markup=builder.as_markup())
         else:

@@ -19,6 +19,23 @@ from utils.helpers import parse_tracking_link
 import config
 from messages import REGISTRATION, ADMIN, USER_BUTTONS, GENERAL
 
+
+async def _send_cross_platform_hint(message: Message):
+    """Send cross-platform bot link if configured."""
+    cross_link = config.CROSS_PLATFORM_BOT_LINK
+    if not cross_link:
+        return
+    from messages import CROSS_PLATFORM
+    if config.PLATFORM == "telegram":
+        text = CROSS_PLATFORM["telegram_to_bale"].format(link=cross_link)
+    else:
+        text = CROSS_PLATFORM["bale_to_telegram"].format(link=cross_link)
+    text += "\n" + CROSS_PLATFORM["migrate_hint"]
+    try:
+        await message.answer(text)
+    except Exception:
+        pass
+
 logger = logging.getLogger(__name__)
 router = Router()
 
@@ -97,6 +114,9 @@ async def cmd_start(message: Message, state: FSMContext):
                 REGISTRATION["registration_complete"],
                 reply_markup=get_main_menu_keyboard()
             )
+
+            # Cross-platform hint
+            await _send_cross_platform_hint(message)
 
             # Onboarding + auto-deliver first lesson
             await message.answer(REGISTRATION["onboarding"])
@@ -250,6 +270,9 @@ async def process_registration_field(message: Message, state: FSMContext):
             reply_markup=get_main_menu_keyboard()
         )
 
+        # Cross-platform hint
+        await _send_cross_platform_hint(message)
+
         # Onboarding + auto-deliver first lesson
         await message.answer(REGISTRATION["onboarding"])
         await _auto_send_first_lesson(message, message.from_user.id)
@@ -312,6 +335,9 @@ async def process_select_field(callback: CallbackQuery, state: FSMContext):
             REGISTRATION["registration_complete"],
             reply_markup=get_main_menu_keyboard()
         )
+
+        # Cross-platform hint
+        await _send_cross_platform_hint(callback.message)
 
         # Onboarding + auto-deliver first lesson
         await callback.message.answer(REGISTRATION["onboarding"])

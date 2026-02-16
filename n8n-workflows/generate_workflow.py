@@ -5,7 +5,7 @@ import json
 def build_workflow():
     nodes = []
     connections = {}
-    
+
     def add_node(node):
         nodes.append(node)
 
@@ -528,9 +528,12 @@ const resp=$input.first().json;
 const deals=resp?.Response?.List||[];
 if(!deals.length) return [{json:{skip:true,reason:'deal not found'}}];
 const deal=deals[0];
+const realOwner = deal.OwnerId || prev.ownerId;
 return [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',
-stageId:prev.stageId,ownerId:prev.ownerId,pipelineId:prev.pipelineId,
+stageId:prev.stageId,ownerId:realOwner,pipelineId:prev.pipelineId,
 companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',
+triggerSales:prev.triggerSales,userName:prev.userName,lessonOrder:prev.lessonOrder,
+activityTypeId:prev.activityTypeId,leadScore:prev.leadScore,
 noteText:prev.noteText,CONFIG:prev.CONFIG}}];
 """
 
@@ -569,13 +572,27 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
         }
     })
 
+    # Recover lesson data after Didar API response
+    recover_lesson_code = r"""
+const prev=$('Extract Deal').first().json;
+return [{json:{...prev}}];
+"""
+    add_node({
+        "id": "recover_lesson",
+        "name": "Recover Lesson Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [2050, 300],
+        "parameters": {"jsCode": recover_lesson_code, "mode": "runOnceForAllItems"}
+    })
+
     # IF Trigger Sales — check if bot flagged this lesson as sales trigger
     add_node({
         "id": "if_trigger_sales",
         "name": "IF Trigger Sales",
         "type": "n8n-nodes-base.if",
         "typeVersion": 1,
-        "position": [2050, 300],
+        "position": [2300, 300],
         "parameters": {
             "conditions": {
                 "boolean": [{
@@ -592,7 +609,7 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
         "name": "Sales Call Lesson",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [2300, 200],
+        "position": [2550, 200],
         "credentials": didar_cred,
         "parameters": {
             "resource": "activity",
@@ -604,7 +621,8 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
             "OwnerIdManual": "={{$json.ownerId}}",
             "IsDone": False,
             "additionalFields": {
-                "Note": "={{$json.noteText}}"
+                "Note": "={{$json.noteText}}",
+                "ContactIds": "={{$json.personId}}"
             }
         }
     })
@@ -613,7 +631,8 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
     connect("Prep Lesson", "Search Deal")
     connect("Search Deal", "Extract Deal")
     connect("Extract Deal", "Update Deal Stage")
-    connect("Update Deal Stage", "IF Trigger Sales")
+    connect("Update Deal Stage", "Recover Lesson Data")
+    connect("Recover Lesson Data", "IF Trigger Sales")
     connect("IF Trigger Sales", "Sales Call Lesson", 0)  # true: trigger sales
     # false path (output 1) goes to Prep Respond OK — connected below
 
@@ -852,7 +871,8 @@ const resp=$input.first().json;
 const deals=resp?.Response?.List||[];
 if(!deals.length) return [{json:{skip:true,reason:'deal not found for completion'}}];
 const deal=deals[0];
-return [{json:{...prev,dealId:deal.Id,dealTitle:deal.Title,
+const realOwner = deal.OwnerId || prev.ownerId;
+return [{json:{...prev,ownerId:realOwner,dealId:deal.Id,dealTitle:deal.Title,
 personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',
 companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
 """
@@ -918,8 +938,23 @@ companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
     connect("Router", "Prep Complete", 6)
     connect("Prep Complete", "Search Deal Complete")
     connect("Search Deal Complete", "Extract Deal Complete")
+    # Recover complete data after Didar API response
+    recover_complete_code = r"""
+const prev=$('Extract Deal Complete').first().json;
+return [{json:{...prev}}];
+"""
+    add_node({
+        "id": "recover_complete",
+        "name": "Recover Complete Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [2050, 1150],
+        "parameters": {"jsCode": recover_complete_code, "mode": "runOnceForAllItems"}
+    })
+
     connect("Extract Deal Complete", "Update Deal Complete")
-    connect("Update Deal Complete", "Sales Call")
+    connect("Update Deal Complete", "Recover Complete Data")
+    connect("Recover Complete Data", "Sales Call")
 
     # ═══════════════════════════════════════════════════
     # SPEED CHANGE BRANCH (output 7) — unchanged
@@ -987,7 +1022,7 @@ return [{json: {status: 'ok'}}];
     # ═══════════════════════════════════════════════════
 
     workflow = {
-        "name": "Course Bot - Didar CRM (v4)",
+        "name": "Course Bot - Didar CRM (v5)",
         "nodes": nodes,
         "connections": connections,
         "active": False,

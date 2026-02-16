@@ -225,6 +225,15 @@ class SupportService:
 
         parts.append("\n📩 برای ارتباط مستقیم از دکمه زیر استفاده کنید.")
 
+        # Cross-platform link
+        cross_link = config.CROSS_PLATFORM_BOT_LINK
+        if cross_link:
+            from messages import CROSS_PLATFORM
+            if config.PLATFORM == "telegram":
+                parts.append("\n" + CROSS_PLATFORM["telegram_to_bale"].format(link=cross_link))
+            else:
+                parts.append("\n" + CROSS_PLATFORM["bale_to_telegram"].format(link=cross_link))
+
         return "\n".join(parts)
 
     def get_owner_chat_link(self, owner: Optional[SalesOwner], platform: str = None) -> Optional[str]:

@@ -438,21 +438,56 @@ async def emit(
             logger.debug(f"[EventEmitter] No active webhooks for {event_key}")
             return
 
+        # Snapshot webhook data needed for background tasks (avoid lazy-load issues)
+        webhook_snapshots = []
         for webhook in webhooks:
-            success, response_data = await _send_to_endpoint(webhook, payload, signature)
-            if not success:
-                await _store_failed_event(
-                    webhook.id,
-                    webhook.name,
-                    event_key,
-                    payload,
-                    f"Failed after {MAX_IMMEDIATE_RETRIES} immediate retries",
-                )
-            elif response_data and event_key == "lead.register":
-                # Process owner assignment from webhook response
-                await _process_owner_assignment(user, response_data, session)
+            # ── Events filter: skip if webhook has an events list and this event isn't in it ──
+            if webhook.events:
+                try:
+                    allowed = webhook.events if isinstance(webhook.events, list) else json.loads(webhook.events)
+                    if event_key not in allowed:
+                        logger.debug(
+                            f"[EventEmitter] [{webhook.name}] skipping {event_key} (not in events filter)"
+                        )
+                        continue
+                except (json.JSONDecodeError, TypeError):
+                    pass  # malformed → send anyway
+            webhook_snapshots.append(webhook)
+
+        # Fire webhook deliveries as a background task so bot responses aren't blocked.
+        # The only exception: lead.register needs the response for owner assignment,
+        # so that one is awaited inline.
+        if event_key == "lead.register":
+            for webhook in webhook_snapshots:
+                success, response_data = await _send_to_endpoint(webhook, payload, signature)
+                if not success:
+                    await _store_failed_event(
+                        webhook.id, webhook.name, event_key, payload,
+                        f"Failed after {MAX_IMMEDIATE_RETRIES} immediate retries",
+                    )
+                elif response_data:
+                    await _process_owner_assignment(user, response_data, session)
+        else:
+            asyncio.create_task(
+                _deliver_webhooks_background(webhook_snapshots, event_key, payload, signature)
+            )
+
     except Exception as e:
         logger.error(f"[EventEmitter] emit({event_type}.{action}) error: {e}")
+
+
+async def _deliver_webhooks_background(webhooks, event_key, payload, signature):
+    """Background task: deliver payload to webhook endpoints without blocking the caller."""
+    for webhook in webhooks:
+        try:
+            success, _ = await _send_to_endpoint(webhook, payload, signature)
+            if not success:
+                await _store_failed_event(
+                    webhook.id, webhook.name, event_key, payload,
+                    f"Failed after {MAX_IMMEDIATE_RETRIES} immediate retries",
+                )
+        except Exception as e:
+            logger.error(f"[EventEmitter] background delivery error [{webhook.name}]: {e}")
 
 
 # ───────────────────────── scheduler helpers ─────────────────

@@ -99,11 +99,14 @@ class ReminderService:
 
         return True
 
-    async def send_reminder(self, user: User, message: str = None) -> bool:
-        """Send smart reminder to inactive user"""
+    async def send_reminder(self, user: User, message: str = None):
+        """Send smart reminder to inactive user.
+
+        Returns True on success, None if throttled/skipped, False on failure.
+        """
         if not await self._should_send_reminder(user):
             logger.debug(f"Skipping reminder for user {user.telegram_user_id} (throttled)")
-            return False
+            return None
 
         if not message:
             message = await self._get_smart_reminder(user)
@@ -148,9 +151,9 @@ class ReminderService:
 
         for user in inactive_users:
             result = await self.send_reminder(user)
-            if result:
+            if result is True:
                 sent += 1
-            elif result is False:
+            elif result is None:
                 skipped += 1
             else:
                 failed += 1

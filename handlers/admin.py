@@ -2714,6 +2714,7 @@ async def _save_form_field_and_ask_more(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "form_add_more")
+@admin_only
 async def form_add_more_field(callback: CallbackQuery, state: FSMContext):
     """Add another form field"""
     await callback.answer()
@@ -2725,6 +2726,7 @@ async def form_add_more_field(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "form_done")
+@admin_only
 async def form_builder_done(callback: CallbackQuery, state: FSMContext):
     """Form building complete, continue to description"""
     await callback.answer()
@@ -2908,6 +2910,7 @@ async def process_quiz_options(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("quiz_type:"))
+@admin_only
 async def select_question_type(callback: CallbackQuery, state: FSMContext):
     """Handle question type selection (single or multi)"""
     q_type = callback.data.split(":")[1]
@@ -2943,6 +2946,7 @@ async def select_question_type(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("quizmc:"))
+@admin_only
 async def toggle_multi_correct(callback: CallbackQuery, state: FSMContext):
     """Toggle a correct answer for multi-select question"""
     opt_idx = int(callback.data.split(":")[1])
@@ -2975,6 +2979,7 @@ async def toggle_multi_correct(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "quizmc_done")
+@admin_only
 async def confirm_multi_correct(callback: CallbackQuery, state: FSMContext):
     """Confirm multi-select correct answers and save question"""
     data = await state.get_data()
@@ -3016,6 +3021,7 @@ async def confirm_multi_correct(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("quizc:"))
+@admin_only
 async def select_correct_answer(callback: CallbackQuery, state: FSMContext):
     """Select correct answer for single-select quiz question"""
     correct_idx = int(callback.data.split(":")[1])
@@ -3051,6 +3057,7 @@ async def select_correct_answer(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "quiz_more")
+@admin_only
 async def quiz_add_more(callback: CallbackQuery, state: FSMContext):
     """Add more quiz questions"""
     await callback.answer()
@@ -3399,6 +3406,7 @@ async def company_info_menu(message: Message):
 
 
 @router.callback_query(F.data.startswith("admin:company:"))
+@admin_only
 async def company_info_edit(callback: CallbackQuery, state: FSMContext):
     """Prompt to edit a company info field"""
     key = callback.data.split(":")[2]
@@ -3493,6 +3501,7 @@ async def sales_owners_menu(message: Message):
 
 
 @router.callback_query(F.data.startswith("admin:owner:view:"))
+@admin_only
 async def view_owner(callback: CallbackQuery):
     """View a specific sales owner"""
     from aiogram.types import InlineKeyboardButton
@@ -3544,6 +3553,7 @@ async def view_owner(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "admin:owner:list")
+@admin_only
 async def owner_list_callback(callback: CallbackQuery):
     """Refresh owner list via callback"""
     from aiogram.types import InlineKeyboardButton
@@ -3587,6 +3597,7 @@ async def owner_list_callback(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "admin:owner:add")
+@admin_only
 async def add_owner_start(callback: CallbackQuery, state: FSMContext):
     """Start adding a new sales owner"""
     await callback.answer()
@@ -3710,6 +3721,7 @@ async def add_owner_weight(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("admin:owner:toggle:"))
+@admin_only
 async def toggle_owner(callback: CallbackQuery):
     """Toggle owner active status"""
     owner_id = int(callback.data.split(":")[3])
@@ -3727,6 +3739,7 @@ async def toggle_owner(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("admin:owner:del:"))
+@admin_only
 async def delete_owner_confirm(callback: CallbackQuery):
     """Confirm delete owner"""
     from aiogram.types import InlineKeyboardButton
@@ -3761,6 +3774,7 @@ async def delete_owner_confirm(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("admin:owner:delconfirm:"))
+@admin_only
 async def delete_owner_exec(callback: CallbackQuery):
     """Execute owner deletion"""
     owner_id = int(callback.data.split(":")[3])
@@ -3812,6 +3826,7 @@ async def settings_menu(message: Message):
 
 
 @router.callback_query(F.data == "admin:back")
+@admin_only
 async def go_back(callback: CallbackQuery, state: FSMContext):
     """Go back to admin main menu"""
     await state.clear()

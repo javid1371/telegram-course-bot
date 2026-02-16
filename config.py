@@ -119,6 +119,12 @@ MIGRATION_CODE_TTL = int(os.getenv("MIGRATION_CODE_TTL", "86400"))
 SYNC_PEER_URL = os.getenv("SYNC_PEER_URL", "")  # e.g. https://int-server:8800/sync
 SYNC_SECRET = os.getenv("SYNC_SECRET", "")
 
+# Cross-platform bot link — shown to users so they can also join the other platform
+# On Telegram server set this to the Bale bot link (e.g. https://ble.ir/bot_username)
+# On Bale server set this to the Telegram bot link (e.g. https://t.me/bot_username)
+CROSS_PLATFORM_BOT_LINK = os.getenv("CROSS_PLATFORM_BOT_LINK", "")
+CROSS_PLATFORM_BOT_NAME = os.getenv("CROSS_PLATFORM_BOT_NAME", "")
+
 # Messages - centralized in messages.py, kept here for backward compatibility
 from messages import REGISTRATION, USER, ADMIN as ADMIN_MESSAGES
 MESSAGES = {

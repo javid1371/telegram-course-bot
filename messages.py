@@ -371,6 +371,7 @@ USER = SmartDict("USER", {
         "🔹 /start - شروع یا ورود مجدد\n"
         "🔹 /progress - مشاهده پیشرفت\n"
         "🔹 /referral - لینک دعوت دوستان\n"
+        "🔹 /migrate - انتقال حساب بین تلگرام و بله\n"
         "🔹 /reset - ریست کامل پیشرفت\n"
         "🔹 /help - این راهنما\n\n"
         "📚 <b>ادامه دوره</b> - دریافت درس بعدی\n"
@@ -924,4 +925,22 @@ EXPORT = SmartDict("EXPORT", {
     "col_completion_rate": "نرخ تکمیل (%)",
     "sheet_dashboard": "داشبورد",
     "sheet_lessons": "درس‌ها",
+})
+
+
+# ╔══════════════════════════════════════════════╗
+# ║       پیام‌های بین‌پلتفرمی                    ║
+# ╚══════════════════════════════════════════════╝
+
+CROSS_PLATFORM = SmartDict("CROSS_PLATFORM", {
+    # Shown in support page & after registration  — {link} and {name} substituted at runtime
+    "telegram_to_bale": "🔵 ما در <b>بله</b> هم هستیم!\n👈 {link}",
+    "bale_to_telegram": "✈️ ما در <b>تلگرام</b> هم هستیم!\n👈 {link}",
+
+    # Inline button text
+    "btn_join_bale": "🔵 عضویت در بله",
+    "btn_join_telegram": "✈️ عضویت در تلگرام",
+
+    # Migrate hint shown alongside the cross-platform link
+    "migrate_hint": "🔄 اگر قبلاً در پلتفرم دیگر ثبت‌نام کرده‌اید، با /migrate پیشرفتتان را منتقل کنید.",
 })

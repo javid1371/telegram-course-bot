@@ -1,5 +1,5 @@
 {
-  "name": "Course Bot - Didar CRM (v4)",
+  "name": "Course Bot - Didar CRM (v5)",
   "nodes": [
     {
       "id": "webhook",
@@ -446,7 +446,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true,reason:'deal not found'}}];\nconst deal=deals[0];\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',\nstageId:prev.stageId,ownerId:prev.ownerId,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\nnoteText:prev.noteText,CONFIG:prev.CONFIG}}];\n",
+        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true,reason:'deal not found'}}];\nconst deal=deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',\nstageId:prev.stageId,ownerId:realOwner,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\ntriggerSales:prev.triggerSales,userName:prev.userName,lessonOrder:prev.lessonOrder,\nactivityTypeId:prev.activityTypeId,leadScore:prev.leadScore,\nnoteText:prev.noteText,CONFIG:prev.CONFIG}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -484,12 +484,26 @@
       }
     },
     {
+      "id": "recover_lesson",
+      "name": "Recover Lesson Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev=$('Extract Deal').first().json;\nreturn [{json:{...prev}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
       "id": "if_trigger_sales",
       "name": "IF Trigger Sales",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        2050,
+        2300,
         300
       ],
       "parameters": {
@@ -509,7 +523,7 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2300,
+        2550,
         200
       ],
       "credentials": {
@@ -528,7 +542,8 @@
         "OwnerIdManual": "={{$json.ownerId}}",
         "IsDone": false,
         "additionalFields": {
-          "Note": "={{$json.noteText}}"
+          "Note": "={{$json.noteText}}",
+          "ContactIds": "={{$json.personId}}"
         }
       }
     },
@@ -756,7 +771,7 @@
         1150
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true,reason:'deal not found for completion'}}];\nconst deal=deals[0];\nreturn [{json:{...prev,dealId:deal.Id,dealTitle:deal.Title,\npersonId:deal.PersonId||'00000000-0000-0000-0000-000000000000',\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];\n",
+        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true,reason:'deal not found for completion'}}];\nconst deal=deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{...prev,ownerId:realOwner,dealId:deal.Id,dealTitle:deal.Title,\npersonId:deal.PersonId||'00000000-0000-0000-0000-000000000000',\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -821,6 +836,20 @@
           "Note": "={{$json.noteText}}",
           "ContactIds": "={{$json.personId}}"
         }
+      }
+    },
+    {
+      "id": "recover_complete",
+      "name": "Recover Complete Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        1150
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev=$('Extract Deal Complete').first().json;\nreturn [{json:{...prev}}];\n",
+        "mode": "runOnceForAllItems"
       }
     },
     {
@@ -1165,6 +1194,17 @@
       "main": [
         [
           {
+            "node": "Recover Lesson Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Lesson Data": {
+      "main": [
+        [
+          {
             "node": "IF Trigger Sales",
             "type": "main",
             "index": 0
@@ -1290,6 +1330,17 @@
       ]
     },
     "Update Deal Complete": {
+      "main": [
+        [
+          {
+            "node": "Recover Complete Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Complete Data": {
       "main": [
         [
           {
