@@ -1,6 +1,6 @@
 """add bot text overrides and lesson deadlines
 
-Revision ID: textdead001
+Revision ID: textoverrides001
 Revises: multicourse001
 Create Date: 2026-02-14
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers
-revision = 'textdead001'
+revision = 'textoverrides001'
 down_revision = 'multicourse001'
 branch_labels = None
 depends_on = None
