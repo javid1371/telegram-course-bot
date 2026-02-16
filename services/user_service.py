@@ -28,7 +28,7 @@ class UserService:
             )
         )
         return result.scalar_one_or_none()
-    
+
         async def get_user_by_phone(self, phone: str) -> Optional[User]:
             """Find user by phone number in registration_data (cross-platform sync)"""
             from sqlalchemy import select
