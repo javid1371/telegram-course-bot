@@ -10,6 +10,13 @@ const CONTENT_TYPES = [
   { value: 'voice', label: '🎙 ویس', icon: '🎙' },
   { value: 'photo', label: '🖼 عکس', icon: '🖼' },
   { value: 'document', label: '📎 فایل', icon: '📎' },
+  { value: 'form', label: '📋 فرم', icon: '📋' },
+];
+
+const FORM_FIELD_TYPES = [
+  { value: 'text', label: 'متن' },
+  { value: 'number', label: 'عدد' },
+  { value: 'select', label: 'انتخابی' },
 ];
 
 function ContentBlock({ item, index, total, onMoveUp, onMoveDown, onDelete, onReplace }) {
@@ -42,7 +49,15 @@ function ContentBlock({ item, index, total, onMoveUp, onMoveDown, onDelete, onRe
         {item.type === 'text' && (
           <p className="text-sm text-gray-700 truncate mt-0.5">{item.text?.slice(0, 100)}</p>
         )}
-        {item.type === 'form' && (
+        {item.type === 'form' && item.form_data && (
+          <div className="mt-0.5">
+            <p className="text-sm text-orange-600">📋 فرم — {item.form_data.fields?.length || 0} فیلد</p>
+            <p className="text-xs text-gray-400 truncate">
+              {(item.form_data.fields || []).map(f => f.label).join('، ')}
+            </p>
+          </div>
+        )}
+        {item.type === 'form' && !item.form_data && (
           <p className="text-sm text-orange-600 mt-0.5">📋 فرم</p>
         )}
         {item.file_id && (
@@ -95,6 +110,22 @@ export default function LessonEdit() {
   const [replaceType, setReplaceType] = useState('text');
   const [replaceText, setReplaceText] = useState('');
   const [replaceCaption, setReplaceCaption] = useState('');
+
+  // Form builder state
+  const [formFields, setFormFields] = useState([]);
+  const [showFormFieldModal, setShowFormFieldModal] = useState(false);
+  const [editingFieldIndex, setEditingFieldIndex] = useState(null);
+  const [fieldLabel, setFieldLabel] = useState('');
+  const [fieldType, setFieldType] = useState('text');
+  const [fieldOptions, setFieldOptions] = useState('');
+
+  // Replace form builder state
+  const [replaceFormFields, setReplaceFormFields] = useState([]);
+  const [showReplaceFormFieldModal, setShowReplaceFormFieldModal] = useState(false);
+  const [replaceEditingFieldIndex, setReplaceEditingFieldIndex] = useState(null);
+  const [replaceFieldLabel, setReplaceFieldLabel] = useState('');
+  const [replaceFieldType, setReplaceFieldType] = useState('text');
+  const [replaceFieldOptions, setReplaceFieldOptions] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -183,8 +214,70 @@ export default function LessonEdit() {
         setShowAdd(false);
         toast.success('محتوا اضافه شد');
       } catch (err) { toast.error(err.message); }
+    } else if (addType === 'form') {
+      if (formFields.length === 0) { toast.error('حداقل یک فیلد اضافه کنید'); return; }
+      try {
+        const formData = { fields: formFields };
+        await lessons.saveForm(id, formData);
+        // Reload to get updated contents
+        await load();
+        setFormFields([]);
+        setShowAdd(false);
+        toast.success('فرم ذخیره شد');
+      } catch (err) { toast.error(err.message); }
     }
     // File types handled by handleFileUpload
+  };
+
+  // Form field helpers
+  const openAddFormField = () => {
+    setFieldLabel('');
+    setFieldType('text');
+    setFieldOptions('');
+    setEditingFieldIndex(null);
+    setShowFormFieldModal(true);
+  };
+
+  const openEditFormField = (idx) => {
+    const f = formFields[idx];
+    setFieldLabel(f.label);
+    setFieldType(f.type);
+    setFieldOptions((f.options || []).join('، '));
+    setEditingFieldIndex(idx);
+    setShowFormFieldModal(true);
+  };
+
+  const saveFormField = () => {
+    if (!fieldLabel.trim()) { toast.error('عنوان فیلد خالی است'); return; }
+    const field = {
+      name: editingFieldIndex !== null ? formFields[editingFieldIndex].name : `field_${formFields.length + 1}`,
+      label: fieldLabel.trim(),
+      type: fieldType,
+    };
+    if (fieldType === 'select') {
+      field.options = fieldOptions.split(/[,،]/).map(o => o.trim()).filter(Boolean);
+      if (field.options.length < 2) { toast.error('حداقل ۲ گزینه وارد کنید'); return; }
+    }
+    const newFields = [...formFields];
+    if (editingFieldIndex !== null) {
+      newFields[editingFieldIndex] = field;
+    } else {
+      newFields.push(field);
+    }
+    setFormFields(newFields);
+    setShowFormFieldModal(false);
+  };
+
+  const deleteFormField = (idx) => {
+    setFormFields(formFields.filter((_, i) => i !== idx));
+  };
+
+  const moveFormField = (idx, dir) => {
+    const newFields = [...formFields];
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= newFields.length) return;
+    [newFields[idx], newFields[newIdx]] = [newFields[newIdx], newFields[idx]];
+    setFormFields(newFields);
   };
 
   const handleFileUpload = async (file, contentType, caption = '', isReplace = false, index = -1) => {
@@ -223,6 +316,11 @@ export default function LessonEdit() {
     setReplaceType(item.type);
     setReplaceText(item.text || '');
     setReplaceCaption(item.caption || '');
+    if (item.type === 'form' && item.form_data) {
+      setReplaceFormFields(item.form_data.fields || []);
+    } else {
+      setReplaceFormFields([]);
+    }
   };
 
   const handleReplace = async () => {
@@ -236,7 +334,68 @@ export default function LessonEdit() {
         setReplaceIndex(null);
         toast.success('محتوا جایگزین شد');
       } catch (err) { toast.error(err.message); }
+    } else if (replaceType === 'form') {
+      if (replaceFormFields.length === 0) { toast.error('حداقل یک فیلد اضافه کنید'); return; }
+      try {
+        const formData = { fields: replaceFormFields };
+        await lessons.saveForm(id, formData);
+        await load();
+        setReplaceIndex(null);
+        setReplaceFormFields([]);
+        toast.success('فرم به‌روزرسانی شد');
+      } catch (err) { toast.error(err.message); }
     }
+  };
+
+  // Replace form field helpers
+  const openAddReplaceFormField = () => {
+    setReplaceFieldLabel('');
+    setReplaceFieldType('text');
+    setReplaceFieldOptions('');
+    setReplaceEditingFieldIndex(null);
+    setShowReplaceFormFieldModal(true);
+  };
+
+  const openEditReplaceFormField = (idx) => {
+    const f = replaceFormFields[idx];
+    setReplaceFieldLabel(f.label);
+    setReplaceFieldType(f.type);
+    setReplaceFieldOptions((f.options || []).join('، '));
+    setReplaceEditingFieldIndex(idx);
+    setShowReplaceFormFieldModal(true);
+  };
+
+  const saveReplaceFormField = () => {
+    if (!replaceFieldLabel.trim()) { toast.error('عنوان فیلد خالی است'); return; }
+    const field = {
+      name: replaceEditingFieldIndex !== null ? replaceFormFields[replaceEditingFieldIndex].name : `field_${replaceFormFields.length + 1}`,
+      label: replaceFieldLabel.trim(),
+      type: replaceFieldType,
+    };
+    if (replaceFieldType === 'select') {
+      field.options = replaceFieldOptions.split(/[,،]/).map(o => o.trim()).filter(Boolean);
+      if (field.options.length < 2) { toast.error('حداقل ۲ گزینه وارد کنید'); return; }
+    }
+    const newFields = [...replaceFormFields];
+    if (replaceEditingFieldIndex !== null) {
+      newFields[replaceEditingFieldIndex] = field;
+    } else {
+      newFields.push(field);
+    }
+    setReplaceFormFields(newFields);
+    setShowReplaceFormFieldModal(false);
+  };
+
+  const deleteReplaceFormField = (idx) => {
+    setReplaceFormFields(replaceFormFields.filter((_, i) => i !== idx));
+  };
+
+  const moveReplaceFormField = (idx, dir) => {
+    const newFields = [...replaceFormFields];
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= newFields.length) return;
+    [newFields[idx], newFields[newIdx]] = [newFields[newIdx], newFields[idx]];
+    setReplaceFormFields(newFields);
   };
 
   if (loading) return <div className="text-center py-20 text-gray-500">در حال بارگذاری...</div>;
@@ -349,7 +508,7 @@ export default function LessonEdit() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">📦 محتواهای درس ({contents.length} بلاک)</h2>
           <button
-            onClick={() => { setShowAdd(true); setAddType('text'); setAddText(''); setAddCaption(''); }}
+            onClick={() => { setShowAdd(true); setAddType('text'); setAddText(''); setAddCaption(''); setFormFields([]); }}
             className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition"
           >
             ➕ افزودن محتوا
@@ -399,7 +558,7 @@ export default function LessonEdit() {
               ))}
             </div>
 
-            {addType === 'text' ? (
+            {addType === 'text' && (
               <div>
                 <textarea
                   value={addText}
@@ -415,7 +574,53 @@ export default function LessonEdit() {
                   <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {addType === 'form' && (
+              <div>
+                <p className="text-sm text-gray-600 mb-3">فیلدهای فرم را اضافه کنید. کاربران هنگام مشاهده درس، این فرم را پر خواهند کرد.</p>
+
+                {formFields.length > 0 && (
+                  <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                    {formFields.map((f, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 border rounded-lg">
+                        <div className="flex flex-col gap-0.5">
+                          <button onClick={() => moveFormField(idx, -1)} disabled={idx === 0} className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20">▲</button>
+                          <button onClick={() => moveFormField(idx, 1)} disabled={idx === formFields.length - 1} className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20">▼</button>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{f.label}</p>
+                          <p className="text-xs text-gray-500">
+                            {FORM_FIELD_TYPES.find(t => t.value === f.type)?.label || f.type}
+                            {f.options && ` — ${f.options.join('، ')}`}
+                          </p>
+                        </div>
+                        <button onClick={() => openEditFormField(idx)} className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100">✏️</button>
+                        <button onClick={() => deleteFormField(idx)} className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={openAddFormField}
+                  className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 transition"
+                >
+                  ➕ افزودن فیلد
+                </button>
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={handleAddContent}
+                    disabled={formFields.length === 0}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                  >✅ ذخیره فرم</button>
+                  <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+                </div>
+              </div>
+            )}
+
+            {addType !== 'text' && addType !== 'form' && (
               <div>
                 <div className="mb-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">کپشن (اختیاری)</label>
@@ -479,7 +684,7 @@ export default function LessonEdit() {
               ))}
             </div>
 
-            {replaceType === 'text' ? (
+            {replaceType === 'text' && (
               <div>
                 <textarea
                   value={replaceText}
@@ -493,7 +698,53 @@ export default function LessonEdit() {
                   <button onClick={() => setReplaceIndex(null)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {replaceType === 'form' && (
+              <div>
+                <p className="text-sm text-gray-600 mb-3">فیلدهای فرم را ویرایش کنید.</p>
+
+                {replaceFormFields.length > 0 && (
+                  <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                    {replaceFormFields.map((f, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 border rounded-lg">
+                        <div className="flex flex-col gap-0.5">
+                          <button onClick={() => moveReplaceFormField(idx, -1)} disabled={idx === 0} className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20">▲</button>
+                          <button onClick={() => moveReplaceFormField(idx, 1)} disabled={idx === replaceFormFields.length - 1} className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20">▼</button>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{f.label}</p>
+                          <p className="text-xs text-gray-500">
+                            {FORM_FIELD_TYPES.find(t => t.value === f.type)?.label || f.type}
+                            {f.options && ` — ${f.options.join('، ')}`}
+                          </p>
+                        </div>
+                        <button onClick={() => openEditReplaceFormField(idx)} className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100">✏️</button>
+                        <button onClick={() => deleteReplaceFormField(idx)} className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={openAddReplaceFormField}
+                  className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-orange-400 hover:text-orange-600 transition"
+                >
+                  ➕ افزودن فیلد
+                </button>
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={handleReplace}
+                    disabled={replaceFormFields.length === 0}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700 disabled:opacity-50"
+                  >🔄 ذخیره فرم</button>
+                  <button onClick={() => setReplaceIndex(null)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+                </div>
+              </div>
+            )}
+
+            {replaceType !== 'text' && replaceType !== 'form' && (
               <div>
                 <div className="mb-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">کپشن (اختیاری)</label>
@@ -530,6 +781,118 @@ export default function LessonEdit() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Form field modal (Add) */}
+      {showFormFieldModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowFormFieldModal(false)}>
+          <div className="bg-white rounded-xl p-5 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+            <h4 className="font-semibold mb-3">{editingFieldIndex !== null ? '✏️ ویرایش فیلد' : '➕ فیلد جدید'}</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">عنوان فیلد</label>
+                <input
+                  type="text"
+                  value={fieldLabel}
+                  onChange={(e) => setFieldLabel(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="مثلاً: نام و نام خانوادگی"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">نوع فیلد</label>
+                <div className="flex gap-2">
+                  {FORM_FIELD_TYPES.map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => setFieldType(t.value)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                        fieldType === t.value
+                          ? 'bg-orange-600 text-white border-orange-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >{t.label}</button>
+                  ))}
+                </div>
+              </div>
+              {fieldType === 'select' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">گزینه‌ها (با کاما جدا کنید)</label>
+                  <input
+                    type="text"
+                    value={fieldOptions}
+                    onChange={(e) => setFieldOptions(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="گزینه ۱، گزینه ۲، گزینه ۳"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button onClick={saveFormField} className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700">
+                {editingFieldIndex !== null ? '✅ ذخیره' : '➕ افزودن'}
+              </button>
+              <button onClick={() => setShowFormFieldModal(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Form field modal (Replace) */}
+      {showReplaceFormFieldModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowReplaceFormFieldModal(false)}>
+          <div className="bg-white rounded-xl p-5 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+            <h4 className="font-semibold mb-3">{replaceEditingFieldIndex !== null ? '✏️ ویرایش فیلد' : '➕ فیلد جدید'}</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">عنوان فیلد</label>
+                <input
+                  type="text"
+                  value={replaceFieldLabel}
+                  onChange={(e) => setReplaceFieldLabel(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="مثلاً: نام و نام خانوادگی"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">نوع فیلد</label>
+                <div className="flex gap-2">
+                  {FORM_FIELD_TYPES.map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => setReplaceFieldType(t.value)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                        replaceFieldType === t.value
+                          ? 'bg-orange-600 text-white border-orange-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >{t.label}</button>
+                  ))}
+                </div>
+              </div>
+              {replaceFieldType === 'select' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">گزینه‌ها (با کاما جدا کنید)</label>
+                  <input
+                    type="text"
+                    value={replaceFieldOptions}
+                    onChange={(e) => setReplaceFieldOptions(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="گزینه ۱، گزینه ۲، گزینه ۳"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button onClick={saveReplaceFormField} className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700">
+                {replaceEditingFieldIndex !== null ? '✅ ذخیره' : '➕ افزودن'}
+              </button>
+              <button onClick={() => setShowReplaceFormFieldModal(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+            </div>
           </div>
         </div>
       )}

@@ -103,6 +103,13 @@ export const lessons = {
       method: 'PUT',
       body: JSON.stringify(item),
     }),
+  saveForm: (id, formData) =>
+    request(`/lessons/${id}/form`, {
+      method: 'PUT',
+      body: JSON.stringify(formData),
+    }),
+  deleteForm: (id) =>
+    request(`/lessons/${id}/form`, { method: 'DELETE' }),
 };
 
 // ── Users ────────────────────────────

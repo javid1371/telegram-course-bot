@@ -50,6 +50,17 @@ class ContentItem(BaseModel):
     caption: Optional[str] = None
 
 
+class FormField(BaseModel):
+    name: str
+    label: str
+    type: str  # text, number, select
+    options: Optional[List[str]] = None
+
+
+class FormData(BaseModel):
+    fields: List[FormField]
+
+
 class ContentReorder(BaseModel):
     """Full list of content items in new order."""
     contents: List[ContentItem]
@@ -299,5 +310,65 @@ async def reorder_content(lesson_id: int, old_index: int, new_index: int, _=Depe
         lesson.contents = copy.deepcopy(contents)
         flag_modified(lesson, "contents")
         _sync_primary_fields(lesson, contents)
+        await session.commit()
+        return {"ok": True}
+
+
+# ── Form Data Management ─────────────────────────────────
+
+@router.put("/{lesson_id}/form")
+async def save_form(lesson_id: int, data: FormData, _=Depends(get_current_user)):
+    """Create or update form data for a lesson."""
+    async with async_session_maker() as session:
+        lesson = await session.get(Lesson, lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="درس یافت نشد")
+
+        form_dict = {"fields": [f.model_dump(exclude_none=True) for f in data.fields]}
+        lesson.form_data = form_dict
+        flag_modified(lesson, "form_data")
+
+        # Ensure form appears in contents
+        contents = _get_lesson_contents(lesson)
+        # Check if form block already exists
+        has_form = any(c.get("type") == "form" for c in contents)
+        if not has_form:
+            contents.append({"type": "form", "form_data": form_dict})
+        else:
+            # Update existing form block
+            for c in contents:
+                if c.get("type") == "form":
+                    c["form_data"] = form_dict
+                    break
+
+        lesson.contents = copy.deepcopy(contents)
+        flag_modified(lesson, "contents")
+
+        # Set content_type to FORM if it's the only/first content
+        if contents and contents[0].get("type") == "form":
+            lesson.content_type = ContentType.FORM
+
+        await session.commit()
+        return {"ok": True, "field_count": len(data.fields)}
+
+
+@router.delete("/{lesson_id}/form")
+async def delete_form(lesson_id: int, _=Depends(get_current_user)):
+    """Delete form data from a lesson."""
+    async with async_session_maker() as session:
+        lesson = await session.get(Lesson, lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="درس یافت نشد")
+
+        lesson.form_data = None
+        flag_modified(lesson, "form_data")
+
+        # Remove form block from contents
+        contents = _get_lesson_contents(lesson)
+        contents = [c for c in contents if c.get("type") != "form"]
+        lesson.contents = copy.deepcopy(contents) if contents else None
+        flag_modified(lesson, "contents")
+        _sync_primary_fields(lesson, contents)
+
         await session.commit()
         return {"ok": True}
