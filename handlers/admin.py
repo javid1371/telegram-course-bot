@@ -2728,10 +2728,66 @@ async def form_add_more_field(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "form_done")
 @admin_only
 async def form_builder_done(callback: CallbackQuery, state: FSMContext):
-    """Form building complete, continue to description"""
+    """Form building complete, ask if user wants to add more content or proceed"""
+    await callback.answer()
+
+    data = await state.get_data()
+    form_fields = data.get("form_fields", [])
+    fields_text = "\n".join([f"  {i+1}. {f['label']} ({f['type']})" for i, f in enumerate(form_fields)])
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["add_more_content"], callback_data="form_add_content")
+    )
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_done"], callback_data="form_no_extra_content")
+    )
+
+    await callback.message.answer(
+        f"✅ فرم با {len(form_fields)} فیلد ساخته شد:\n{fields_text}\n\n"
+        "آیا می‌خواهید محتوای دیگری (متن، ویدیو، صوت و...) هم به این درس اضافه کنید؟",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "form_add_content")
+@admin_only
+async def form_add_extra_content(callback: CallbackQuery, state: FSMContext):
+    """After form is built, allow adding other content types"""
+    await callback.answer()
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_text"], callback_data="lesson_type:text"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_video"], callback_data="lesson_type:video"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_audio"], callback_data="lesson_type:audio"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_voice"], callback_data="lesson_type:voice"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_document"], callback_data="lesson_type:document"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_photo"], callback_data="lesson_type:photo"),
+    )
+
+    await callback.message.answer(
+        ADMIN["lesson_select_next_type"],
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(AdminStates.waiting_lesson_content_type)
+
+
+@router.callback_query(F.data == "form_no_extra_content")
+@admin_only
+async def form_no_extra_content(callback: CallbackQuery, state: FSMContext):
+    """No extra content needed, proceed to description"""
     await callback.answer()
     await callback.message.answer(
-        ADMIN["form_enter_description"],
+        ADMIN["lesson_enter_description"],
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(AdminStates.waiting_lesson_description)
