@@ -1,5 +1,5 @@
 {
-  "name": "Course Bot - Didar CRM",
+  "name": "Course Bot - Didar CRM (v2)",
   "nodes": [
     {
       "id": "webhook",
@@ -8,7 +8,7 @@
       "typeVersion": 1,
       "position": [
         250,
-        300
+        500
       ],
       "parameters": {
         "httpMethod": "POST",
@@ -25,10 +25,10 @@
       "typeVersion": 1,
       "position": [
         500,
-        300
+        500
       ],
       "parameters": {
-        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',\n  OWNER_ID: 'YOUR_OWNER_GUID_HERE',\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst action = event.action || '';\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || '',\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
+        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  OWNER_ID: 'YOUR_OWNER_GUID_HERE',\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst action = event.action || '';\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || '',\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -39,7 +39,7 @@
       "typeVersion": 1,
       "position": [
         750,
-        300
+        500
       ],
       "parameters": {
         "dataType": "string",
@@ -90,34 +90,32 @@
       "typeVersion": 1,
       "position": [
         1050,
-        50
+        100
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst lastName=d.user?.last_name||d.user?.first_name||'User';\nreturn [{json:{phone:d.user_phone,firstName:d.user?.first_name||'',lastName,\nownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,stageId:C.STAGES.register,\ncompanyId:C.COMPANY_ID,activityTypeId:C.ACTIVITY_TYPE_SALES,\ncourseTitle:d.course_title,dealTitle:'دوره '+d.course_title+' - '+lastName,CONFIG:C}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst lastName=d.user?.last_name||d.user?.first_name||'User';\nreturn [{json:{phone:d.user_phone,firstName:d.user?.first_name||'',lastName,\nownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,stageId:C.STAGES.register,\ncompanyId:C.COMPANY_ID,activityTypeId:C.ACTIVITY_TYPE_SALES,\ncourseTitle:d.course_title,dealTitle:'دوره '+d.course_title+' - '+lastName,CONFIG:C}}];\n",
+        "mode": "runOnceForAllItems"
       }
     },
     {
       "id": "find_person",
       "name": "Find Person",
-      "type": "n8n-nodes-base.httpRequest",
+      "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
         1300,
-        50
+        100
       ],
-      "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/contact/getbyphonenumber?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"MobilePhone\":\"{{$json.phone}}\"}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true
-            }
-          }
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
         }
+      },
+      "parameters": {
+        "resource": "person",
+        "operation": "getByPhone",
+        "MobilePhone": "={{$json.phone}}"
       }
     },
     {
@@ -127,28 +125,40 @@
       "typeVersion": 1,
       "position": [
         1550,
-        50
+        100
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Register').first().json;\nconst resp=$input.first().json;\nconst found=resp?.body?.Response?.Id||resp?.Response?.Id||null;\nreturn [{json:{...prev,personExists:!!found,personId:found||null}}];\n"
+        "jsCode": "\nconst prev=$('Prep Register').first().json;\nconst resp=$input.first().json;\nconst found=resp?.Response?.Id||null;\nreturn [{json:{...prev,personExists:!!found,personId:found||null}}];\n",
+        "mode": "runOnceForAllItems"
       }
     },
     {
       "id": "create_person",
       "name": "Create Person",
-      "type": "n8n-nodes-base.httpRequest",
+      "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
         1800,
-        50
+        100
       ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
       "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/contact/save?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"Contact\":{\"Type\":\"Person\",\"FirstName\":\"{{$json.firstName}}\",\"LastName\":\"{{$json.lastName}}\",\"MobilePhone\":\"{{$json.phone}}\",\"OwnerId\":\"{{$json.ownerId}}\",\"CompanyId\":\"{{$json.companyId}}\",\"VisibilityType\":\"Owner\"}}",
-        "options": {}
+        "resource": "person",
+        "operation": "create",
+        "FirstName": "={{$json.firstName}}",
+        "LastName": "={{$json.lastName}}",
+        "MobilePhone": "={{$json.phone}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "additionalFields": {
+          "CompanyId": "={{$json.companyId}}",
+          "VisibilityType": "Owner"
+        }
       }
     },
     {
@@ -158,46 +168,75 @@
       "typeVersion": 1,
       "position": [
         2050,
-        50
+        100
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Process Person').first().json;\nconst resp=$input.first().json;\nconst newId=resp?.body?.Response?.Id||resp?.Response?.Id||'';\nreturn [{json:{...prev,personId:prev.personId||newId}}];\n"
+        "jsCode": "\nconst prev=$('Process Person').first().json;\nconst resp=$input.first().json;\nconst newId=resp?.Response?.Id||'';\nreturn [{json:{...prev,personId:prev.personId||newId}}];\n",
+        "mode": "runOnceForAllItems"
       }
     },
     {
       "id": "create_deal",
       "name": "Create Deal",
-      "type": "n8n-nodes-base.httpRequest",
+      "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
         2300,
-        50
+        100
       ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
       "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/deal/save_v2?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"Deal\":{\"Title\":\"{{$json.dealTitle}}\",\"OwnerId\":\"{{$json.ownerId}}\",\"PersonId\":\"{{$json.personId}}\",\"CompanyId\":\"{{$json.companyId}}\",\"PipelineId\":\"{{$json.pipelineId}}\",\"PipelineStageId\":\"{{$json.stageId}}\",\"Status\":\"Open\",\"VisibilityType\":\"Owner\"}}",
-        "options": {}
+        "resource": "deal",
+        "operation": "create",
+        "Title": "={{$json.dealTitle}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "PipelineMode": "manual",
+        "PipelineId": "={{$json.pipelineId}}",
+        "StageMode": "manual",
+        "PipelineStageId": "={{$json.stageId}}",
+        "PersonId": "={{$json.personId}}",
+        "CompanyId": "={{$json.companyId}}",
+        "Status": "Pending",
+        "LabelIds": [],
+        "additionalFields": {
+          "VisibilityType": "Owner"
+        }
       }
     },
     {
       "id": "happy_call",
       "name": "Happy Call",
-      "type": "n8n-nodes-base.httpRequest",
+      "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
         2550,
-        50
+        100
       ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
       "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/activity/save?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"Activity\":{\"Title\":\"تماس خوشامدگویی - {{$json.lastName}}\",\"ActivityTypeId\":\"{{$json.activityTypeId}}\",\"OwnerId\":\"{{$json.ownerId}}\",\"IsDone\":false,\"ContactIds\":[\"{{$json.personId}}\"],\"Note\":\"ثبت نام جدید در دوره {{$json.courseTitle}}\"}}",
-        "options": {}
+        "resource": "activity",
+        "operation": "create",
+        "Title": "=تماس خوشامدگویی - {{$json.lastName}}",
+        "ActivityTypeMode": "manual",
+        "ActivityTypeIdManual": "={{$json.activityTypeId}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "IsDone": false,
+        "additionalFields": {
+          "Note": "=ثبت نام جدید در دوره {{$json.courseTitle}}",
+          "ContactIds": "={{$json.personId}}"
+        }
       }
     },
     {
@@ -207,41 +246,88 @@
       "typeVersion": 1,
       "position": [
         1050,
-        250
+        300
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst stageId=C.STAGES['lesson_'+d.lesson_order]||'';\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,\nnoteText:'درس '+d.lesson_order+' ('+d.lesson_title+') تکمیل - '+d.progress_percent+'%',CONFIG:C}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst stageId=C.STAGES['lesson_'+d.lesson_order]||'';\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,\nnoteText:'درس '+d.lesson_order+' ('+d.lesson_title+') تکمیل - '+d.progress_percent+'%',CONFIG:C}}];\n",
+        "mode": "runOnceForAllItems"
       }
     },
     {
-      "id": "find_deal",
-      "name": "Find Deal",
-      "type": "n8n-nodes-base.httpRequest",
+      "id": "search_deal",
+      "name": "Search Deal",
+      "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
         1300,
-        250
+        300
       ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
       "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/deal/search_v2?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"Criteria\":{\"Keywords\":\"{{$json.courseTitle}}\",\"PipelineId\":\"{{$json.pipelineId}}\",\"Status\":\"Open\"},\"From\":0,\"Limit\":5}",
-        "options": {}
+        "resource": "deal",
+        "operation": "search",
+        "Keywords": "={{$json.courseTitle}}",
+        "Status": "Pending",
+        "PipelineMode": "manual",
+        "PipelineIdManual": "={{$json.pipelineId}}",
+        "PipelineStageIdManual": "",
+        "ContactIds": [],
+        "LabelIds": [],
+        "additionalFields": {
+          "Limit": 5
+        }
       }
     },
     {
-      "id": "update_stage",
-      "name": "Update Stage",
+      "id": "extract_deal",
+      "name": "Extract Deal",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
         1550,
-        250
+        300
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.body?.Response?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true}}];\nconst deal=deals[0];\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId,\nstageId:prev.stageId,ownerId:prev.ownerId,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\nnoteText:prev.noteText,CONFIG:prev.CONFIG}}];\n"
+        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true,reason:'deal not found'}}];\nconst deal=deals[0];\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',\nstageId:prev.stageId,ownerId:prev.ownerId,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\nnoteText:prev.noteText,CONFIG:prev.CONFIG}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "update_deal_stage",
+      "name": "Update Deal Stage",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        300
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "deal",
+        "operation": "update",
+        "Id": "={{$json.dealId}}",
+        "Title": "={{$json.dealTitle}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "PipelineMode": "manual",
+        "PipelineId": "={{$json.pipelineId}}",
+        "StageMode": "manual",
+        "PipelineStageId": "={{$json.stageId}}",
+        "PersonId": "={{$json.personId}}",
+        "CompanyId": "={{$json.companyId}}",
+        "Status": "Pending",
+        "LabelIds": [],
+        "additionalFields": {}
       }
     },
     {
@@ -251,10 +337,73 @@
       "typeVersion": 1,
       "position": [
         1050,
-        450
+        500
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf=[];\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g)cf.push({FieldId:g,Value:String(f[k])});}\nreturn [{json:{phone:d.user_phone,customFields:JSON.stringify(cf),CONFIG:C}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\nreturn [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId:C.OWNER_ID,CONFIG:C}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "find_person_form",
+      "name": "Find Person Form",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        500
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "person",
+        "operation": "getByPhone",
+        "MobilePhone": "={{$json.phone}}"
+      }
+    },
+    {
+      "id": "extract_person_form",
+      "name": "Extract Person Form",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1550,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst personId=resp?.Response?.Id||null;\nconst lastName=resp?.Response?.LastName||'User';\nif(!personId) return [{json:{skip:true,reason:'person not found by phone'}}];\nreturn [{json:{...prev,personId,lastName}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "update_person_fields",
+      "name": "Update Person Fields",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        500
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "person",
+        "operation": "update",
+        "Id": "={{$json.personId}}",
+        "LastName": "={{$json.lastName}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "additionalFields": {
+          "Fields": "={{$json.customFieldsJson}}"
+        }
       }
     },
     {
@@ -264,10 +413,34 @@
       "typeVersion": 1,
       "position": [
         1050,
-        600
+        680
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'کوییز پاس! نمره:'+qr.score+'/'+qr.passing_score+' درس:'+d.lesson_title}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'✅ کوییز پاس! نمره: '+qr.score+'/'+qr.passing_score+' درس: '+d.lesson_title}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "create_note",
+      "name": "Create Note",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        755
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "note",
+        "operation": "create",
+        "ResultNote": "={{$json.noteText}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}"
       }
     },
     {
@@ -277,10 +450,11 @@
       "typeVersion": 1,
       "position": [
         1050,
-        750
+        830
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'کوییز ناموفق! نمره:'+qr.score+'/'+qr.passing_score+' درس:'+d.lesson_title}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'❌ کوییز ناموفق! نمره: '+qr.score+'/'+qr.passing_score+' درس: '+d.lesson_title}}];\n",
+        "mode": "runOnceForAllItems"
       }
     },
     {
@@ -290,10 +464,40 @@
       "typeVersion": 1,
       "position": [
         1050,
-        900
+        980
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nactivityTypeId:C.ACTIVITY_TYPE_FOLLOWUP,\nactivityTitle:'پیگیری عدم فعالیت - '+d.user_name,\nactivityNote:'غیرفعال 48+ ساعت. درس آخر:'+d.lesson_title+' پیشرفت:'+d.progress_percent+'%'}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nactivityTypeId:C.ACTIVITY_TYPE_FOLLOWUP,\nactivityTitle:'پیگیری عدم فعالیت - '+d.user_name,\nactivityNote:'غیرفعال 48+ ساعت. درس آخر: '+d.lesson_title+' پیشرفت: '+d.progress_percent+'%'}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "create_followup",
+      "name": "Create Followup",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        980
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "activity",
+        "operation": "create",
+        "Title": "={{$json.activityTitle}}",
+        "ActivityTypeMode": "manual",
+        "ActivityTypeIdManual": "={{$json.activityTypeId}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "IsDone": false,
+        "additionalFields": {
+          "Note": "={{$json.activityNote}}"
+        }
       }
     },
     {
@@ -303,10 +507,118 @@
       "typeVersion": 1,
       "position": [
         1050,
-        1050
+        1150
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,\nstageId:C.STAGES.sales_wait,ownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,\nnoteText:'دوره '+d.course_title+' تکمیل شد!',\nactivityTitle:'تماس فروش - '+d.user_name}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,\nstageId:C.STAGES.sales_wait,ownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,\nnoteText:'🎉 دوره '+d.course_title+' تکمیل شد!',\nactivityTitle:'تماس فروش - '+d.user_name}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "search_deal_complete",
+      "name": "Search Deal Complete",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        1150
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "deal",
+        "operation": "search",
+        "Keywords": "={{$json.courseTitle}}",
+        "Status": "Pending",
+        "PipelineMode": "manual",
+        "PipelineIdManual": "={{$json.pipelineId}}",
+        "PipelineStageIdManual": "",
+        "ContactIds": [],
+        "LabelIds": [],
+        "additionalFields": {
+          "Limit": 5
+        }
+      }
+    },
+    {
+      "id": "extract_deal_complete",
+      "name": "Extract Deal Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1550,
+        1150
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.Response?.List||[];\nif(!deals.length) return [{json:{skip:true,reason:'deal not found for completion'}}];\nconst deal=deals[0];\nreturn [{json:{...prev,dealId:deal.Id,dealTitle:deal.Title,\npersonId:deal.PersonId||'00000000-0000-0000-0000-000000000000',\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "update_deal_complete",
+      "name": "Update Deal Complete",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        1150
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "deal",
+        "operation": "update",
+        "Id": "={{$json.dealId}}",
+        "Title": "={{$json.dealTitle}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "PipelineMode": "manual",
+        "PipelineId": "={{$json.pipelineId}}",
+        "StageMode": "manual",
+        "PipelineStageId": "={{$json.stageId}}",
+        "PersonId": "={{$json.personId}}",
+        "CompanyId": "={{$json.companyId}}",
+        "Status": "Pending",
+        "LabelIds": [],
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "sales_call",
+      "name": "Sales Call",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        1150
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "activity",
+        "operation": "create",
+        "Title": "={{$json.activityTitle}}",
+        "ActivityTypeMode": "manual",
+        "ActivityTypeIdManual": "={{$json.activityTypeId}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "IsDone": false,
+        "additionalFields": {
+          "Note": "={{$json.noteText}}",
+          "ContactIds": "={{$json.personId}}"
+        }
       }
     },
     {
@@ -316,46 +628,11 @@
       "typeVersion": 1,
       "position": [
         1050,
-        1200
+        1350
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'تغییر سرعت: '+(d.event?.type||'')+' → '+(d.event?.status||'')}}];\n"
-      }
-    },
-    {
-      "id": "create_note",
-      "name": "Create Note",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [
-        1300,
-        650
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/activity/save?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"Activity\":{\"ActivityTypeId\":\"00000000-0000-0000-0000-000000000000\",\"OwnerId\":\"{{$json.ownerId}}\",\"ResultNote\":\"{{$json.noteText}}\",\"IsDone\":true}}",
-        "options": {}
-      }
-    },
-    {
-      "id": "create_followup",
-      "name": "Create Followup",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [
-        1300,
-        900
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "=https://app.didar.me/api/activity/save?apikey={{$json.CONFIG.DIDAR_API_KEY}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"Activity\":{\"Title\":\"{{$json.activityTitle}}\",\"ActivityTypeId\":\"{{$json.activityTypeId}}\",\"OwnerId\":\"{{$json.ownerId}}\",\"IsDone\":false,\"Note\":\"{{$json.activityNote}}\"}}",
-        "options": {}
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'⚡ تغییر سرعت: '+(d.payload?.speed_type||d.event?.type||'')+' → '+(d.payload?.new_speed||d.event?.status||'')}}];\n",
+        "mode": "runOnceForAllItems"
       }
     }
   ],
@@ -512,18 +789,62 @@
       "main": [
         [
           {
-            "node": "Find Deal",
+            "node": "Search Deal",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Find Deal": {
+    "Search Deal": {
       "main": [
         [
           {
-            "node": "Update Stage",
+            "node": "Extract Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Deal": {
+      "main": [
+        [
+          {
+            "node": "Update Deal Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Form": {
+      "main": [
+        [
+          {
+            "node": "Find Person Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Person Form": {
+      "main": [
+        [
+          {
+            "node": "Extract Person Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Person Form": {
+      "main": [
+        [
+          {
+            "node": "Update Person Fields",
             "type": "main",
             "index": 0
           }
@@ -568,6 +889,50 @@
         [
           {
             "node": "Create Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Complete": {
+      "main": [
+        [
+          {
+            "node": "Search Deal Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Deal Complete": {
+      "main": [
+        [
+          {
+            "node": "Extract Deal Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Deal Complete": {
+      "main": [
+        [
+          {
+            "node": "Update Deal Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Deal Complete": {
+      "main": [
+        [
+          {
+            "node": "Sales Call",
             "type": "main",
             "index": 0
           }
