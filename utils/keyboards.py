@@ -86,6 +86,10 @@ def get_admin_main_menu() -> ReplyKeyboardMarkup:
         KeyboardButton(text=ADMIN_BUTTONS["reports"])
     )
     builder.row(
+        KeyboardButton(text=ADMIN_BUTTONS["company_info"]),
+        KeyboardButton(text=ADMIN_BUTTONS["sales_owners"])
+    )
+    builder.row(
         KeyboardButton(text=ADMIN_BUTTONS["webhook"]),
         KeyboardButton(text=ADMIN_BUTTONS["settings"])
     )

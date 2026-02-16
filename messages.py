@@ -183,6 +183,15 @@ ADMIN_BUTTONS = SmartDict("ADMIN_BUTTONS", {
     # ویرایش متن‌ها
     "edit_texts": "📝 ویرایش متن‌ها",
 
+    # اطلاعات شرکت و فروش
+    "company_info": "🏢 اطلاعات شرکت",
+    "sales_owners": "👔 کارشناسان فروش",
+    "add_owner": "➕ افزودن کارشناس",
+    "owner_list": "📋 لیست کارشناسان",
+    "edit_owner": "✏️ ویرایش",
+    "toggle_owner": "🔄 فعال/غیرفعال",
+    "delete_owner": "🗑 حذف کارشناس",
+
     # مهلت درس
     "edit_deadline": "⏰ مهلت دیدن",
 
@@ -351,6 +360,9 @@ USER = SmartDict("USER", {
         "/reset - ریست پیشرفت\n"
         "/help - راهنما"
     ),
+    "support_owner_assigned": "\n\n👤 <b>کارشناس اختصاصی شما:</b> {owner_name}",
+    "support_chat_btn": "💬 چت با کارشناس",
+    "support_no_owner": "",
 
     # راهنما
     "help_text": (
@@ -718,6 +730,37 @@ ADMIN = SmartDict("ADMIN", {
     "lesson_deadline_info": "⏰ مهلت دیدن: {deadline}",
     "lesson_deadline_none": "بدون مهلت",
     "lesson_deadline_hours": "{hours} ساعت",
+
+    # اطلاعات شرکت
+    "company_info_header": "🏢 <b>اطلاعات شرکت</b>\n\nاطلاعاتی که در بخش پشتیبانی به کاربران نمایش داده می‌شود:\n",
+    "company_info_edit_prompt": "📝 مقدار جدید «{label}» را وارد کنید:\n\n(برای خالی کردن، عبارت 'clear' را بفرستید)",
+    "company_info_saved": "✅ «{label}» ذخیره شد.",
+    "company_info_cleared": "✅ «{label}» پاک شد.",
+
+    # کارشناسان فروش
+    "owners_header": "👔 <b>کارشناسان فروش</b>\n\nکارشناسانی که به لیدهای جدید اختصاص داده می‌شوند:",
+    "owners_empty": "📭 هنوز کارشناسی اضافه نشده.",
+    "owner_info_header": "👔 <b>کارشناس فروش</b>\n",
+    "owner_info_name": "📛 نام: {name}",
+    "owner_info_didar_id": "🆔 شناسه دیدار: {didar_id}",
+    "owner_info_phone": "📞 تلفن: {phone}",
+    "owner_info_internal": "📟 داخلی: {number}",
+    "owner_info_telegram": "✈️ تلگرام: @{username}",
+    "owner_info_bale": "💬 بله: @{username}",
+    "owner_info_weight": "⚖️ وزن: {weight}",
+    "owner_info_status": "📌 وضعیت: {status}",
+    "owner_info_assignments": "📊 تخصیص‌ها: {count}",
+    "owner_add_name": "👔 <b>افزودن کارشناس جدید</b>\n\nنام کارشناس را وارد کنید:",
+    "owner_add_phone": "📞 شماره تلفن کارشناس (یا /skip):",
+    "owner_add_telegram": "✈️ یوزرنام تلگرام (بدون @) (یا /skip):",
+    "owner_add_bale": "💬 یوزرنام بله (بدون @) (یا /skip):",
+    "owner_add_didar": "🆔 شناسه Owner در دیدار CRM (یا /skip):",
+    "owner_add_weight": "⚖️ وزن (عدد ۱ تا ۱۰، بزرگ‌تر = سهم بیشتر):\n\nپیش‌فرض: ۱",
+    "owner_added": "✅ کارشناس «{name}» اضافه شد.",
+    "owner_toggled": "🔄 کارشناس «{name}» {status} شد.",
+    "owner_deleted": "✅ کارشناس حذف شد.",
+    "owner_weight_error": "⚠️ لطفاً عددی بین ۱ تا ۱۰ وارد کنید.",
+    "owner_delete_confirm": "⚠️ آیا از حذف کارشناس «{name}» اطمینان دارید؟",
 })
 
 

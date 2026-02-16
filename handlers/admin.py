@@ -19,6 +19,7 @@ from services.broadcast_service import BroadcastService
 from services.analytics_service import AnalyticsService
 from services.export_service import ExportService
 from services.webhook_service import WebhookService
+from services.support_service import SupportService, COMPANY_KEY_LABELS
 from utils.keyboards import (
     get_admin_main_menu, get_lesson_management_keyboard,
     get_lesson_list_keyboard, get_lesson_actions_keyboard,
@@ -136,6 +137,17 @@ class AdminStates(StatesGroup):
 
     # Fast track delay
     waiting_fast_track_delay = State()
+
+    # Company info editing
+    waiting_company_info_value = State()
+
+    # Sales owner creation
+    waiting_owner_name = State()
+    waiting_owner_phone = State()
+    waiting_owner_telegram = State()
+    waiting_owner_bale = State()
+    waiting_owner_didar = State()
+    waiting_owner_weight = State()
 
 
 # ===========================
@@ -3342,6 +3354,417 @@ async def test_webhooks(callback: CallbackQuery):
             text += f"{status} {wh.name}: {detail}\n"
 
         await callback.message.edit_text(text, reply_markup=get_webhook_keyboard())
+
+
+# ===========================
+# COMPANY INFO MANAGEMENT
+# ===========================
+
+@router.message(F.text == ADMIN_BUTTONS["company_info"])
+@admin_only
+@log_errors
+async def company_info_menu(message: Message):
+    """Show company info management"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        info = await support_service.get_company_info()
+
+    text = ADMIN["company_info_header"] + "\n"
+    builder = InlineKeyboardBuilder()
+
+    for key, label in COMPANY_KEY_LABELS.items():
+        val = info.get(key, '')
+        display = val[:50] if val else '—'
+        text += f"\n{label}: {display}"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"✏️ {label}",
+                callback_data=f"admin:company:{key}",
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
+    )
+    await message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("admin:company:"))
+async def company_info_edit(callback: CallbackQuery, state: FSMContext):
+    """Prompt to edit a company info field"""
+    key = callback.data.split(":")[2]
+    label = COMPANY_KEY_LABELS.get(key, key)
+    await callback.answer()
+
+    await state.set_state(AdminStates.waiting_company_info_value)
+    await state.update_data(company_key=key, company_label=label)
+    await callback.message.answer(
+        ADMIN["company_info_edit_prompt"].format(label=label),
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(AdminStates.waiting_company_info_value)
+@admin_only
+@log_errors
+async def company_info_save(message: Message, state: FSMContext):
+    """Save company info value"""
+    data = await state.get_data()
+    key = data.get('company_key')
+    label = data.get('company_label', key)
+
+    if message.text == USER_BUTTONS["cancel"]:
+        await state.clear()
+        await message.answer(GENERAL["cancelled"], reply_markup=get_admin_main_menu())
+        return
+
+    value = message.text.strip()
+    if value.lower() == 'clear':
+        value = ''
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        await support_service.set_company_info(key, value)
+
+    await state.clear()
+    if value:
+        await message.answer(
+            ADMIN["company_info_saved"].format(label=label),
+            reply_markup=get_admin_main_menu(),
+        )
+    else:
+        await message.answer(
+            ADMIN["company_info_cleared"].format(label=label),
+            reply_markup=get_admin_main_menu(),
+        )
+
+
+# ===========================
+# SALES OWNERS MANAGEMENT
+# ===========================
+
+@router.message(F.text == ADMIN_BUTTONS["sales_owners"])
+@admin_only
+@log_errors
+async def sales_owners_menu(message: Message):
+    """Show sales owners management"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        owners = await support_service.get_all_owners()
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN_BUTTONS["add_owner"],
+            callback_data="admin:owner:add",
+        )
+    )
+
+    if not owners:
+        text = ADMIN["owners_header"] + "\n" + ADMIN["owners_empty"]
+    else:
+        text = ADMIN["owners_header"] + "\n"
+        for owner in owners:
+            status = "✅" if owner.is_active else "❌"
+            text += f"\n{status} {owner.name} (w={owner.weight}, #{owner.total_assignments})"
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"👔 {owner.name}",
+                    callback_data=f"admin:owner:view:{owner.id}",
+                )
+            )
+
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
+    )
+    await message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("admin:owner:view:"))
+async def view_owner(callback: CallbackQuery):
+    """View a specific sales owner"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    owner_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        owner = await support_service.get_owner_by_id(owner_id)
+
+    if not owner:
+        await callback.message.answer(GENERAL["not_found"])
+        return
+
+    status = GENERAL["status_active"] if owner.is_active else GENERAL["status_inactive"]
+    text = ADMIN["owner_info_header"]
+    text += ADMIN["owner_info_name"].format(name=owner.name) + "\n"
+    if owner.didar_owner_id:
+        text += ADMIN["owner_info_didar_id"].format(didar_id=owner.didar_owner_id) + "\n"
+    if owner.phone:
+        text += ADMIN["owner_info_phone"].format(phone=owner.phone) + "\n"
+    if owner.internal_number:
+        text += ADMIN["owner_info_internal"].format(number=owner.internal_number) + "\n"
+    if owner.telegram_username:
+        text += ADMIN["owner_info_telegram"].format(username=owner.telegram_username) + "\n"
+    if owner.bale_username:
+        text += ADMIN["owner_info_bale"].format(username=owner.bale_username) + "\n"
+    text += ADMIN["owner_info_weight"].format(weight=owner.weight) + "\n"
+    text += ADMIN["owner_info_status"].format(status=status) + "\n"
+    text += ADMIN["owner_info_assignments"].format(count=owner.total_assignments)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN_BUTTONS["toggle_owner"],
+            callback_data=f"admin:owner:toggle:{owner.id}",
+        ),
+        InlineKeyboardButton(
+            text=ADMIN_BUTTONS["delete_owner"],
+            callback_data=f"admin:owner:del:{owner.id}",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:owner:list")
+    )
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "admin:owner:list")
+async def owner_list_callback(callback: CallbackQuery):
+    """Refresh owner list via callback"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        owners = await support_service.get_all_owners()
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=ADMIN_BUTTONS["add_owner"],
+            callback_data="admin:owner:add",
+        )
+    )
+
+    if not owners:
+        text = ADMIN["owners_header"] + "\n" + ADMIN["owners_empty"]
+    else:
+        text = ADMIN["owners_header"] + "\n"
+        for owner in owners:
+            status = "✅" if owner.is_active else "❌"
+            text += f"\n{status} {owner.name} (w={owner.weight}, #{owner.total_assignments})"
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"👔 {owner.name}",
+                    callback_data=f"admin:owner:view:{owner.id}",
+                )
+            )
+
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
+    )
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except TelegramBadRequest:
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "admin:owner:add")
+async def add_owner_start(callback: CallbackQuery, state: FSMContext):
+    """Start adding a new sales owner"""
+    await callback.answer()
+    await state.set_state(AdminStates.waiting_owner_name)
+    await callback.message.answer(
+        ADMIN["owner_add_name"],
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(AdminStates.waiting_owner_name)
+@admin_only
+@log_errors
+async def add_owner_name(message: Message, state: FSMContext):
+    """Receive owner name"""
+    if message.text == USER_BUTTONS["cancel"]:
+        await state.clear()
+        await message.answer(GENERAL["cancelled"], reply_markup=get_admin_main_menu())
+        return
+
+    await state.update_data(owner_name=message.text.strip())
+    await state.set_state(AdminStates.waiting_owner_phone)
+    await message.answer(ADMIN["owner_add_phone"])
+
+
+@router.message(AdminStates.waiting_owner_phone)
+@admin_only
+@log_errors
+async def add_owner_phone(message: Message, state: FSMContext):
+    """Receive owner phone"""
+    text = message.text.strip()
+    if text == "/skip":
+        await state.update_data(owner_phone=None)
+    else:
+        await state.update_data(owner_phone=text)
+
+    await state.set_state(AdminStates.waiting_owner_telegram)
+    await message.answer(ADMIN["owner_add_telegram"])
+
+
+@router.message(AdminStates.waiting_owner_telegram)
+@admin_only
+@log_errors
+async def add_owner_telegram(message: Message, state: FSMContext):
+    """Receive owner Telegram username"""
+    text = message.text.strip()
+    if text == "/skip":
+        await state.update_data(owner_telegram=None)
+    else:
+        await state.update_data(owner_telegram=text.lstrip('@'))
+
+    await state.set_state(AdminStates.waiting_owner_bale)
+    await message.answer(ADMIN["owner_add_bale"])
+
+
+@router.message(AdminStates.waiting_owner_bale)
+@admin_only
+@log_errors
+async def add_owner_bale(message: Message, state: FSMContext):
+    """Receive owner Bale username"""
+    text = message.text.strip()
+    if text == "/skip":
+        await state.update_data(owner_bale=None)
+    else:
+        await state.update_data(owner_bale=text.lstrip('@'))
+
+    await state.set_state(AdminStates.waiting_owner_didar)
+    await message.answer(ADMIN["owner_add_didar"])
+
+
+@router.message(AdminStates.waiting_owner_didar)
+@admin_only
+@log_errors
+async def add_owner_didar(message: Message, state: FSMContext):
+    """Receive owner Didar CRM ID"""
+    text = message.text.strip()
+    if text == "/skip":
+        await state.update_data(owner_didar=None)
+    else:
+        await state.update_data(owner_didar=text)
+
+    await state.set_state(AdminStates.waiting_owner_weight)
+    await message.answer(ADMIN["owner_add_weight"])
+
+
+@router.message(AdminStates.waiting_owner_weight)
+@admin_only
+@log_errors
+async def add_owner_weight(message: Message, state: FSMContext):
+    """Receive owner weight and create"""
+    text = message.text.strip()
+    if text == "/skip":
+        weight = 1
+    else:
+        try:
+            weight = int(text)
+            if weight < 1 or weight > 10:
+                raise ValueError
+        except ValueError:
+            await message.answer(ADMIN["owner_weight_error"])
+            return
+
+    data = await state.get_data()
+    await state.clear()
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        owner = await support_service.create_owner(
+            name=data['owner_name'],
+            phone=data.get('owner_phone'),
+            telegram_username=data.get('owner_telegram'),
+            bale_username=data.get('owner_bale'),
+            didar_owner_id=data.get('owner_didar'),
+            weight=weight,
+        )
+
+    await message.answer(
+        ADMIN["owner_added"].format(name=owner.name),
+        reply_markup=get_admin_main_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:owner:toggle:"))
+async def toggle_owner(callback: CallbackQuery):
+    """Toggle owner active status"""
+    owner_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        owner = await support_service.toggle_owner(owner_id)
+
+    if owner:
+        status = GENERAL["status_active"] if owner.is_active else GENERAL["status_inactive"]
+        await callback.message.answer(
+            ADMIN["owner_toggled"].format(name=owner.name, status=status)
+        )
+
+
+@router.callback_query(F.data.startswith("admin:owner:del:"))
+async def delete_owner_confirm(callback: CallbackQuery):
+    """Confirm delete owner"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    owner_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        owner = await support_service.get_owner_by_id(owner_id)
+
+    if not owner:
+        await callback.message.answer(GENERAL["not_found"])
+        return
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=GENERAL["confirm_yes"],
+            callback_data=f"admin:owner:delconfirm:{owner_id}",
+        ),
+        InlineKeyboardButton(
+            text=GENERAL["confirm_no"],
+            callback_data="admin:owner:list",
+        ),
+    )
+    await callback.message.edit_text(
+        ADMIN["owner_delete_confirm"].format(name=owner.name),
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:owner:delconfirm:"))
+async def delete_owner_exec(callback: CallbackQuery):
+    """Execute owner deletion"""
+    owner_id = int(callback.data.split(":")[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        await support_service.delete_owner(owner_id)
+
+    await callback.message.edit_text(ADMIN["owner_deleted"])
 
 
 # ===========================

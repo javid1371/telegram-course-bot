@@ -200,8 +200,12 @@ async def _send_to_endpoint(
     webhook: WebhookSetting,
     payload: dict,
     signature: str,
-) -> bool:
-    """Send payload to a single webhook endpoint with retries + backoff."""
+) -> tuple:
+    """
+    Send payload to a single webhook endpoint with retries + backoff.
+
+    Returns (success: bool, response_data: dict | None)
+    """
     headers = dict(webhook.headers or {})
     headers.setdefault("Content-Type", "application/json")
 
@@ -227,7 +231,13 @@ async def _send_to_endpoint(
                             f"[EventEmitter] [{webhook.name}] {event_key} "
                             f"sent (HTTP {response.status})"
                         )
-                        return True
+                        # Try to parse JSON response body
+                        response_data = None
+                        try:
+                            response_data = await response.json()
+                        except Exception:
+                            pass
+                        return True, response_data
                     else:
                         logger.warning(
                             f"[EventEmitter] [{webhook.name}] HTTP {response.status} "
@@ -243,7 +253,7 @@ async def _send_to_endpoint(
         if attempt < MAX_IMMEDIATE_RETRIES - 1:
             await asyncio.sleep(RETRY_BASE_DELAY * (2 ** attempt))
 
-    return False
+    return False, None
 
 
 # ───────────────────────── failed event queue ────────────────
@@ -276,6 +286,48 @@ async def _store_failed_event(
             )
     except Exception as e:
         logger.error(f"[EventEmitter] Failed to store failed event: {e}")
+
+
+# ───────────────────────── owner assignment ──────────────────
+
+async def _process_owner_assignment(user, response_data: dict, session):
+    """
+    Parse owner info from webhook response and assign to user.
+
+    Expected response format from n8n::
+
+        {
+            "status": "ok",
+            "owner": {
+                "id": "didar-owner-id",
+                "name": "Owner Name"
+            }
+        }
+    """
+    try:
+        owner_block = response_data.get("owner")
+        if not owner_block:
+            return
+
+        owner_id = owner_block.get("id")
+        owner_name = owner_block.get("name")
+
+        if not owner_name and not owner_id:
+            return
+
+        from services.support_service import SupportService
+        support_service = SupportService(session)
+        await support_service.assign_owner_to_user(
+            user=user,
+            didar_owner_id=owner_id,
+            owner_name=owner_name,
+        )
+        logger.info(
+            f"[EventEmitter] Owner assigned from webhook response: "
+            f"{owner_name} (didar_id={owner_id}) → user {user.telegram_user_id}"
+        )
+    except Exception as e:
+        logger.error(f"[EventEmitter] _process_owner_assignment error: {e}")
 
 
 # ───────────────────────── public API ────────────────────────
@@ -340,7 +392,7 @@ async def emit(
             return
 
         for webhook in webhooks:
-            success = await _send_to_endpoint(webhook, payload, signature)
+            success, response_data = await _send_to_endpoint(webhook, payload, signature)
             if not success:
                 await _store_failed_event(
                     webhook.id,
@@ -349,6 +401,9 @@ async def emit(
                     payload,
                     f"Failed after {MAX_IMMEDIATE_RETRIES} immediate retries",
                 )
+            elif response_data and event_key == "lead.register":
+                # Process owner assignment from webhook response
+                await _process_owner_assignment(user, response_data, session)
     except Exception as e:
         logger.error(f"[EventEmitter] emit({event_type}.{action}) error: {e}")
 
@@ -402,7 +457,7 @@ async def retry_failed_events(session: AsyncSession):
         if event.payload:
             signature = event.payload.get("security", {}).get("signature", "")
 
-        success = await _send_to_endpoint(webhook, event.payload, signature)
+        success, _ = await _send_to_endpoint(webhook, event.payload, signature)
 
         if success:
             event.resolved_at = now

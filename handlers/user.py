@@ -1589,8 +1589,39 @@ async def about_course(message: Message):
 @router.message(F.text == USER_BUTTONS["support"])
 @log_errors
 async def support(message: Message):
-    """Show support info"""
-    await message.answer(USER["support_text"])
+    """Show support info with company details and assigned owner"""
+    from services.support_service import SupportService
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        support_service = SupportService(session)
+
+        user = await user_service.get_user_by_telegram_id(message.from_user.id)
+        company_info = await support_service.get_company_info()
+
+        # Build support text with company info
+        text = support_service.build_support_text(company_info, user)
+
+        builder = InlineKeyboardBuilder()
+
+        # If user has an assigned owner, show direct chat button
+        if user and user.assigned_owner_id:
+            owner = await support_service.get_owner_by_id(user.assigned_owner_id)
+            chat_link = support_service.get_owner_chat_link(owner)
+            if chat_link:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=USER["support_chat_btn"],
+                        url=chat_link,
+                    )
+                )
+
+        if builder.export():
+            await message.answer(text, reply_markup=builder.as_markup())
+        else:
+            await message.answer(text)
 
 
 @router.message(Command("progress"))

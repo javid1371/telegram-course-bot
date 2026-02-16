@@ -151,6 +151,11 @@ class User(Base):
     referred_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
     source_campaign: Mapped[Optional[str]] = mapped_column(String(100))
 
+    # Assigned sales owner (set from webhook response)
+    assigned_owner_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sales_owners.id", ondelete="SET NULL"))
+    assigned_owner_name: Mapped[Optional[str]] = mapped_column(String(255))
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -159,6 +164,7 @@ class User(Base):
     progress_records: Mapped[List["UserProgress"]] = relationship("UserProgress", back_populates="user", cascade="all, delete-orphan")
     current_lesson: Mapped[Optional["Lesson"]] = relationship("Lesson", foreign_keys=[current_lesson_id])
     current_course_rel: Mapped[Optional["Course"]] = relationship("Course", foreign_keys=[current_course_id])
+    assigned_owner: Mapped[Optional["SalesOwner"]] = relationship("SalesOwner", back_populates="assigned_users")
 
     # Unique constraint: same messenger user ID can exist on both platforms
     __table_args__ = (
@@ -500,3 +506,46 @@ class BotText(Base):
 
     def __repr__(self):
         return f"<BotText {self.category}.{self.key}>"
+
+# ===========================
+# COMPANY INFO MODEL
+# ===========================
+class CompanyInfo(Base):
+    """Key-value store for company contact information (admin-editable)."""
+    __tablename__ = "company_info"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<CompanyInfo {self.key}={self.value[:30]}>"
+
+
+# ===========================
+# SALES OWNER MODEL
+# ===========================
+class SalesOwner(Base):
+    """Sales team member for weighted assignment via CRM workflow."""
+    __tablename__ = "sales_owners"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    didar_owner_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[Optional[str]] = mapped_column(String(50))
+    internal_number: Mapped[Optional[str]] = mapped_column(String(20))
+    telegram_username: Mapped[Optional[str]] = mapped_column(String(255))
+    bale_username: Mapped[Optional[str]] = mapped_column(String(255))
+    weight: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    total_assignments: Mapped[int] = mapped_column(Integer, default=0)
+    last_assignment_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    assigned_users: Mapped[List["User"]] = relationship("User", back_populates="assigned_owner")
+
+    def __repr__(self):
+        return f"<SalesOwner {self.name} w={self.weight}>"

@@ -1,5 +1,5 @@
 {
-  "name": "Course Bot - Didar CRM (v2)",
+  "name": "Course Bot - Didar CRM (v3)",
   "nodes": [
     {
       "id": "webhook",
@@ -13,8 +13,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "course-bot",
-        "responseMode": "onReceived",
-        "responseCode": 200,
+        "responseMode": "lastNode",
         "options": {}
       }
     },
@@ -28,7 +27,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  OWNER_ID: 'YOUR_OWNER_GUID_HERE',\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst action = event.action || '';\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || '',\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
+        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  // Weighted owner list — weight = relative chance of assignment\n  OWNERS: [\n    {id: 'OWNER_GUID_1', name: 'Owner 1', weight: 3},\n    {id: 'OWNER_GUID_2', name: 'Owner 2', weight: 2},\n    // Add more owners as needed\n  ],\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || (user.registration_data?.phone || ''),\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -93,7 +92,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst lastName=d.user?.last_name||d.user?.first_name||'User';\nreturn [{json:{phone:d.user_phone,firstName:d.user?.first_name||'',lastName,\nownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,stageId:C.STAGES.register,\ncompanyId:C.COMPANY_ID,activityTypeId:C.ACTIVITY_TYPE_SALES,\ncourseTitle:d.course_title,dealTitle:'دوره '+d.course_title+' - '+lastName,CONFIG:C}}];\n",
+        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\n// ── Weighted owner selection ──\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  // Build weighted pool\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user?.last_name || d.user?.first_name || 'User';\nconst firstName = d.user?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || '');\n\nreturn [{json: {\n  phone, firstName, lastName,\n  ownerId, ownerName,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '\\u062f\\u0648\\u0631\\u0647 ' + d.course_title + ' - ' + lastName,\n  CONFIG: C\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -128,7 +127,41 @@
         100
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Register').first().json;\nconst resp=$input.first().json;\nconst found=resp?.Response?.Id||null;\nreturn [{json:{...prev,personExists:!!found,personId:found||null}}];\n",
+        "jsCode": "\nconst prev = $('Prep Register').first().json;\nconst resp = $input.first().json;\nconst found = resp?.Response?.Id || null;\nreturn [{json: {...prev, personExists: !!found, personId: found || null}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "if_person_exists",
+      "name": "IF Person Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.personExists}}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "use_existing_person",
+      "name": "Use Existing Person",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst d = $input.first().json;\n// Person already exists in CRM, use their ID\nreturn [{json: {...d}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -138,8 +171,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        1800,
-        100
+        2050,
+        200
       ],
       "credentials": {
         "didarApi": {
@@ -162,16 +195,94 @@
       }
     },
     {
-      "id": "get_person_id",
-      "name": "Get Person ID",
+      "id": "get_new_person_id",
+      "name": "Get New Person ID",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        2050,
+        2300,
+        200
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev = $('Process Person').first().json;\nconst resp = $input.first().json;\nconst newId = resp?.Response?.Id || '';\nreturn [{json: {...prev, personId: newId, personExists: false}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "search_deal_reg",
+      "name": "Search Deal Reg",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        2550,
+        100
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "deal",
+        "operation": "search",
+        "Keywords": "={{$json.courseTitle}}",
+        "Status": "Pending",
+        "PipelineMode": "manual",
+        "PipelineIdManual": "={{$json.pipelineId}}",
+        "PipelineStageIdManual": "",
+        "ContactIds": [],
+        "LabelIds": [],
+        "additionalFields": {
+          "Limit": 5
+        }
+      }
+    },
+    {
+      "id": "process_deal_reg",
+      "name": "Process Deal Reg",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2800,
         100
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Process Person').first().json;\nconst resp=$input.first().json;\nconst newId=resp?.Response?.Id||'';\nreturn [{json:{...prev,personId:prev.personId||newId}}];\n",
+        "jsCode": "\n// Get person data from whichever path ran\nlet prev;\ntry { prev = $('Use Existing Person').first().json; }\ncatch(e) { prev = $('Get New Person ID').first().json; }\n\nconst resp = $input.first().json;\nconst deals = resp?.Response?.List || [];\n// Look for an existing open deal with matching personId\nconst existingDeal = deals.find(d => d.PersonId === prev.personId && d.Status === 'Pending');\n\nreturn [{json: {\n  ...prev,\n  dealExists: !!existingDeal,\n  existingDealId: existingDeal?.Id || null\n}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "if_deal_exists",
+      "name": "IF Deal Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3050,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.dealExists}}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "skip_deal",
+      "name": "Skip Deal Create",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        3300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst d = $input.first().json;\n// Deal already exists, skip creation\nreturn [{json: {...d}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -181,8 +292,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2300,
-        100
+        3300,
+        200
       ],
       "credentials": {
         "didarApi": {
@@ -210,12 +321,26 @@
       }
     },
     {
+      "id": "after_create_deal",
+      "name": "After Create Deal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        3550,
+        200
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev = $('Process Deal Reg').first().json;\nconst resp = $input.first().json;\nconst newDealId = resp?.Response?.Id || '';\nreturn [{json: {...prev, dealId: newDealId}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
       "id": "happy_call",
       "name": "Happy Call",
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2550,
+        3800,
         100
       ],
       "credentials": {
@@ -240,6 +365,34 @@
       }
     },
     {
+      "id": "prep_response",
+      "name": "Prep Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        4050,
+        100
+      ],
+      "parameters": {
+        "jsCode": "\nconst d = $input.first().json;\n// Prepare final response with owner info for the bot\nlet prev;\ntry { prev = $('Process Deal Reg').first().json; }\ncatch(e) { prev = $('Skip Deal Create').first().json || $('After Create Deal').first().json; }\nconst ownerId = prev?.ownerId || d?.ownerId || '';\nconst ownerName = prev?.ownerName || d?.ownerName || '';\nreturn [{json: {status: 'ok', owner: {id: ownerId, name: ownerName}}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond_register",
+      "name": "Respond Register",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        4300,
+        100
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      }
+    },
+    {
       "id": "prep_lesson",
       "name": "Prep Lesson",
       "type": "n8n-nodes-base.code",
@@ -249,7 +402,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst stageId=C.STAGES['lesson_'+d.lesson_order]||'';\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,\nnoteText:'درس '+d.lesson_order+' ('+d.lesson_title+') تکمیل - '+d.progress_percent+'%',CONFIG:C}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst stageId=C.STAGES['lesson_'+d.lesson_order]||'';\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -340,7 +493,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\nreturn [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId:C.OWNER_ID,CONFIG:C}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,CONFIG:C}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -416,7 +569,7 @@
         680
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'✅ کوییز پاس! نمره: '+qr.score+'/'+qr.passing_score+' درس: '+d.lesson_title}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,ownerId,CONFIG:C,\nnoteText:'\\u2705 \\u06a9\\u0648\\u06cc\\u06cc\\u0632 \\u067e\\u0627\\u0633! \\u0646\\u0645\\u0631\\u0647: '+qr.score+'/'+qr.passing_score+' \\u062f\\u0631\\u0633: '+d.lesson_title}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -453,7 +606,7 @@
         830
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'❌ کوییز ناموفق! نمره: '+qr.score+'/'+qr.passing_score+' درس: '+d.lesson_title}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,ownerId,CONFIG:C,\nnoteText:'\\u274c \\u06a9\\u0648\\u06cc\\u06cc\\u0632 \\u0646\\u0627\\u0645\\u0648\\u0641\\u0642! \\u0646\\u0645\\u0631\\u0647: '+qr.score+'/'+qr.passing_score+' \\u062f\\u0631\\u0633: '+d.lesson_title}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -467,7 +620,7 @@
         980
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nactivityTypeId:C.ACTIVITY_TYPE_FOLLOWUP,\nactivityTitle:'پیگیری عدم فعالیت - '+d.user_name,\nactivityNote:'غیرفعال 48+ ساعت. درس آخر: '+d.lesson_title+' پیشرفت: '+d.progress_percent+'%'}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,ownerId,CONFIG:C,\nactivityTypeId:C.ACTIVITY_TYPE_FOLLOWUP,\nactivityTitle:'\\u067e\\u06cc\\u06af\\u06cc\\u0631\\u06cc \\u0639\\u062f\\u0645 \\u0641\\u0639\\u0627\\u0644\\u06cc\\u062a - '+d.user_name,\nactivityNote:'\\u063a\\u06cc\\u0631\\u0641\\u0639\\u0627\\u0644 48+ \\u0633\\u0627\\u0639\\u062a. \\u062f\\u0631\\u0633 \\u0622\\u062e\\u0631: '+d.lesson_title+' \\u067e\\u06cc\\u0634\\u0631\\u0641\\u062a: '+d.progress_percent+'%'}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -510,7 +663,7 @@
         1150
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,\nstageId:C.STAGES.sales_wait,ownerId:C.OWNER_ID,pipelineId:C.PIPELINE_ID,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,\nnoteText:'🎉 دوره '+d.course_title+' تکمیل شد!',\nactivityTitle:'تماس فروش - '+d.user_name}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,\nstageId:C.STAGES.sales_wait,ownerId,pipelineId:C.PIPELINE_ID,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,\nnoteText:'\\ud83c\\udf89 \\u062f\\u0648\\u0631\\u0647 '+d.course_title+' \\u062a\\u06a9\\u0645\\u06cc\\u0644 \\u0634\\u062f!',\nactivityTitle:'\\u062a\\u0645\\u0627\\u0633 \\u0641\\u0631\\u0648\\u0634 - '+d.user_name}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -631,8 +784,36 @@
         1350
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nreturn [{json:{phone:d.user_phone,ownerId:C.OWNER_ID,CONFIG:C,\nnoteText:'⚡ تغییر سرعت: '+(d.payload?.speed_type||d.event?.type||'')+' → '+(d.payload?.new_speed||d.event?.status||'')}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,ownerId,CONFIG:C,\nnoteText:'\\u26a1 \\u062a\\u063a\\u06cc\\u06cc\\u0631 \\u0633\\u0631\\u0639\\u062a: '+(d.payload?.speed_type||d.event?.type||'')+' \\u2192 '+(d.payload?.new_speed||d.event?.status||'')}}];\n",
         "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "prep_respond_ok",
+      "name": "Prep Respond OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        600
+      ],
+      "parameters": {
+        "jsCode": "\nreturn [{json: {status: 'ok'}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond_ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2300,
+        600
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
       }
     }
   ],
@@ -745,7 +926,36 @@
       "main": [
         [
           {
+            "node": "IF Person Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Person Exists": {
+      "main": [
+        [
+          {
+            "node": "Use Existing Person",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Create Person",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Existing Person": {
+      "main": [
+        [
+          {
+            "node": "Search Deal Reg",
             "type": "main",
             "index": 0
           }
@@ -756,18 +966,69 @@
       "main": [
         [
           {
-            "node": "Get Person ID",
+            "node": "Get New Person ID",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Person ID": {
+    "Get New Person ID": {
       "main": [
         [
           {
+            "node": "Search Deal Reg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Deal Reg": {
+      "main": [
+        [
+          {
+            "node": "Process Deal Reg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Deal Reg": {
+      "main": [
+        [
+          {
+            "node": "IF Deal Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Deal Exists": {
+      "main": [
+        [
+          {
+            "node": "Skip Deal Create",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Deal Create": {
+      "main": [
+        [
+          {
+            "node": "Happy Call",
             "type": "main",
             "index": 0
           }
@@ -778,7 +1039,40 @@
       "main": [
         [
           {
+            "node": "After Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Create Deal": {
+      "main": [
+        [
+          {
             "node": "Happy Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Happy Call": {
+      "main": [
+        [
+          {
+            "node": "Prep Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Register",
             "type": "main",
             "index": 0
           }
@@ -873,17 +1167,6 @@
         ]
       ]
     },
-    "Prep Speed": {
-      "main": [
-        [
-          {
-            "node": "Create Note",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Prep Inactivity": {
       "main": [
         [
@@ -933,6 +1216,83 @@
         [
           {
             "node": "Sales Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Speed": {
+      "main": [
+        [
+          {
+            "node": "Create Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Deal Stage": {
+      "main": [
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Person Fields": {
+      "main": [
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Note": {
+      "main": [
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Followup": {
+      "main": [
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sales Call": {
+      "main": [
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Respond OK": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
             "type": "main",
             "index": 0
           }

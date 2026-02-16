@@ -14,7 +14,7 @@ and built-in error handling.
 
 | Event | Action in Didar CRM |
 |---|---|
-| `lead.register` | Create Person + Deal (stage: ثبت نام اولیه) + Happy Call Activity |
+| `lead.register` | Find/Create Person (dedup) + Find/Create Deal (dedup) + Happy Call Activity + **Returns assigned owner** |
 | `lesson.complete` | Search Deal → Update stage (پایان درس ۱-۸) |
 | `form.submit` | Find Person → Update custom fields (income, staff, job, etc.) |
 | `quiz.pass` | Create Note with score |
@@ -23,16 +23,19 @@ and built-in error handling.
 | `course.complete` | Search Deal → Move to "در انتظار تماس فروش" + Sales Call Activity |
 | `speed.change` | Create Note tracking engagement level |
 
-### Key Features
+### Key Features (v3)
 - **Native Didar CRM Nodes**: Uses `n8n-nodes-didar-crm` instead of HTTP Request nodes
 - **Centralized Credentials**: API key managed via n8n's credential system (not in workflow)
-- **Dropdown Selectors**: Pipelines, stages, owners, activity types available as dropdowns
+- **Weighted Owner Assignment**: Config defines OWNERS array with weights; each registration randomly selects an owner proportional to weight
+- **Person Deduplication**: Searches by phone before creating — uses existing person if found
+- **Deal Deduplication**: Searches for existing open deal before creating a new one
+- **Webhook Response**: Register branch returns assigned owner info to the bot (lastNode mode)
 - **Auto Stage Movement**: Deal stage updates automatically with lesson progress
 - **Custom Field Mapping**: Form responses → CRM custom fields
 - **Complete Branches**: All 8 event types have full action chains
 
 ### Node Statistics
-- **29 total nodes**: 13 native Didar CRM + 14 Code + 2 other (Webhook, Switch)
+- **40 total nodes**: 14 native Didar CRM + 22 Code/Logic + 2 Respond + 2 other (Webhook, Switch)
 
 ---
 
@@ -68,12 +71,13 @@ Before importing the workflow, create the credentials in n8n:
 
 ### Step 3: Assign Credentials
 
-After import, open each **Didar CRM** node (13 nodes) and select your "Didar API" credential:
-- Find Person, Create Person, Create Deal, Happy Call
-- Search Deal, Update Deal Stage
-- Find Person Form, Update Person Fields
-- Create Note, Create Followup
-- Search Deal Complete, Update Deal Complete, Sales Call
+After import, open each **Didar CRM** node (14 nodes) and select your "Didar API" credential:
+- Find Person, Create Person, Search Deal Reg, Create Deal, Happy Call (register branch)
+- Search Deal, Update Deal Stage (lesson branch)
+- Find Person Form, Update Person Fields (form branch)
+- Create Note (shared by quiz/speed branches)
+- Create Followup (inactivity branch)
+- Search Deal Complete, Update Deal Complete, Sales Call (complete branch)
 
 ### Step 4: Configure the Config Node
 
@@ -84,13 +88,24 @@ Open the **Config** Code node and fill in ALL placeholder GUIDs:
 | Setting | Description | How to Find |
 |---|---|---|
 | `WEBHOOK_SECRET` | Shared secret for HMAC validation | Same as `WEBHOOK_SECRET` in bot's `.env` |
-| `OWNER_ID` | GUID of CRM user/sales rep | Didar API: `POST /api/user/getall` |
+| `OWNERS` | Array of `{id, name, weight}` for sales reps | Didar API: `POST /api/user/getall` |
 | `PIPELINE_ID` | GUID of "دوره خروج از بحران" pipeline | Didar API: `POST /api/pipeline/getall` |
 | `COMPANY_ID` | Default company GUID (or leave zeros) | Didar → Companies |
 | `ACTIVITY_TYPE_SALES` | GUID for "مذاکره فروش" activity type | Didar API: `POST /api/supplementary/getbaseinfo` |
 | `ACTIVITY_TYPE_FOLLOWUP` | GUID for follow-up activity type | Same as above |
 
+**OWNERS Array Format:**
+```js
+const OWNERS = [
+  { id: 'guid-owner-1', name: 'Ali', weight: 3 },
+  { id: 'guid-owner-2', name: 'Sara', weight: 2 },
+  { id: 'guid-owner-3', name: 'Reza', weight: 1 },
+];
+```
+Higher weight = more leads assigned. Weighted random selection is done in the Prep Register node.
+
 > **Note**: `DIDAR_API_KEY` is no longer in the Config node — it's managed via n8n credentials.
+> **Note**: `OWNER_ID` was replaced by `OWNERS` array in v3 for weighted round-robin assignment.
 
 #### Stage GUIDs
 
@@ -137,7 +152,7 @@ curl -X POST "https://app.didar.me/api/pipeline/getall?apikey=YOUR_KEY" \
 curl -X POST "https://app.didar.me/api/supplementary/getbaseinfo?apikey=YOUR_KEY" \
   -H "Content-Type: application/json" -d '{}'
 
-# Get all users (find Owner ID)
+# Get all users (find Owner IDs for OWNERS array)
 curl -X POST "https://app.didar.me/api/user/getall?apikey=YOUR_KEY" \
   -H "Content-Type: application/json" -d '{}'
 ```
@@ -186,7 +201,7 @@ WEBHOOK_SECRET=YOUR_WEBHOOK_SECRET_HERE
 ```
 Bot (Telegram/Bale)
   │
-  ▼ (webhook POST with HMAC)
+  ▼ (webhook POST with HMAC, responseMode=lastNode)
 n8n Webhook ─→ Config (Code) ─→ Router (Switch on action)
                                     │
   ┌─────────────┬──────────┬────────┼───────────┬────────────┬──────────────┬──────────┐
@@ -196,37 +211,59 @@ Register     Lesson    Form      Quiz Pass   Quiz Fail   Inactivity   Course Don
   │          Complete  Submit       │           │            │              │        Change
   ▼             ▼          ▼        ▼           ▼            ▼              ▼          │
 [Code]       [Code]     [Code]   [Code]      [Code]       [Code]        [Code]       │
-Prep         Prep       Prep     Prep        Prep         Prep          Prep         │
-  │            │          │       │            │            │              │          │
-  ▼            ▼          ▼       └──────┬─────┘            ▼              ▼          │
-🔶 Find      🔶 Search  🔶 Find       ▼               🔶 Create     🔶 Search       │
-Person       Deal       Person   🔶 Create Note       Followup      Deal           │
-(getByPhone) (search)   (getByPh.)  (note/create)    (activity)    (search)         │
-  │            │          │                                            │             │
-  ▼            ▼          ▼                                            ▼             │
+Prep+Owner   Prep       Prep     Prep        Prep         Prep          Prep         │
+Assign         │          │       │            │            │              │          │
+  │            ▼          ▼       └──────┬─────┘            ▼              ▼          │
+  ▼          🔶 Search  🔶 Find       ▼               🔶 Create     🔶 Search       │
+🔶 Find      Deal       Person   🔶 Create Note       Followup      Deal           │
+Person       (search)   (getByPh.)  (note/create)    (activity)    (search)         │
+(getByPhone)   │          │                                            │             │
+  │            ▼          ▼                                            ▼             │
 [Code]       [Code]     [Code]                                       [Code]          │
 Process      Extract    Extract                                      Extract         │
 Person       Deal       Person                                       Deal            │
   │            │          │                                            │             │
   ▼            ▼          ▼                                            ▼             │
-🔶 Create   🔶 Update  🔶 Update                                   🔶 Update       │
-Person       Deal       Person                                       Deal            │
-(create)     (update)   (update)                                     (update)        │
-  │                                                                    │             │
-  ▼                                                                    ▼             ▼
-[Code]                                                              🔶 Sales     🔶 Create
-Get Person ID                                                       Call         Note
-  │                                                                 (activity)
-  ▼
-🔶 Create Deal
-(deal/create)
-  │
-  ▼
-🔶 Happy Call
-(activity/create)
+⟐ IF Person 🔶 Update  🔶 Update                                   🔶 Update       │
+Exists?      Deal       Person                                       Deal            │
+  │╲           (update)   (update)                                     (update)        │
+  │  ╲                                                                   │             │
+  ▼    ▼                                                                 ▼             ▼
+Use  🔶Create                                                       🔶 Sales     🔶 Create
+Exist Person                                                         Call         Note
+  │    │                                                             (activity)   (note)
+  │    ▼
+  │  [Code] Get New Person ID
+  │    │
+  └──┬─┘
+     ▼
+🔶 Search Deal (deal/search) ── person dedup complete
+     │
+  [Code] Process Deal
+     │
+  ⟐ IF Deal Exists?
+     │╲
+     │  ╲
+     ▼    ▼
+  Skip  🔶 Create Deal (deal/create)
+     │    │
+     │  [Code] After Create Deal
+     │    │
+     └──┬─┘
+        ▼
+  🔶 Happy Call (activity/create)
+        │
+  [Code] Prep Response (owner info)
+        │
+  ◀ Respond Register ── returns {owner.id, owner.name} to bot
+
+All other branches end with:
+  [Code] Prep Respond OK → ◀ Respond OK
 
 🔶 = Native Didar CRM Node (n8n-nodes-didar-crm)
 [Code] = JavaScript Code Node
+⟐ = IF Node (conditional branch)
+◀ = Respond to Webhook Node
 ```
 
 ---
@@ -235,16 +272,20 @@ Get Person ID                                                       Call        
 
 | Node | Resource | Operation | Purpose |
 |---|---|---|---|
-| Find Person | person | getByPhone | Look up contact by phone number |
-| Create Person | person | create | Create new CRM contact |
+| Find Person | person | getByPhone | Look up contact by phone (register dedup) |
+| Create Person | person | create | Create new CRM contact (if not exists) |
 | Update Person Fields | person | update | Update custom fields from form data |
-| Create Deal | deal | create | Create deal in pipeline |
-| Search Deal | deal | search | Find deal by keywords/pipeline |
+| Create Deal | deal | create | Create deal in pipeline (register + form) |
+| Search Deal Reg | deal | search | Search for existing deal (register dedup) |
+| Search Deal Lesson | deal | search | Find deal for stage update (lesson) |
+| Search Deal Complete | deal | search | Find deal for completion (course done) |
 | Update Deal Stage | deal | update | Move deal to next pipeline stage |
-| Happy Call | activity | create | Welcome call activity |
+| Update Deal Complete | deal | update | Mark deal as completed stage |
+| Happy Call | activity | create | Welcome call activity (register) |
 | Create Followup | activity | create | Follow-up for inactive users |
 | Sales Call | activity | create | Sales call when course completed |
-| Create Note | note | create | Record quiz results, speed changes |
+| Create Note Quiz | note | create | Record quiz pass/fail results |
+| Create Note Speed | note | create | Record speed changes |
 
 ---
 
@@ -272,7 +313,7 @@ Get Person ID                                                       Call        
 ### n8n execution failing
 - Check n8n execution log for error details
 - Verify Didar API credentials are valid (test button)
-- Check that all 13 Didar CRM nodes have credentials assigned
+- Check that all 14 Didar CRM nodes have credentials assigned
 - For custom fields, ensure Field GUIDs match your Didar CRM instance
 
 ### Dropdown selectors empty
@@ -286,14 +327,23 @@ Get Person ID                                                       Call        
 
 | File | Description |
 |---|---|
-| `course-bot-didar-crm.json` | Main CRM integration workflow (v2 - native nodes) |
+| `course-bot-didar-crm.json` | Main CRM integration workflow (v3 - smart owner + dedup) |
+| `generate_workflow.py` | Python script to regenerate the workflow JSON |
 | `README.md` | This documentation |
 
 ---
 
 ## Changelog
 
-### v2 (Current)
+### v3 (Current)
+- **Weighted owner assignment**: `OWNERS` array with weights for smart round-robin lead distribution
+- **Person deduplication**: Find Person (getByPhone) + IF exists → reuse, else create new
+- **Deal deduplication**: Search Deal + IF exists → skip, else create new
+- **Webhook response**: Register branch returns `{owner.id, owner.name}` to bot via Respond to Webhook
+- **responseMode=lastNode**: n8n holds HTTP response until workflow completes (all branches)
+- 40 total nodes (14 Didar CRM + 22 Code/Logic + 2 Respond + 2 base)
+
+### v2
 - **Migrated from HTTP Request to native `n8n-nodes-didar-crm` nodes** (13 native nodes)
 - Added credential-based API key management (no more API key in Config node)
 - **Fixed**: lesson.complete now actually updates the deal stage (was missing in v1)
