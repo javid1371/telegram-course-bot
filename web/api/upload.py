@@ -2,12 +2,14 @@
 File Upload API — uploads file via Telegram Bot API and returns file_id
 """
 import os
+import logging
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 from web.auth import get_current_user
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_USER_IDS = [
@@ -70,13 +72,20 @@ async def upload_file(
         form.add_field("caption", caption)
 
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=form) as resp:
-            result = await resp.json()
+        try:
+            async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+                result = await resp.json()
+        except Exception as e:
+            logger.error(f"Upload request failed: {e}")
+            raise HTTPException(status_code=500, detail=f"خطا در اتصال به سرور: {str(e)}")
 
     if not result.get("ok"):
+        error_desc = result.get('description', 'Unknown error')
+        error_code = result.get('error_code', '?')
+        logger.error(f"Bot API error [{error_code}]: {error_desc} (method={method}, file={file.filename}, size={len(file_data)})")
         raise HTTPException(
             status_code=500,
-            detail=f"Telegram API error: {result.get('description', 'Unknown error')}"
+            detail=f"خطای API ({error_code}): {error_desc}"
         )
 
     # Extract file_id from response
