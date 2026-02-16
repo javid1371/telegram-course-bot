@@ -104,12 +104,14 @@ export default function LessonEdit() {
   const [addType, setAddType] = useState('text');
   const [addText, setAddText] = useState('');
   const [addCaption, setAddCaption] = useState('');
+  const [addFile, setAddFile] = useState(null);
 
   // Replace modal
   const [replaceIndex, setReplaceIndex] = useState(null);
   const [replaceType, setReplaceType] = useState('text');
   const [replaceText, setReplaceText] = useState('');
   const [replaceCaption, setReplaceCaption] = useState('');
+  const [replaceFile, setReplaceFile] = useState(null);
 
   // Form builder state
   const [formFields, setFormFields] = useState([]);
@@ -508,7 +510,7 @@ export default function LessonEdit() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">📦 محتواهای درس ({contents.length} بلاک)</h2>
           <button
-            onClick={() => { setShowAdd(true); setAddType('text'); setAddText(''); setAddCaption(''); setFormFields([]); }}
+            onClick={() => { setShowAdd(true); setAddType('text'); setAddText(''); setAddCaption(''); setFormFields([]); setAddFile(null); }}
             className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition"
           >
             ➕ افزودن محتوا
@@ -636,10 +638,15 @@ export default function LessonEdit() {
                   type="file"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) handleFileUpload(f, addType, addCaption);
+                    if (f) setAddFile(f);
                   }}
                   className="w-full"
                 />
+                {addFile && !uploading && (
+                  <p className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
+                    📎 {addFile.name} ({(addFile.size / 1024).toFixed(0)} KB)
+                  </p>
+                )}
                 {uploading && (
                   <div className="mt-2">
                     <div className="flex items-center gap-2 mb-1">
@@ -653,7 +660,12 @@ export default function LessonEdit() {
                     </div>
                   </div>
                 )}
-                <div className="mt-4">
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => { if (addFile) handleFileUpload(addFile, addType, addCaption); }}
+                    disabled={!addFile || uploading}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 transition"
+                  >{uploading ? '⏳ در حال آپلود...' : '✅ آپلود و ذخیره'}</button>
                   <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm" disabled={uploading}>انصراف</button>
                 </div>
               </div>
@@ -759,10 +771,15 @@ export default function LessonEdit() {
                   type="file"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) handleFileUpload(f, replaceType, replaceCaption, true, replaceIndex);
+                    if (f) setReplaceFile(f);
                   }}
                   className="w-full"
                 />
+                {replaceFile && !uploading && (
+                  <p className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
+                    📎 {replaceFile.name} ({(replaceFile.size / 1024).toFixed(0)} KB)
+                  </p>
+                )}
                 {uploading && (
                   <div className="mt-2">
                     <div className="flex items-center gap-2 mb-1">
@@ -776,7 +793,12 @@ export default function LessonEdit() {
                     </div>
                   </div>
                 )}
-                <div className="mt-4">
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => { if (replaceFile) handleFileUpload(replaceFile, replaceType, replaceCaption, true, replaceIndex); }}
+                    disabled={!replaceFile || uploading}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700 disabled:opacity-50 transition"
+                  >{uploading ? '⏳ در حال آپلود...' : '🔄 آپلود و جایگزینی'}</button>
                   <button onClick={() => setReplaceIndex(null)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm" disabled={uploading}>انصراف</button>
                 </div>
               </div>
