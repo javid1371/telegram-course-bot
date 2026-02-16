@@ -287,7 +287,9 @@ export default function LessonEdit() {
     setUploadProgress(0);
     try {
       const result = await upload.file(file, contentType, caption, (pct) => setUploadProgress(pct));
-      const item = { type: contentType, file_id: result.file_id };
+      // Use the type returned by server (may have fallen back to 'document')
+      const actualType = result.type || contentType;
+      const item = { type: actualType, file_id: result.file_id };
       if (caption) item.caption = caption;
 
       if (isReplace && index >= 0) {
@@ -296,11 +298,13 @@ export default function LessonEdit() {
         newContents[index] = item;
         setContents(newContents);
         setReplaceIndex(null);
+        setReplaceFile(null);
         toast.success('محتوا جایگزین شد');
       } else {
         await lessons.addContent(id, item);
         setContents([...contents, item]);
         setShowAdd(false);
+        setAddFile(null);
         toast.success('فایل آپلود و اضافه شد');
       }
     } catch (err) {
