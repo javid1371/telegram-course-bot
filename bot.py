@@ -9,6 +9,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 
 import config
 from database import init_db
@@ -103,7 +104,11 @@ async def main():
     # For Bale: use custom API URL via AiohttpSession
     session = None
     if config.PLATFORM == "bale":
-        session = AiohttpSession(api=config.API_BASE_URL)
+        bale_api = TelegramAPIServer(
+            base=f"{config.API_BASE_URL}/bot{{token}}/{{method}}",
+            file=f"{config.API_BASE_URL}/file/bot{{token}}/{{path}}",
+        )
+        session = AiohttpSession(api=bale_api)
 
     bot = PlatformBot(
         token=config.BOT_TOKEN,
