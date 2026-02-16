@@ -196,6 +196,12 @@ ADMIN_BUTTONS = SmartDict("ADMIN_BUTTONS", {
     # مهلت درس
     "edit_deadline": "⏰ مهلت دیدن",
 
+    # مدیریت محتوا
+    "manage_contents": "📦 مدیریت محتوا",
+    "content_add_new": "➕ اضافه محتوا",
+    "content_replace_all": "🔄 جایگزینی کل",
+    "reorder_lessons_course": "🔄 ترتیب درس‌ها",
+
     # تایید حذف
     "confirm_delete": "✅ بله، حذف شود",
 })
@@ -520,6 +526,19 @@ ADMIN = SmartDict("ADMIN", {
     "lesson_edit_content_added": "✅ محتوا اضافه شد!\n\n{summary}\nآیا می‌خواهید محتوای دیگری اضافه کنید؟",
     "lesson_edit_no_content": "⚠️ هیچ محتوایی اضافه نشد.",
     "lesson_edit_content_saved": "✅ محتوای درس «{title}» با {count} بخش ویرایش شد.",
+
+    # مدیریت محتوای درس
+    "content_manage_header": "📦 <b>مدیریت محتوای درس «{title}»</b>\n\nتعداد محتوا: {count}\n",
+    "content_manage_empty": "📦 <b>مدیریت محتوای درس «{title}»</b>\n\n⚠️ این درس محتوایی ندارد.",
+    "content_moved": "✅ محتوا جابجا شد.",
+    "content_deleted": "✅ محتوا حذف شد.",
+    "content_replaced": "✅ محتوای بخش {index} جایگزین شد.",
+    "content_added": "✅ محتوای جدید اضافه شد.",
+    "content_delete_confirm": "⚠️ آیا از حذف محتوای شماره {index} ({type}) مطمئنید؟",
+    "content_replace_prompt": "محتوای جایگزین ({type}) را ارسال کنید:",
+    "content_add_select_type": "نوع محتوای جدید را انتخاب کنید:",
+    "content_min_one": "⚠️ درس باید حداقل یک محتوا داشته باشد.",
+    "reorder_course_header": "🔄 <b>تغییر ترتیب درس‌های دوره «{title}»</b>\n\nبا دکمه‌های ⬆️ و ⬇️ ترتیب را تغییر دهید:",
     "lesson_edit_content_prompts": {
         "text": "📝 متن را ارسال کنید:",
         "video": "🎥 ویدیو را ارسال کنید:",

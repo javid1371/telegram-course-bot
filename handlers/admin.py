@@ -141,6 +141,10 @@ class AdminStates(StatesGroup):
     # Company info editing
     waiting_company_info_value = State()
 
+    # Content management (replace single / add new)
+    waiting_content_replace = State()
+    waiting_content_add_item = State()
+
     # Sales owner creation
     waiting_owner_name = State()
     waiting_owner_phone = State()
@@ -491,6 +495,9 @@ async def view_course(callback: CallbackQuery):
         builder.row(
             InlineKeyboardButton(text=ADMIN_BUTTONS["add_lesson"], callback_data=f"admin:lesson:add:{course_id}"),
             InlineKeyboardButton(text=ADMIN_BUTTONS["lesson_list"], callback_data=f"admin:lesson:list:{course_id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text=ADMIN_BUTTONS["reorder_lessons_course"], callback_data=f"admin:lesson:reorder:{course_id}"),
         )
         builder.row(
             InlineKeyboardButton(text=ADMIN_BUTTONS["edit_title"], callback_data=f"admin:course:edit_title:{course_id}"),
@@ -1227,7 +1234,7 @@ async def edit_lesson(callback: CallbackQuery, state: FSMContext):
     )
     builder.row(
         InlineKeyboardButton(text=ADMIN_BUTTONS["edit_delay"], callback_data=f"admin:lesson:editf:delay_hours:{lesson_id}"),
-        InlineKeyboardButton(text=ADMIN_BUTTONS["edit_content"], callback_data=f"admin:lesson:editf:content:{lesson_id}"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["manage_contents"], callback_data=f"ct:view:{lesson_id}"),
     )
     builder.row(
         InlineKeyboardButton(text=ADMIN_BUTTONS["edit_cta_text"], callback_data=f"admin:lesson:editf:cta_text:{lesson_id}"),
@@ -1259,7 +1266,7 @@ async def edit_lesson_field(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_lesson_id=lesson_id, edit_field=field_name)
 
     if field_name == "content":
-        # Redirect to multi-content edit flow
+        # Redirect to replace-all multi-content edit flow
         await state.update_data(edit_lesson_id=lesson_id, edit_field="content", lesson_contents=[])
 
         from aiogram.types import InlineKeyboardButton
@@ -1515,28 +1522,547 @@ async def edit_content_done(callback: CallbackQuery, state: FSMContext):
         )
 
 
-@router.callback_query(F.data == "admin:lesson:reorder")
-@admin_only
-@log_errors
-async def reorder_lessons(callback: CallbackQuery):
-    """Show lessons with up/down buttons for reordering"""
-    await callback.answer()
-    await _show_reorder_lessons(callback)
+# ===========================
+# CONTENT MANAGEMENT (per-item view, reorder, delete, replace, add)
+# ===========================
+
+_CONTENT_TYPE_LABELS = {
+    "text": "📝 متن", "video": "🎥 ویدیو", "audio": "🎵 صوت",
+    "voice": "🎤 ویس", "document": "📄 فایل", "photo": "🖼 تصویر",
+    "form": "📋 فرم",
+}
 
 
-async def _show_reorder_lessons(callback: CallbackQuery):
-    """Display reorder interface for lessons"""
+def _get_lesson_contents(lesson) -> list:
+    """Get lesson contents, building from legacy fields if needed"""
+    contents = lesson.contents or []
+    if not contents and (lesson.file_id or lesson.text_content):
+        block = {"type": lesson.content_type.value if lesson.content_type else "text"}
+        if lesson.file_id:
+            block["file_id"] = lesson.file_id
+        if lesson.text_content:
+            block["text"] = lesson.text_content
+        contents = [block]
+    return contents
+
+
+async def _sync_lesson_primary_fields(lesson, contents, session):
+    """Sync lesson.content_type, file_id, text_content from contents[0]"""
+    content_type_map = {
+        "text": ContentType.TEXT, "video": ContentType.VIDEO,
+        "audio": ContentType.AUDIO, "voice": ContentType.VOICE,
+        "document": ContentType.DOCUMENT, "photo": ContentType.PHOTO,
+    }
+    lesson.contents = contents if contents else None
+    if contents:
+        first = contents[0]
+        lesson.content_type = content_type_map.get(first.get("type", "text"), ContentType.TEXT)
+        lesson.file_id = first.get("file_id")
+        lesson.text_content = first.get("text")
+    else:
+        lesson.file_id = None
+        lesson.text_content = None
+    await session.commit()
+
+
+async def _show_content_management(callback_or_message, lesson_id: int, *, is_message=False):
+    """Display content management interface for a lesson"""
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     async with async_session_maker() as session:
         lesson_service = LessonService(session)
-        lessons = await lesson_service.get_all_lessons(active_only=False)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+
+        if not lesson:
+            target = callback_or_message if is_message else callback_or_message.message
+            await target.answer(ADMIN["lesson_not_found"])
+            return
+
+        contents = _get_lesson_contents(lesson)
+
+        builder = InlineKeyboardBuilder()
+
+        if contents:
+            text = ADMIN["content_manage_header"].format(title=lesson.title, count=len(contents))
+            for i, block in enumerate(contents):
+                btype = block.get("type", "?")
+                label = _CONTENT_TYPE_LABELS.get(btype, btype)
+                preview = ""
+                if btype == "text":
+                    raw = block.get("text", "")
+                    preview = f" - {raw[:25]}..." if len(raw) > 25 else f" - {raw}"
+                text += f"\n  {i+1}. {label}{preview}"
+
+                # Per-item buttons: ⬆️  [label]  ⬇️  ✏️  🗑
+                row = []
+                if i > 0:
+                    row.append(InlineKeyboardButton(text="⬆️", callback_data=f"ct:up:{lesson_id}:{i}"))
+                else:
+                    row.append(InlineKeyboardButton(text="  ", callback_data="noop"))
+
+                row.append(InlineKeyboardButton(text=f"{i+1}. {label[:8]}", callback_data="noop"))
+
+                if i < len(contents) - 1:
+                    row.append(InlineKeyboardButton(text="⬇️", callback_data=f"ct:dn:{lesson_id}:{i}"))
+                else:
+                    row.append(InlineKeyboardButton(text="  ", callback_data="noop"))
+
+                row.append(InlineKeyboardButton(text="✏️", callback_data=f"ct:rep:{lesson_id}:{i}"))
+                row.append(InlineKeyboardButton(text="🗑", callback_data=f"ct:del:{lesson_id}:{i}"))
+
+                builder.row(*row)
+        else:
+            text = ADMIN["content_manage_empty"].format(title=lesson.title)
+
+        # Global actions
+        builder.row(
+            InlineKeyboardButton(text=ADMIN_BUTTONS["content_add_new"], callback_data=f"ct:add:{lesson_id}"),
+            InlineKeyboardButton(text=ADMIN_BUTTONS["content_replace_all"], callback_data=f"ct:replall:{lesson_id}"),
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:lesson:edit:{lesson_id}")
+        )
+
+        if is_message:
+            await callback_or_message.answer(text, reply_markup=builder.as_markup())
+        else:
+            try:
+                await callback_or_message.message.edit_text(text, reply_markup=builder.as_markup())
+            except TelegramBadRequest:
+                await callback_or_message.message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("ct:view:"))
+@admin_only
+@log_errors
+async def content_manage_view(callback: CallbackQuery):
+    """Show content management interface"""
+    lesson_id = int(callback.data.split(":")[2])
+    await callback.answer()
+    await _show_content_management(callback, lesson_id)
+
+
+@router.callback_query(F.data.startswith("ct:up:"))
+@admin_only
+@log_errors
+async def content_move_up(callback: CallbackQuery):
+    """Move a content item up"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    idx = int(parts[3])
+    await callback.answer(ADMIN["content_moved"])
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            return
+        contents = _get_lesson_contents(lesson)
+        if 0 < idx < len(contents):
+            contents[idx], contents[idx - 1] = contents[idx - 1], contents[idx]
+            await _sync_lesson_primary_fields(lesson, contents, session)
+
+    await _show_content_management(callback, lesson_id)
+
+
+@router.callback_query(F.data.startswith("ct:dn:"))
+@admin_only
+@log_errors
+async def content_move_down(callback: CallbackQuery):
+    """Move a content item down"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    idx = int(parts[3])
+    await callback.answer(ADMIN["content_moved"])
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            return
+        contents = _get_lesson_contents(lesson)
+        if 0 <= idx < len(contents) - 1:
+            contents[idx], contents[idx + 1] = contents[idx + 1], contents[idx]
+            await _sync_lesson_primary_fields(lesson, contents, session)
+
+    await _show_content_management(callback, lesson_id)
+
+
+@router.callback_query(F.data.startswith("ct:del:"))
+@admin_only
+@log_errors
+async def content_delete_confirm(callback: CallbackQuery):
+    """Confirm deletion of a content item"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    idx = int(parts[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            return
+        contents = _get_lesson_contents(lesson)
+        if idx >= len(contents):
+            return
+
+        btype = contents[idx].get("type", "?")
+        label = _CONTENT_TYPE_LABELS.get(btype, btype)
+
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ بله، حذف شود", callback_data=f"ct:cdel:{lesson_id}:{idx}"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"ct:view:{lesson_id}")
+        )
+
+        await callback.message.edit_text(
+            ADMIN["content_delete_confirm"].format(index=idx + 1, type=label),
+            reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data.startswith("ct:cdel:"))
+@admin_only
+@log_errors
+async def content_delete_execute(callback: CallbackQuery):
+    """Execute deletion of a content item"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    idx = int(parts[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            return
+        contents = _get_lesson_contents(lesson)
+
+        if len(contents) <= 1:
+            await callback.message.answer(ADMIN["content_min_one"])
+            await _show_content_management(callback, lesson_id)
+            return
+
+        if idx < len(contents):
+            contents.pop(idx)
+            await _sync_lesson_primary_fields(lesson, contents, session)
+
+    await _show_content_management(callback, lesson_id)
+
+
+@router.callback_query(F.data.startswith("ct:rep:"))
+@admin_only
+@log_errors
+async def content_replace_start(callback: CallbackQuery, state: FSMContext):
+    """Start replacing a specific content item"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    idx = int(parts[3])
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            return
+        contents = _get_lesson_contents(lesson)
+        if idx >= len(contents):
+            return
+
+        btype = contents[idx].get("type", "?")
+        label = _CONTENT_TYPE_LABELS.get(btype, btype)
+
+    # Show type selection for replacement
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 متن", callback_data=f"ct:rtype:{lesson_id}:{idx}:text"),
+        InlineKeyboardButton(text="🎥 ویدیو", callback_data=f"ct:rtype:{lesson_id}:{idx}:video"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 صوت", callback_data=f"ct:rtype:{lesson_id}:{idx}:audio"),
+        InlineKeyboardButton(text="🎤 ویس", callback_data=f"ct:rtype:{lesson_id}:{idx}:voice"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📄 فایل", callback_data=f"ct:rtype:{lesson_id}:{idx}:document"),
+        InlineKeyboardButton(text="🖼 تصویر", callback_data=f"ct:rtype:{lesson_id}:{idx}:photo"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="❌ انصراف", callback_data=f"ct:view:{lesson_id}")
+    )
+
+    await callback.message.edit_text(
+        f"✏️ جایگزینی محتوای شماره {idx + 1} (فعلی: {label})\n\nنوع محتوای جدید را انتخاب کنید:",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("ct:rtype:"))
+@admin_only
+@log_errors
+async def content_replace_type_selected(callback: CallbackQuery, state: FSMContext):
+    """Type selected for content replacement"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    idx = int(parts[3])
+    content_type = parts[4]
+    await callback.answer()
+
+    await state.update_data(
+        ct_lesson_id=lesson_id,
+        ct_index=idx,
+        ct_type=content_type,
+    )
+
+    type_prompts = ADMIN["lesson_edit_content_prompts"]
+    await callback.message.answer(
+        type_prompts.get(content_type, type_prompts["default"]),
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_content_replace)
+
+
+@router.message(AdminStates.waiting_content_replace)
+async def process_content_replace(message: Message, state: FSMContext):
+    """Process the replacement content"""
+    if message.text == "❌ انصراف":
+        data = await state.get_data()
+        lesson_id = data.get("ct_lesson_id")
+        await state.clear()
+        await message.answer(GENERAL["cancelled"], reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    lesson_id = data.get("ct_lesson_id")
+    idx = data.get("ct_index", 0)
+    content_type = data.get("ct_type", "text")
+    await state.clear()
+
+    file_id = None
+    text_content = None
+
+    if content_type == "text":
+        text_content = message.text
+    elif content_type == "video" and message.video:
+        file_id = message.video.file_id
+    elif content_type == "audio" and message.audio:
+        file_id = message.audio.file_id
+    elif content_type == "voice" and message.voice:
+        file_id = message.voice.file_id
+    elif content_type == "document" and message.document:
+        file_id = message.document.file_id
+    elif content_type == "photo" and message.photo:
+        file_id = message.photo[-1].file_id
+    else:
+        await message.answer(ADMIN["lesson_edit_content_type_error"], reply_markup=get_admin_main_menu())
+        return
+
+    block = {"type": content_type}
+    if file_id:
+        block["file_id"] = file_id
+    if text_content:
+        block["text"] = text_content
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            await message.answer(ADMIN["lesson_not_found"], reply_markup=get_admin_main_menu())
+            return
+
+        contents = _get_lesson_contents(lesson)
+        if idx < len(contents):
+            contents[idx] = block
+        else:
+            contents.append(block)
+
+        await _sync_lesson_primary_fields(lesson, contents, session)
+
+    await message.answer(
+        ADMIN["content_replaced"].format(index=idx + 1),
+        reply_markup=get_admin_main_menu()
+    )
+    await _show_content_management(message, lesson_id, is_message=True)
+
+
+@router.callback_query(F.data.startswith("ct:add:"))
+@admin_only
+@log_errors
+async def content_add_start(callback: CallbackQuery, state: FSMContext):
+    """Start adding a new content item to a lesson"""
+    lesson_id = int(callback.data.split(":")[2])
+    await callback.answer()
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 متن", callback_data=f"ct:atype:{lesson_id}:text"),
+        InlineKeyboardButton(text="🎥 ویدیو", callback_data=f"ct:atype:{lesson_id}:video"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 صوت", callback_data=f"ct:atype:{lesson_id}:audio"),
+        InlineKeyboardButton(text="🎤 ویس", callback_data=f"ct:atype:{lesson_id}:voice"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📄 فایل", callback_data=f"ct:atype:{lesson_id}:document"),
+        InlineKeyboardButton(text="🖼 تصویر", callback_data=f"ct:atype:{lesson_id}:photo"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="❌ انصراف", callback_data=f"ct:view:{lesson_id}")
+    )
+
+    await callback.message.edit_text(
+        ADMIN["content_add_select_type"],
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("ct:atype:"))
+@admin_only
+@log_errors
+async def content_add_type_selected(callback: CallbackQuery, state: FSMContext):
+    """Type selected for adding new content"""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    content_type = parts[3]
+    await callback.answer()
+
+    await state.update_data(
+        ct_lesson_id=lesson_id,
+        ct_type=content_type,
+    )
+
+    type_prompts = ADMIN["lesson_edit_content_prompts"]
+    await callback.message.answer(
+        type_prompts.get(content_type, type_prompts["default"]),
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(AdminStates.waiting_content_add_item)
+
+
+@router.message(AdminStates.waiting_content_add_item)
+async def process_content_add(message: Message, state: FSMContext):
+    """Process the new content item to add"""
+    if message.text == "❌ انصراف":
+        data = await state.get_data()
+        lesson_id = data.get("ct_lesson_id")
+        await state.clear()
+        await message.answer(GENERAL["cancelled"], reply_markup=get_admin_main_menu())
+        return
+
+    data = await state.get_data()
+    lesson_id = data.get("ct_lesson_id")
+    content_type = data.get("ct_type", "text")
+    await state.clear()
+
+    file_id = None
+    text_content = None
+
+    if content_type == "text":
+        text_content = message.text
+    elif content_type == "video" and message.video:
+        file_id = message.video.file_id
+    elif content_type == "audio" and message.audio:
+        file_id = message.audio.file_id
+    elif content_type == "voice" and message.voice:
+        file_id = message.voice.file_id
+    elif content_type == "document" and message.document:
+        file_id = message.document.file_id
+    elif content_type == "photo" and message.photo:
+        file_id = message.photo[-1].file_id
+    else:
+        await message.answer(ADMIN["lesson_edit_content_type_error"], reply_markup=get_admin_main_menu())
+        return
+
+    block = {"type": content_type}
+    if file_id:
+        block["file_id"] = file_id
+    if text_content:
+        block["text"] = text_content
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if not lesson:
+            await message.answer(ADMIN["lesson_not_found"], reply_markup=get_admin_main_menu())
+            return
+
+        contents = _get_lesson_contents(lesson)
+        contents.append(block)
+        await _sync_lesson_primary_fields(lesson, contents, session)
+
+    await message.answer(
+        ADMIN["content_added"],
+        reply_markup=get_admin_main_menu()
+    )
+    await _show_content_management(message, lesson_id, is_message=True)
+
+
+@router.callback_query(F.data.startswith("ct:replall:"))
+@admin_only
+@log_errors
+async def content_replace_all(callback: CallbackQuery, state: FSMContext):
+    """Start replace-all content flow (redirects to existing edit flow)"""
+    lesson_id = int(callback.data.split(":")[2])
+    await callback.answer()
+
+    await state.update_data(edit_lesson_id=lesson_id, edit_field="content", lesson_contents=[])
+
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_text"], callback_data="edit_ctype:text"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_video"], callback_data="edit_ctype:video"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_audio"], callback_data="edit_ctype:audio"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_voice"], callback_data="edit_ctype:voice"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_document"], callback_data="edit_ctype:document"),
+        InlineKeyboardButton(text=ADMIN_BUTTONS["content_photo"], callback_data="edit_ctype:photo"),
+    )
+
+    await callback.message.edit_text(
+        ADMIN["lesson_edit_content_header"],
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("admin:lesson:reorder:"))
+@admin_only
+@log_errors
+async def reorder_lessons(callback: CallbackQuery):
+    """Show lessons with up/down buttons for reordering (course-scoped)"""
+    course_id = int(callback.data.split(":")[3])
+    await callback.answer()
+    await _show_reorder_lessons(callback, course_id)
+
+
+async def _show_reorder_lessons(callback: CallbackQuery, course_id: int):
+    """Display reorder interface for lessons of a specific course"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        lesson_service = LessonService(session)
+        lessons = await lesson_service.get_all_lessons(active_only=False, course_id=course_id)
+        course = await lesson_service.get_course_by_id(course_id)
+        course_title = course.title if course else ""
 
         if not lessons or len(lessons) < 2:
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:course:view:{course_id}"))
             await callback.message.edit_text(
                 ADMIN["reorder_min_lessons"],
-                reply_markup=get_back_keyboard()
+                reply_markup=builder.as_markup()
             )
             return
 
@@ -1544,35 +2070,37 @@ async def _show_reorder_lessons(callback: CallbackQuery):
         for i, lesson in enumerate(lessons):
             row_buttons = []
             if i > 0:
-                row_buttons.append(InlineKeyboardButton(text="⬆️", callback_data=f"admin:lesson:moveup:{lesson.id}"))
+                row_buttons.append(InlineKeyboardButton(text="⬆️", callback_data=f"admin:lmv:up:{course_id}:{lesson.id}"))
             else:
                 row_buttons.append(InlineKeyboardButton(text="  ", callback_data="noop"))
             row_buttons.append(InlineKeyboardButton(text=f"{lesson.order}. {lesson.title[:20]}", callback_data="noop"))
             if i < len(lessons) - 1:
-                row_buttons.append(InlineKeyboardButton(text="⬇️", callback_data=f"admin:lesson:movedown:{lesson.id}"))
+                row_buttons.append(InlineKeyboardButton(text="⬇️", callback_data=f"admin:lmv:dn:{course_id}:{lesson.id}"))
             else:
                 row_buttons.append(InlineKeyboardButton(text="  ", callback_data="noop"))
             builder.row(*row_buttons)
 
-        builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:lessons"))
+        builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin:course:view:{course_id}"))
 
         await callback.message.edit_text(
-            ADMIN["reorder_header"],
+            ADMIN["reorder_course_header"].format(title=course_title),
             reply_markup=builder.as_markup()
         )
 
 
-@router.callback_query(F.data.startswith("admin:lesson:moveup:"))
+@router.callback_query(F.data.startswith("admin:lmv:up:"))
 @admin_only
 @log_errors
 async def move_lesson_up(callback: CallbackQuery):
-    """Move lesson up in order"""
-    lesson_id = int(callback.data.split(":")[3])
+    """Move lesson up in order (course-scoped)"""
+    parts = callback.data.split(":")
+    course_id = int(parts[3])
+    lesson_id = int(parts[4])
     await callback.answer()
 
     async with async_session_maker() as session:
         lesson_service = LessonService(session)
-        lessons = await lesson_service.get_all_lessons(active_only=False)
+        lessons = await lesson_service.get_all_lessons(active_only=False, course_id=course_id)
         lesson_ids = [l.id for l in lessons]
 
         idx = lesson_ids.index(lesson_id) if lesson_id in lesson_ids else -1
@@ -1580,20 +2108,22 @@ async def move_lesson_up(callback: CallbackQuery):
             lesson_ids[idx], lesson_ids[idx - 1] = lesson_ids[idx - 1], lesson_ids[idx]
             await lesson_service.reorder_lessons(lesson_ids)
 
-    await _show_reorder_lessons(callback)
+    await _show_reorder_lessons(callback, course_id)
 
 
-@router.callback_query(F.data.startswith("admin:lesson:movedown:"))
+@router.callback_query(F.data.startswith("admin:lmv:dn:"))
 @admin_only
 @log_errors
 async def move_lesson_down(callback: CallbackQuery):
-    """Move lesson down in order"""
-    lesson_id = int(callback.data.split(":")[3])
+    """Move lesson down in order (course-scoped)"""
+    parts = callback.data.split(":")
+    course_id = int(parts[3])
+    lesson_id = int(parts[4])
     await callback.answer()
 
     async with async_session_maker() as session:
         lesson_service = LessonService(session)
-        lessons = await lesson_service.get_all_lessons(active_only=False)
+        lessons = await lesson_service.get_all_lessons(active_only=False, course_id=course_id)
         lesson_ids = [l.id for l in lessons]
 
         idx = lesson_ids.index(lesson_id) if lesson_id in lesson_ids else -1
@@ -1601,7 +2131,7 @@ async def move_lesson_down(callback: CallbackQuery):
             lesson_ids[idx], lesson_ids[idx + 1] = lesson_ids[idx + 1], lesson_ids[idx]
             await lesson_service.reorder_lessons(lesson_ids)
 
-    await _show_reorder_lessons(callback)
+    await _show_reorder_lessons(callback, course_id)
 
 
 @router.callback_query(F.data.startswith("admin:lesson:toggle:"))
