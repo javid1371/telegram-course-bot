@@ -353,6 +353,76 @@ async def toggle_fast_track(callback: CallbackQuery):
             await callback.message.edit_text(USER["fast_track_deactivated"])
 
 
+# ── PlatformFileId helpers ──────────────────────────────────
+
+async def _resolve_file_id(lesson_id: int, file_id: str, block_index: int = 0) -> str:
+    """Return the cached file_id for the current platform, or fall back to *file_id*."""
+    if not file_id:
+        return file_id
+    try:
+        from sqlalchemy import select
+        from database.models import PlatformFileId
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(PlatformFileId).where(
+                    PlatformFileId.lesson_id == lesson_id,
+                    PlatformFileId.block_index == block_index,
+                    PlatformFileId.platform == config.PLATFORM,
+                )
+            )
+            pfid = result.scalar_one_or_none()
+            if pfid:
+                return pfid.file_id
+    except Exception:
+        pass
+    return file_id
+
+
+async def _cache_file_id(lesson_id: int, file_id: str, content_type: str, block_index: int = 0):
+    """Store the file_id returned by the platform after a successful send."""
+    if not file_id:
+        return
+    try:
+        from database.models import PlatformFileId
+        async with async_session_maker() as session:
+            existing = await session.execute(
+                __import__('sqlalchemy').select(PlatformFileId).where(
+                    PlatformFileId.lesson_id == lesson_id,
+                    PlatformFileId.block_index == block_index,
+                    PlatformFileId.platform == config.PLATFORM,
+                )
+            )
+            row = existing.scalar_one_or_none()
+            if row:
+                row.file_id = file_id
+            else:
+                session.add(PlatformFileId(
+                    lesson_id=lesson_id,
+                    block_index=block_index,
+                    platform=config.PLATFORM,
+                    file_id=file_id,
+                    content_type=content_type,
+                ))
+            await session.commit()
+    except Exception as e:
+        logger.debug(f"PlatformFileId cache error: {e}")
+
+
+def _extract_file_id_from_message(sent_msg, content_type_str: str) -> str | None:
+    """Get the file_id from a sent Message object based on content type."""
+    if not sent_msg:
+        return None
+    mapping = {
+        "video": lambda m: m.video.file_id if m.video else None,
+        "audio": lambda m: m.audio.file_id if m.audio else None,
+        "voice": lambda m: m.voice.file_id if m.voice else None,
+        "document": lambda m: m.document.file_id if m.document else None,
+        "photo": lambda m: m.photo[-1].file_id if m.photo else None,
+    }
+    extractor = mapping.get(content_type_str)
+    return extractor(sent_msg) if extractor else None
+
+
 async def _send_lesson(message: Message, lesson):
     """Send lesson content based on type"""
     # Prepare lesson header
@@ -383,7 +453,8 @@ async def _send_lesson(message: Message, lesson):
             caption = lesson_text if is_first else None
             kb = keyboard if is_last else None
 
-            await _send_content_block(message, block, caption, kb)
+            await _send_content_block(message, block, caption, kb,
+                                      lesson_id=lesson.id, block_index=i)
         return
 
     # Single-content fallback (backward compat)
@@ -395,52 +466,72 @@ async def _send_lesson(message: Message, lesson):
         await message.answer(full_text, reply_markup=keyboard)
 
     elif lesson.content_type == ContentType.VIDEO:
-        if lesson.file_id:
-            await message.answer_video(
-                video=lesson.file_id,
+        file_id = await _resolve_file_id(lesson.id, lesson.file_id)
+        if file_id:
+            sent = await message.answer_video(
+                video=file_id,
                 caption=lesson_text,
                 reply_markup=keyboard,
             )
+            new_fid = _extract_file_id_from_message(sent, "video")
+            if new_fid:
+                await _cache_file_id(lesson.id, new_fid, "video")
         else:
             await message.answer(lesson_text, reply_markup=keyboard)
 
     elif lesson.content_type == ContentType.AUDIO:
-        if lesson.file_id:
-            await message.answer_audio(
-                audio=lesson.file_id,
+        file_id = await _resolve_file_id(lesson.id, lesson.file_id)
+        if file_id:
+            sent = await message.answer_audio(
+                audio=file_id,
                 caption=lesson_text,
                 reply_markup=keyboard,
             )
+            new_fid = _extract_file_id_from_message(sent, "audio")
+            if new_fid:
+                await _cache_file_id(lesson.id, new_fid, "audio")
         else:
             await message.answer(lesson_text, reply_markup=keyboard)
 
     elif lesson.content_type == ContentType.VOICE:
-        if lesson.file_id:
-            await message.answer_voice(
-                voice=lesson.file_id,
+        file_id = await _resolve_file_id(lesson.id, lesson.file_id)
+        if file_id:
+            sent = await message.answer_voice(
+                voice=file_id,
                 caption=lesson_text,
                 reply_markup=keyboard,
             )
+            new_fid = _extract_file_id_from_message(sent, "voice")
+            if new_fid:
+                await _cache_file_id(lesson.id, new_fid, "voice")
         else:
             await message.answer(lesson_text, reply_markup=keyboard)
 
     elif lesson.content_type == ContentType.DOCUMENT:
-        if lesson.file_id:
-            await message.answer_document(
-                document=lesson.file_id,
+        file_id = await _resolve_file_id(lesson.id, lesson.file_id)
+        if file_id:
+            sent = await message.answer_document(
+                document=file_id,
                 caption=lesson_text,
                 reply_markup=keyboard,
             )
+            new_fid = _extract_file_id_from_message(sent, "document")
+            if new_fid:
+                await _cache_file_id(lesson.id, new_fid, "document")
         else:
             await message.answer(lesson_text, reply_markup=keyboard)
 
     elif lesson.content_type == ContentType.PHOTO:
-        if lesson.file_id:
-            await message.answer_photo(
-                photo=lesson.file_id,
+        file_id = await _resolve_file_id(lesson.id, lesson.file_id)
+        if file_id:
+            sent = await message.answer_photo(
+                photo=file_id,
                 caption=lesson_text,
                 reply_markup=keyboard,
             )
+            new_fid = _extract_file_id_from_message(sent, "photo")
+            if new_fid:
+                await _cache_file_id(lesson.id, new_fid, "photo")
         else:
             await message.answer(lesson_text, reply_markup=keyboard)
 
@@ -452,9 +543,21 @@ async def _send_lesson(message: Message, lesson):
         await message.answer(full_text, reply_markup=keyboard)
 
 
-async def _send_content_block(message: Message, block: dict, caption: str = None, keyboard=None):
+async def _send_content_block(message: Message, block: dict, caption: str = None, keyboard=None,
+                              lesson_id: int = None, block_index: int = 0):
     """Send a single content block (for multi-content lessons)"""
     block_type = block.get("type", "text")
+
+    async def _resolve_block_fid(fid):
+        if lesson_id and fid:
+            return await _resolve_file_id(lesson_id, fid, block_index)
+        return fid
+
+    async def _cache_block_fid(sent_msg, ct):
+        if lesson_id and sent_msg:
+            new_fid = _extract_file_id_from_message(sent_msg, ct)
+            if new_fid:
+                await _cache_file_id(lesson_id, new_fid, ct, block_index)
 
     if block_type == "text":
         text = caption or ""
@@ -464,15 +567,25 @@ async def _send_content_block(message: Message, block: dict, caption: str = None
             text = "📝"
         await message.answer(text, reply_markup=keyboard)
     elif block_type == "video" and block.get("file_id"):
-        await message.answer_video(video=block["file_id"], caption=caption, reply_markup=keyboard)
+        fid = await _resolve_block_fid(block["file_id"])
+        sent = await message.answer_video(video=fid, caption=caption, reply_markup=keyboard)
+        await _cache_block_fid(sent, "video")
     elif block_type == "audio" and block.get("file_id"):
-        await message.answer_audio(audio=block["file_id"], caption=caption, reply_markup=keyboard)
+        fid = await _resolve_block_fid(block["file_id"])
+        sent = await message.answer_audio(audio=fid, caption=caption, reply_markup=keyboard)
+        await _cache_block_fid(sent, "audio")
     elif block_type == "voice" and block.get("file_id"):
-        await message.answer_voice(voice=block["file_id"], caption=caption, reply_markup=keyboard)
+        fid = await _resolve_block_fid(block["file_id"])
+        sent = await message.answer_voice(voice=fid, caption=caption, reply_markup=keyboard)
+        await _cache_block_fid(sent, "voice")
     elif block_type == "document" and block.get("file_id"):
-        await message.answer_document(document=block["file_id"], caption=caption, reply_markup=keyboard)
+        fid = await _resolve_block_fid(block["file_id"])
+        sent = await message.answer_document(document=fid, caption=caption, reply_markup=keyboard)
+        await _cache_block_fid(sent, "document")
     elif block_type == "photo" and block.get("file_id"):
-        await message.answer_photo(photo=block["file_id"], caption=caption, reply_markup=keyboard)
+        fid = await _resolve_block_fid(block["file_id"])
+        sent = await message.answer_photo(photo=fid, caption=caption, reply_markup=keyboard)
+        await _cache_block_fid(sent, "photo")
     else:
         # Fallback
         text = caption or block.get("text", "📝")
@@ -1422,7 +1535,8 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     completed_count = progress.get("completed", 0)
     referral_promo_lessons = config.REFERRAL_PROMO_LESSONS if hasattr(config, 'REFERRAL_PROMO_LESSONS') else [3, 7]
     if completed_count in referral_promo_lessons and user.referral_code:
-        referral_link = f"https://t.me/{config.BOT_USERNAME}?start=ref_{user.referral_code}"
+        _bot_base = "https://ble.ir" if config.PLATFORM == "bale" else "https://t.me"
+        referral_link = f"{_bot_base}/{config.BOT_USERNAME}?start=ref_{user.referral_code}"
         try:
             await message.answer(
                 USER["referral_promo"].format(referral_link=referral_link)
@@ -1511,7 +1625,8 @@ async def _show_referral_page(message: Message):
             await message.answer(USER["please_register"])
             return
 
-        referral_link = f"https://t.me/{config.BOT_USERNAME}?start=ref_{user.referral_code}"
+        _bot_base = "https://ble.ir" if config.PLATFORM == "bale" else "https://t.me"
+        referral_link = f"{_bot_base}/{config.BOT_USERNAME}?start=ref_{user.referral_code}"
         referral_count = await user_service.get_referral_count(user.id)
 
         text = USER["referral_header"].format(

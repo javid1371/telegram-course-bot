@@ -107,6 +107,7 @@ class ScoringService:
         points = await self.get_active_points(scoring_type)
         if points != 0:
             user.lead_score = (user.lead_score or 0) + points
+            await self.session.commit()
             logger.info(
                 f"[Scoring] user {user.telegram_user_id}: "
                 f"{webhook_event_key} → {points:+d} pts "

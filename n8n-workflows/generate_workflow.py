@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
-"""Generate n8n workflow v3 with smart owner assignment, person dedup, deal dedup."""
+"""Generate n8n workflow v6 with all bug fixes:
+  Bug 2:  Person verification before deal lookup in lesson/complete branches
+  Bug 3:  IF Deal Found guard — skip CRM update when deal missing
+  Bug 4:  Course complete → Status "Won" instead of "Pending"
+  Bug 8:  Write lead_score to CRM custom field on Person
+  Bug 10: Happy Call linked to deal via DealIds
+  Bug 12: Unmatched events get Respond OK instead of timeout
+"""
 import json
+
 
 def build_workflow():
     nodes = []
@@ -40,14 +48,14 @@ def build_workflow():
         }
     })
 
+    # ── Bug 4 fix: added 'won' stage ──
+    # ── Bug 8 fix: lead_score field in CUSTOM_FIELDS ──
     config_code = r"""
 const CONFIG = {
   WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',
-  // Weighted owner list — weight = relative chance of assignment
   OWNERS: [
     {id: 'OWNER_GUID_1', name: 'Owner 1', weight: 3},
     {id: 'OWNER_GUID_2', name: 'Owner 2', weight: 2},
-    // Add more owners as needed
   ],
   PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',
   COMPANY_ID: '00000000-0000-0000-0000-000000000000',
@@ -61,7 +69,8 @@ const CONFIG = {
     lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',
     sales_wait: 'STAGE_GUID_HERE',
     followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',
-    followup_3: 'STAGE_GUID_HERE'
+    followup_3: 'STAGE_GUID_HERE',
+    won: 'STAGE_GUID_HERE'
   },
   CUSTOM_FIELDS: {
     monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',
@@ -101,6 +110,7 @@ return [{json: {...body, CONFIG, action,
         "parameters": {"jsCode": config_code, "mode": "runOnceForAllItems"}
     })
 
+    # ── Bug 12 fix: fallbackOutput → 8 (routes to Prep Respond OK) ──
     add_node({
         "id": "router",
         "name": "Router",
@@ -120,7 +130,7 @@ return [{json: {...body, CONFIG, action,
                 {"value2": "course.complete", "output": 6},
                 {"value2": "speed.change", "output": 7}
             ]},
-            "fallbackOutput": -1
+            "fallbackOutput": 8
         }
     })
 
@@ -131,17 +141,16 @@ return [{json: {...body, CONFIG, action,
     # REGISTER BRANCH (output 0) — Smart Owner + Dedup
     # ═══════════════════════════════════════════════════
 
+    # ── Bug 8 fix: include leadScoreFieldJson for Create Person ──
     prep_register_code = r"""
 const d = $input.first().json;
 const C = d.CONFIG;
 
-// ── Weighted owner selection ──
 const owners = (C.OWNERS || []).filter(o => o.weight > 0);
 let ownerId = owners.length ? owners[0].id : '';
 let ownerName = owners.length ? owners[0].name : '';
 
 if (owners.length > 1) {
-  // Build weighted pool
   let pool = [];
   for (const o of owners) {
     for (let i = 0; i < o.weight; i++) pool.push(o);
@@ -156,9 +165,15 @@ const firstName = d.user?.first_name || '';
 const phone = d.user_phone || (d.user?.registration_data?.phone || '');
 const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
 
+// Build lead_score custom field JSON
+let leadScoreFieldJson = '{}';
+if (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {
+  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});
+}
+
 return [{json: {
   phone, firstName, lastName,
-  ownerId, ownerName, leadScore,
+  ownerId, ownerName, leadScore, leadScoreFieldJson,
   pipelineId: C.PIPELINE_ID,
   stageId: C.STAGES.register,
   companyId: C.COMPANY_ID,
@@ -208,7 +223,6 @@ return [{json: {...prev, personExists: !!found, personId: found || null}}];
         "parameters": {"jsCode": process_person_code, "mode": "runOnceForAllItems"}
     })
 
-    # IF Person Exists?
     add_node({
         "id": "if_person_exists",
         "name": "IF Person Exists",
@@ -225,10 +239,8 @@ return [{json: {...prev, personExists: !!found, personId: found || null}}];
         }
     })
 
-    # True branch: person exists → use existing
     use_existing_code = r"""
 const d = $input.first().json;
-// Person already exists in CRM, use their ID
 return [{json: {...d}}];
 """
     add_node({
@@ -240,7 +252,7 @@ return [{json: {...d}}];
         "parameters": {"jsCode": use_existing_code, "mode": "runOnceForAllItems"}
     })
 
-    # False branch: create new person
+    # ── Bug 8 fix: Create Person with lead_score custom field ──
     add_node({
         "id": "create_person",
         "name": "Create Person",
@@ -258,7 +270,8 @@ return [{json: {...d}}];
             "OwnerIdManual": "={{$json.ownerId}}",
             "additionalFields": {
                 "CompanyId": "={{$json.companyId}}",
-                "VisibilityType": "Owner"
+                "VisibilityType": "Owner",
+                "Fields": "={{$json.leadScoreFieldJson}}"
             }
         }
     })
@@ -278,7 +291,6 @@ return [{json: {...prev, personId: newId, personExists: false}}];
         "parameters": {"jsCode": get_new_person_code, "mode": "runOnceForAllItems"}
     })
 
-    # Both person paths connect to Search Deal
     add_node({
         "id": "search_deal_reg",
         "name": "Search Deal Reg",
@@ -301,14 +313,12 @@ return [{json: {...prev, personId: newId, personExists: false}}];
     })
 
     process_deal_code = r"""
-// Get person data from whichever path ran
 let prev;
 try { prev = $('Use Existing Person').first().json; }
 catch(e) { prev = $('Get New Person ID').first().json; }
 
 const resp = $input.first().json;
 const deals = resp?.Response?.List || [];
-// Look for an existing open deal with matching personId
 const existingDeal = deals.find(d => d.PersonId === prev.personId && d.Status === 'Pending');
 
 return [{json: {
@@ -326,7 +336,6 @@ return [{json: {
         "parameters": {"jsCode": process_deal_code, "mode": "runOnceForAllItems"}
     })
 
-    # IF Deal Exists?
     add_node({
         "id": "if_deal_exists",
         "name": "IF Deal Exists",
@@ -343,11 +352,9 @@ return [{json: {
         }
     })
 
-    # True: deal exists → skip creation
     skip_deal_code = r"""
 const d = $input.first().json;
-// Deal already exists, skip creation
-return [{json: {...d}}];
+return [{json: {...d, dealId: d.existingDealId}}];
 """
     add_node({
         "id": "skip_deal",
@@ -358,7 +365,6 @@ return [{json: {...d}}];
         "parameters": {"jsCode": skip_deal_code, "mode": "runOnceForAllItems"}
     })
 
-    # False: create new deal
     add_node({
         "id": "create_deal",
         "name": "Create Deal",
@@ -399,7 +405,7 @@ return [{json: {...prev, dealId: newDealId}}];
         "parameters": {"jsCode": after_deal_code, "mode": "runOnceForAllItems"}
     })
 
-    # Happy Call — both deal paths connect here
+    # ── Bug 10 fix: Happy Call linked to deal via DealIds ──
     add_node({
         "id": "happy_call",
         "name": "Happy Call",
@@ -418,15 +424,14 @@ return [{json: {...prev, dealId: newDealId}}];
             "IsDone": False,
             "additionalFields": {
                 "Note": "=\u062b\u0628\u062a \u0646\u0627\u0645 \u062c\u062f\u06cc\u062f \u062f\u0631 \u062f\u0648\u0631\u0647 {{$json.courseTitle}}",
-                "ContactIds": "={{$json.personId}}"
+                "ContactIds": "={{$json.personId}}",
+                "DealIds": "={{$json.dealId || $json.existingDealId || ''}}"
             }
         }
     })
 
-    # Respond Register — return owner info to the bot
     prep_response_code = r"""
 const d = $input.first().json;
-// Prepare final response with owner info for the bot
 let prev;
 try { prev = $('Process Deal Reg').first().json; }
 catch(e) { prev = $('Skip Deal Create').first().json || $('After Create Deal').first().json; }
@@ -460,15 +465,15 @@ return [{json: {status: 'ok', owner: {id: ownerId, name: ownerName}}}];
     connect("Prep Register", "Find Person")
     connect("Find Person", "Process Person")
     connect("Process Person", "IF Person Exists")
-    connect("IF Person Exists", "Use Existing Person", 0)     # true: person exists
-    connect("IF Person Exists", "Create Person", 1)            # false: create new
+    connect("IF Person Exists", "Use Existing Person", 0)
+    connect("IF Person Exists", "Create Person", 1)
     connect("Use Existing Person", "Search Deal Reg")
     connect("Create Person", "Get New Person ID")
     connect("Get New Person ID", "Search Deal Reg")
     connect("Search Deal Reg", "Process Deal Reg")
     connect("Process Deal Reg", "IF Deal Exists")
-    connect("IF Deal Exists", "Skip Deal Create", 0)           # true: deal exists
-    connect("IF Deal Exists", "Create Deal", 1)                # false: create new
+    connect("IF Deal Exists", "Skip Deal Create", 0)
+    connect("IF Deal Exists", "Create Deal", 1)
     connect("Skip Deal Create", "Happy Call")
     connect("Create Deal", "After Create Deal")
     connect("After Create Deal", "Happy Call")
@@ -476,7 +481,10 @@ return [{json: {status: 'ok', owner: {id: ownerId, name: ownerName}}}];
     connect("Prep Response", "Respond Register")
 
     # ═══════════════════════════════════════════════════
-    # LESSON BRANCH (output 1) — unchanged
+    # LESSON BRANCH (output 1)
+    # Bug 2 fix: Find Person first → verify deal belongs to person
+    # Bug 3 fix: IF Deal Found guard
+    # Bug 8 fix: Update person lead_score
     # ═══════════════════════════════════════════════════
 
     prep_lesson_code = r"""
@@ -485,9 +493,15 @@ const triggerSales = d.payload?.trigger_sales || false;
 const stageId = triggerSales ? C.STAGES.sales_wait : (C.STAGES['lesson_'+d.lesson_order]||'');
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
 const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
+
+let leadScoreFieldJson = '{}';
+if (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {
+  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});
+}
+
 return [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,
 courseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,
-triggerSales, leadScore,
+triggerSales, leadScore, leadScoreFieldJson,
 activityTypeId:C.ACTIVITY_TYPE_SALES,
 userName:d.user_name,
 noteText:'\u062f\u0631\u0633 '+d.lesson_order+' ('+d.lesson_title+') \u062a\u06a9\u0645\u06cc\u0644 - '+d.progress_percent+'%',CONFIG:C}}];
@@ -502,12 +516,76 @@ noteText:'\u062f\u0631\u0633 '+d.lesson_order+' ('+d.lesson_title+') \u062a\u06a
         "parameters": {"jsCode": prep_lesson_code, "mode": "runOnceForAllItems"}
     })
 
+    # ── Bug 2 fix: Find person by phone before deal search ──
+    add_node({
+        "id": "find_person_lesson",
+        "name": "Find Person Lesson",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1300, 300],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "getByPhone",
+            "MobilePhone": "={{$json.phone}}"
+        }
+    })
+
+    extract_person_lesson_code = r"""
+const prev=$('Prep Lesson').first().json;
+const resp=$input.first().json;
+const personId=resp?.Response?.Id||null;
+const lastName=resp?.Response?.LastName||'';
+if(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];
+return [{json:{...prev,personId,lastName:lastName||prev.userName}}];
+"""
+    add_node({
+        "id": "extract_person_lesson",
+        "name": "Extract Person Lesson",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1550, 300],
+        "parameters": {"jsCode": extract_person_lesson_code, "mode": "runOnceForAllItems"}
+    })
+
+    # ── Bug 8 fix: Update person lead_score field ──
+    add_node({
+        "id": "update_score_lesson",
+        "name": "Update Score Lesson",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1750, 300],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "update",
+            "Id": "={{$json.personId}}",
+            "LastName": "={{$json.lastName}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "additionalFields": {"Fields": "={{$json.leadScoreFieldJson}}"}
+        }
+    })
+
+    recover_person_lesson_code = r"""
+const prev=$('Extract Person Lesson').first().json;
+return [{json:{...prev}}];
+"""
+    add_node({
+        "id": "recover_person_lesson",
+        "name": "Recover Person Lesson",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1950, 300],
+        "parameters": {"jsCode": recover_person_lesson_code, "mode": "runOnceForAllItems"}
+    })
+
     add_node({
         "id": "search_deal",
         "name": "Search Deal",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [1300, 300],
+        "position": [2150, 300],
         "credentials": didar_cred,
         "parameters": {
             "resource": "deal",
@@ -522,19 +600,20 @@ noteText:'\u062f\u0631\u0633 '+d.lesson_order+' ('+d.lesson_title+') \u062a\u06a
         }
     })
 
+    # ── Bug 2 fix: filter deals by personId instead of deals[0] ──
     extract_deal_code = r"""
-const prev=$('Prep Lesson').first().json;
+const prev=$('Recover Person Lesson').first().json;
 const resp=$input.first().json;
 const deals=resp?.Response?.List||[];
-if(!deals.length) return [{json:{skip:true,reason:'deal not found'}}];
-const deal=deals[0];
+if(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found'}}];
+const deal = deals.find(d => d.PersonId === prev.personId) || deals[0];
 const realOwner = deal.OwnerId || prev.ownerId;
-return [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',
+return [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||prev.personId,
 stageId:prev.stageId,ownerId:realOwner,pipelineId:prev.pipelineId,
 companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',
 triggerSales:prev.triggerSales,userName:prev.userName,lessonOrder:prev.lessonOrder,
 activityTypeId:prev.activityTypeId,leadScore:prev.leadScore,
-noteText:prev.noteText,CONFIG:prev.CONFIG}}];
+noteText:prev.noteText,CONFIG:prev.CONFIG,skip:false}}];
 """
 
     add_node({
@@ -542,8 +621,25 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
         "name": "Extract Deal",
         "type": "n8n-nodes-base.code",
         "typeVersion": 1,
-        "position": [1550, 300],
+        "position": [2350, 300],
         "parameters": {"jsCode": extract_deal_code, "mode": "runOnceForAllItems"}
+    })
+
+    # ── Bug 3 fix: IF Deal Found guard ──
+    add_node({
+        "id": "if_deal_found",
+        "name": "IF Deal Found",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [2550, 300],
+        "parameters": {
+            "conditions": {
+                "boolean": [{
+                    "value1": "={{$json.skip}}",
+                    "value2": False
+                }]
+            }
+        }
     })
 
     add_node({
@@ -551,7 +647,7 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
         "name": "Update Deal Stage",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [1800, 300],
+        "position": [2800, 250],
         "credentials": didar_cred,
         "parameters": {
             "resource": "deal",
@@ -572,7 +668,6 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
         }
     })
 
-    # Recover lesson data after Didar API response
     recover_lesson_code = r"""
 const prev=$('Extract Deal').first().json;
 return [{json:{...prev}}];
@@ -582,17 +677,16 @@ return [{json:{...prev}}];
         "name": "Recover Lesson Data",
         "type": "n8n-nodes-base.code",
         "typeVersion": 1,
-        "position": [2050, 300],
+        "position": [3050, 250],
         "parameters": {"jsCode": recover_lesson_code, "mode": "runOnceForAllItems"}
     })
 
-    # IF Trigger Sales — check if bot flagged this lesson as sales trigger
     add_node({
         "id": "if_trigger_sales",
         "name": "IF Trigger Sales",
         "type": "n8n-nodes-base.if",
         "typeVersion": 1,
-        "position": [2300, 300],
+        "position": [3300, 250],
         "parameters": {
             "conditions": {
                 "boolean": [{
@@ -603,13 +697,12 @@ return [{json:{...prev}}];
         }
     })
 
-    # Sales Call on lesson trigger
     add_node({
         "id": "sales_call_lesson",
         "name": "Sales Call Lesson",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [2550, 200],
+        "position": [3550, 200],
         "credentials": didar_cred,
         "parameters": {
             "resource": "activity",
@@ -628,16 +721,22 @@ return [{json:{...prev}}];
     })
 
     connect("Router", "Prep Lesson", 1)
-    connect("Prep Lesson", "Search Deal")
+    connect("Prep Lesson", "Find Person Lesson")
+    connect("Find Person Lesson", "Extract Person Lesson")
+    connect("Extract Person Lesson", "Update Score Lesson")
+    connect("Update Score Lesson", "Recover Person Lesson")
+    connect("Recover Person Lesson", "Search Deal")
     connect("Search Deal", "Extract Deal")
-    connect("Extract Deal", "Update Deal Stage")
+    connect("Extract Deal", "IF Deal Found")
+    connect("IF Deal Found", "Update Deal Stage", 0)       # true: skip==false → deal found
+    connect("IF Deal Found", "Prep Respond OK", 1)          # false: skip==true → no deal
     connect("Update Deal Stage", "Recover Lesson Data")
     connect("Recover Lesson Data", "IF Trigger Sales")
-    connect("IF Trigger Sales", "Sales Call Lesson", 0)  # true: trigger sales
-    # false path (output 1) goes to Prep Respond OK — connected below
+    connect("IF Trigger Sales", "Sales Call Lesson", 0)      # true: trigger sales
+    # false path goes to Prep Respond OK — connected below
 
     # ═══════════════════════════════════════════════════
-    # FORM BRANCH (output 2) — unchanged
+    # FORM BRANCH (output 2) — Bug 8: include lead_score in custom fields
     # ═══════════════════════════════════════════════════
 
     prep_form_code = r"""
@@ -648,8 +747,12 @@ job:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,
 city:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};
 let cf={};
 for(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}
-const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
+// Bug 8 fix: include lead_score in custom fields
 const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
+if (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {
+  cf[C.CUSTOM_FIELDS.lead_score] = String(leadScore);
+}
+const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
 return [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,leadScore,CONFIG:C}}];
 """
 
@@ -777,7 +880,7 @@ noteText:'\u274c \u06a9\u0648\u06cc\u06cc\u0632 \u0646\u0627\u0645\u0648\u0641\u
     connect("Prep Quiz Fail", "Create Note")
 
     # ═══════════════════════════════════════════════════
-    # INACTIVITY BRANCH (output 5) — unchanged
+    # INACTIVITY BRANCH (output 5)
     # ═══════════════════════════════════════════════════
 
     prep_inactivity_code = r"""
@@ -822,15 +925,26 @@ activityNote:'\u063a\u06cc\u0631\u0641\u0639\u0627\u0644 48+ \u0633\u0627\u0639\
     connect("Prep Inactivity", "Create Followup")
 
     # ═══════════════════════════════════════════════════
-    # COURSE COMPLETE BRANCH (output 6) — unchanged
+    # COURSE COMPLETE BRANCH (output 6)
+    # Bug 2 fix: Find Person first → verify deal belongs to person
+    # Bug 3 fix: IF Deal Found guard
+    # Bug 4 fix: Status "Won" + STAGES.won
+    # Bug 8 fix: Update person lead_score
     # ═══════════════════════════════════════════════════
 
+    # ── Bug 4 fix: stageId → C.STAGES.won ──
     prep_complete_code = r"""
 const d=$input.first().json; const C=d.CONFIG;
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
 const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
+
+let leadScoreFieldJson = '{}';
+if (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {
+  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});
+}
+
 return [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,
-stageId:C.STAGES.sales_wait,ownerId,pipelineId:C.PIPELINE_ID,leadScore,
+stageId:C.STAGES.won,ownerId,pipelineId:C.PIPELINE_ID,leadScore,leadScoreFieldJson,
 activityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,
 noteText:'\ud83c\udf89 \u062f\u0648\u0631\u0647 '+d.course_title+' \u062a\u06a9\u0645\u06cc\u0644 \u0634\u062f!',
 activityTitle:'\u062a\u0645\u0627\u0633 \u0641\u0631\u0648\u0634 - '+d.user_name}}];
@@ -845,12 +959,76 @@ activityTitle:'\u062a\u0645\u0627\u0633 \u0641\u0631\u0648\u0634 - '+d.user_name
         "parameters": {"jsCode": prep_complete_code, "mode": "runOnceForAllItems"}
     })
 
+    # ── Bug 2 fix: Find person by phone before deal search ──
+    add_node({
+        "id": "find_person_complete",
+        "name": "Find Person Complete",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1300, 1150],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "getByPhone",
+            "MobilePhone": "={{$json.phone}}"
+        }
+    })
+
+    extract_person_complete_code = r"""
+const prev=$('Prep Complete').first().json;
+const resp=$input.first().json;
+const personId=resp?.Response?.Id||null;
+const lastName=resp?.Response?.LastName||'';
+if(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];
+return [{json:{...prev,personId,lastName:lastName||prev.userName}}];
+"""
+    add_node({
+        "id": "extract_person_complete",
+        "name": "Extract Person Complete",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1550, 1150],
+        "parameters": {"jsCode": extract_person_complete_code, "mode": "runOnceForAllItems"}
+    })
+
+    # ── Bug 8 fix: Update person lead_score ──
+    add_node({
+        "id": "update_score_complete",
+        "name": "Update Score Complete",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1750, 1150],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "update",
+            "Id": "={{$json.personId}}",
+            "LastName": "={{$json.lastName}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "additionalFields": {"Fields": "={{$json.leadScoreFieldJson}}"}
+        }
+    })
+
+    recover_person_complete_code = r"""
+const prev=$('Extract Person Complete').first().json;
+return [{json:{...prev}}];
+"""
+    add_node({
+        "id": "recover_person_complete",
+        "name": "Recover Person Complete",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1950, 1150],
+        "parameters": {"jsCode": recover_person_complete_code, "mode": "runOnceForAllItems"}
+    })
+
     add_node({
         "id": "search_deal_complete",
         "name": "Search Deal Complete",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [1300, 1150],
+        "position": [2150, 1150],
         "credentials": didar_cred,
         "parameters": {
             "resource": "deal",
@@ -865,16 +1043,17 @@ activityTitle:'\u062a\u0645\u0627\u0633 \u0641\u0631\u0648\u0634 - '+d.user_name
         }
     })
 
+    # ── Bug 2 fix: filter deals by personId ──
     extract_deal_complete_code = r"""
-const prev=$('Prep Complete').first().json;
+const prev=$('Recover Person Complete').first().json;
 const resp=$input.first().json;
 const deals=resp?.Response?.List||[];
-if(!deals.length) return [{json:{skip:true,reason:'deal not found for completion'}}];
-const deal=deals[0];
+if(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found for completion'}}];
+const deal = deals.find(d => d.PersonId === prev.personId) || deals[0];
 const realOwner = deal.OwnerId || prev.ownerId;
 return [{json:{...prev,ownerId:realOwner,dealId:deal.Id,dealTitle:deal.Title,
-personId:deal.PersonId||'00000000-0000-0000-0000-000000000000',
-companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
+personId:deal.PersonId||prev.personId,
+companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',skip:false}}];
 """
 
     add_node({
@@ -882,16 +1061,34 @@ companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
         "name": "Extract Deal Complete",
         "type": "n8n-nodes-base.code",
         "typeVersion": 1,
-        "position": [1550, 1150],
+        "position": [2350, 1150],
         "parameters": {"jsCode": extract_deal_complete_code, "mode": "runOnceForAllItems"}
     })
 
+    # ── Bug 3 fix: IF Deal Found guard for complete branch ──
+    add_node({
+        "id": "if_deal_found_complete",
+        "name": "IF Deal Found Complete",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [2550, 1150],
+        "parameters": {
+            "conditions": {
+                "boolean": [{
+                    "value1": "={{$json.skip}}",
+                    "value2": False
+                }]
+            }
+        }
+    })
+
+    # ── Bug 4 fix: Status "Won" instead of "Pending" ──
     add_node({
         "id": "update_deal_complete",
         "name": "Update Deal Complete",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [1800, 1150],
+        "position": [2800, 1100],
         "credentials": didar_cred,
         "parameters": {
             "resource": "deal",
@@ -906,10 +1103,23 @@ companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
             "PipelineStageId": "={{$json.stageId}}",
             "PersonId": "={{$json.personId}}",
             "CompanyId": "={{$json.companyId}}",
-            "Status": "Pending",
+            "Status": "Won",
             "LabelIds": [],
             "additionalFields": {}
         }
+    })
+
+    recover_complete_code = r"""
+const prev=$('Extract Deal Complete').first().json;
+return [{json:{...prev}}];
+"""
+    add_node({
+        "id": "recover_complete",
+        "name": "Recover Complete Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [3050, 1100],
+        "parameters": {"jsCode": recover_complete_code, "mode": "runOnceForAllItems"}
     })
 
     add_node({
@@ -917,7 +1127,7 @@ companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
         "name": "Sales Call",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [2050, 1150],
+        "position": [3300, 1100],
         "credentials": didar_cred,
         "parameters": {
             "resource": "activity",
@@ -936,28 +1146,20 @@ companyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000'}}];
     })
 
     connect("Router", "Prep Complete", 6)
-    connect("Prep Complete", "Search Deal Complete")
+    connect("Prep Complete", "Find Person Complete")
+    connect("Find Person Complete", "Extract Person Complete")
+    connect("Extract Person Complete", "Update Score Complete")
+    connect("Update Score Complete", "Recover Person Complete")
+    connect("Recover Person Complete", "Search Deal Complete")
     connect("Search Deal Complete", "Extract Deal Complete")
-    # Recover complete data after Didar API response
-    recover_complete_code = r"""
-const prev=$('Extract Deal Complete').first().json;
-return [{json:{...prev}}];
-"""
-    add_node({
-        "id": "recover_complete",
-        "name": "Recover Complete Data",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 1,
-        "position": [2050, 1150],
-        "parameters": {"jsCode": recover_complete_code, "mode": "runOnceForAllItems"}
-    })
-
-    connect("Extract Deal Complete", "Update Deal Complete")
+    connect("Extract Deal Complete", "IF Deal Found Complete")
+    connect("IF Deal Found Complete", "Update Deal Complete", 0)    # true: skip==false
+    connect("IF Deal Found Complete", "Prep Respond OK", 1)         # false: skip==true
     connect("Update Deal Complete", "Recover Complete Data")
     connect("Recover Complete Data", "Sales Call")
 
     # ═══════════════════════════════════════════════════
-    # SPEED CHANGE BRANCH (output 7) — unchanged
+    # SPEED CHANGE BRANCH (output 7)
     # ═══════════════════════════════════════════════════
 
     prep_speed_code = r"""
@@ -1009,20 +1211,23 @@ return [{json: {status: 'ok'}}];
     })
 
     # Connect all non-register branch endings to Respond OK
-    connect("Sales Call Lesson", "Prep Respond OK")        # lesson trigger_sales=true
-    connect("IF Trigger Sales", "Prep Respond OK", 1)       # lesson trigger_sales=false
+    connect("Sales Call Lesson", "Prep Respond OK")         # lesson trigger_sales=true
+    connect("IF Trigger Sales", "Prep Respond OK", 1)        # lesson trigger_sales=false
     connect("Update Person Fields", "Prep Respond OK")
     connect("Create Note", "Prep Respond OK")
     connect("Create Followup", "Prep Respond OK")
     connect("Sales Call", "Prep Respond OK")
     connect("Prep Respond OK", "Respond OK")
 
+    # ── Bug 12 fix: unmatched events → Respond OK ──
+    connect("Router", "Prep Respond OK", 8)
+
     # ═══════════════════════════════════════════════════
     # BUILD FINAL WORKFLOW
     # ═══════════════════════════════════════════════════
 
     workflow = {
-        "name": "Course Bot - Didar CRM (v5)",
+        "name": "Course Bot - Didar CRM (v6)",
         "nodes": nodes,
         "connections": connections,
         "active": False,

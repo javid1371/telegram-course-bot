@@ -250,6 +250,16 @@ class ReminderService:
         user.current_lesson_id = next_lesson.id
         await self.session.commit()
 
+        # Emit lesson.open event for analytics / CRM
+        course_title = ""
+        if next_lesson.course:
+            course_title = next_lesson.course.title
+        await emit(
+            "lesson", "open", user, self.session,
+            course={"id": course_id, "title": course_title},
+            lesson={"id": next_lesson.id, "title": next_lesson.title, "order": next_lesson.order},
+        )
+
         # Build caption
         description = next_lesson.description or ""
         lesson_text = USER["lesson_sent"].format(

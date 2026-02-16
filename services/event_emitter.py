@@ -32,11 +32,11 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import aiohttp
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session_maker
-from database.models import WebhookSetting, WebhookFailedEvent, User, CompanyInfo
+from database.models import WebhookSetting, WebhookFailedEvent, User, CompanyInfo, ScheduledMessage, MessageStatus
 import config
 
 logger = logging.getLogger(__name__)
@@ -567,10 +567,11 @@ async def check_inactive_users(session: AsyncSession):
     """
     Emit ``inactivity.timeout`` for users inactive 48 h+.
 
-    Called by scheduler.  Emits for *all* qualifying users each run;
-    n8n should deduplicate by ``user.telegram_id`` if needed.
+    Called by scheduler.  Deduplicates using ScheduledMessage table so
+    each user only gets the event once per 7 days.
     """
     cutoff = datetime.utcnow() - timedelta(hours=48)
+    dedup_window = datetime.utcnow() - timedelta(days=7)
 
     result = await session.execute(
         select(User).where(
@@ -585,6 +586,17 @@ async def check_inactive_users(session: AsyncSession):
 
     emitted = 0
     for user in users:
+        # ── Dedup: skip if already emitted within the last 7 days ──
+        existing = await session.execute(
+            select(func.count(ScheduledMessage.id)).where(
+                ScheduledMessage.user_id == user.id,
+                ScheduledMessage.message_type == "inactivity_timeout",
+                ScheduledMessage.sent_at > dedup_window,
+            )
+        )
+        if (existing.scalar() or 0) > 0:
+            continue
+
         days_inactive = (
             (datetime.utcnow() - user.last_activity_at).days
             if user.last_activity_at
@@ -594,9 +606,22 @@ async def check_inactive_users(session: AsyncSession):
             "inactivity", "timeout", user, session,
             extra_payload={"days_inactive": days_inactive},
         )
+
+        # Record emission for dedup
+        now = datetime.utcnow()
+        session.add(ScheduledMessage(
+            user_id=user.id,
+            message=f"inactivity.timeout emitted (inactive {days_inactive}d)",
+            message_type="inactivity_timeout",
+            send_at=now,
+            status=MessageStatus.SENT,
+            sent_at=now,
+        ))
+
         emitted += 1
 
     if emitted:
+        await session.commit()
         logger.info(
             f"[EventEmitter] Emitted inactivity.timeout for {emitted} users"
         )

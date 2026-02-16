@@ -320,6 +320,18 @@ async def process_select_field(callback: CallbackQuery, state: FSMContext):
         async with async_session_maker() as session:
             user_service = UserService(session)
 
+            # Find referred_by user
+            referred_by = None
+            if data.get("referral"):
+                from sqlalchemy import select
+                from database.models import User
+                ref_result = await session.execute(
+                    select(User).where(User.referral_code == data["referral"])
+                )
+                ref_user = ref_result.scalar_one_or_none()
+                if ref_user:
+                    referred_by = ref_user.id
+
             new_user = await user_service.create_user(
                 telegram_user_id=callback.from_user.id,
                 username=callback.from_user.username,
@@ -327,6 +339,7 @@ async def process_select_field(callback: CallbackQuery, state: FSMContext):
                 last_name=callback.from_user.last_name,
                 registration_data=reg_data,
                 source_campaign=data.get("campaign"),
+                referred_by=referred_by,
             )
 
             await emit("lead", "register", new_user, session)
@@ -418,6 +431,13 @@ async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
             await lesson_service.mark_lesson_started(user.id, first_lesson.id)
             user.current_lesson_id = first_lesson.id
             await session.commit()
+
+            # Emit lesson.open event for analytics / CRM
+            await emit(
+                "lesson", "open", user, session,
+                course={"id": course.id, "title": course.title},
+                lesson={"id": first_lesson.id, "title": first_lesson.title, "order": first_lesson.order},
+            )
 
             # Send lesson content
             from handlers.user import _send_lesson
