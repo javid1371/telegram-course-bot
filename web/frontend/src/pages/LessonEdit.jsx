@@ -82,6 +82,7 @@ export default function LessonEdit() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Add content modal
   const [showAdd, setShowAdd] = useState(false);
@@ -188,8 +189,9 @@ export default function LessonEdit() {
 
   const handleFileUpload = async (file, contentType, caption = '', isReplace = false, index = -1) => {
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const result = await upload.file(file, contentType, caption);
+      const result = await upload.file(file, contentType, caption, (pct) => setUploadProgress(pct));
       const item = { type: contentType, file_id: result.file_id };
       if (caption) item.caption = caption;
 
@@ -210,6 +212,7 @@ export default function LessonEdit() {
       toast.error(err.message);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -432,9 +435,21 @@ export default function LessonEdit() {
                   }}
                   className="w-full"
                 />
-                {uploading && <p className="text-blue-500 text-sm mt-2">⏳ در حال آپلود...</p>}
+                {uploading && (
+                  <div className="mt-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-blue-500 text-sm">⏳ در حال آپلود... {uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div
+                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="mt-4">
-                  <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+                  <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm" disabled={uploading}>انصراف</button>
                 </div>
               </div>
             )}
@@ -497,9 +512,21 @@ export default function LessonEdit() {
                   }}
                   className="w-full"
                 />
-                {uploading && <p className="text-blue-500 text-sm mt-2">⏳ در حال آپلود...</p>}
+                {uploading && (
+                  <div className="mt-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-blue-500 text-sm">⏳ در حال آپلود... {uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div
+                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="mt-4">
-                  <button onClick={() => setReplaceIndex(null)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+                  <button onClick={() => setReplaceIndex(null)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm" disabled={uploading}>انصراف</button>
                 </div>
               </div>
             )}
