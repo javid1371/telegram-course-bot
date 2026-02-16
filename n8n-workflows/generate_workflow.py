@@ -154,10 +154,11 @@ if (owners.length > 1) {
 const lastName = d.user?.last_name || d.user?.first_name || 'User';
 const firstName = d.user?.first_name || '';
 const phone = d.user_phone || (d.user?.registration_data?.phone || '');
+const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
 
 return [{json: {
   phone, firstName, lastName,
-  ownerId, ownerName,
+  ownerId, ownerName, leadScore,
   pipelineId: C.PIPELINE_ID,
   stageId: C.STAGES.register,
   companyId: C.COMPANY_ID,
@@ -480,10 +481,15 @@ return [{json: {status: 'ok', owner: {id: ownerId, name: ownerName}}}];
 
     prep_lesson_code = r"""
 const d=$input.first().json; const C=d.CONFIG;
-const stageId=C.STAGES['lesson_'+d.lesson_order]||'';
+const triggerSales = d.payload?.trigger_sales || false;
+const stageId = triggerSales ? C.STAGES.sales_wait : (C.STAGES['lesson_'+d.lesson_order]||'');
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
+const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
 return [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,
 courseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,
+triggerSales, leadScore,
+activityTypeId:C.ACTIVITY_TYPE_SALES,
+userName:d.user_name,
 noteText:'\u062f\u0631\u0633 '+d.lesson_order+' ('+d.lesson_title+') \u062a\u06a9\u0645\u06cc\u0644 - '+d.progress_percent+'%',CONFIG:C}}];
 """
 
@@ -563,10 +569,53 @@ noteText:prev.noteText,CONFIG:prev.CONFIG}}];
         }
     })
 
+    # IF Trigger Sales — check if bot flagged this lesson as sales trigger
+    add_node({
+        "id": "if_trigger_sales",
+        "name": "IF Trigger Sales",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [2050, 300],
+        "parameters": {
+            "conditions": {
+                "boolean": [{
+                    "value1": "={{$json.triggerSales}}",
+                    "value2": True
+                }]
+            }
+        }
+    })
+
+    # Sales Call on lesson trigger
+    add_node({
+        "id": "sales_call_lesson",
+        "name": "Sales Call Lesson",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [2300, 200],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "activity",
+            "operation": "create",
+            "Title": "=\u062a\u0645\u0627\u0633 \u0641\u0631\u0648\u0634 - {{$json.userName}} (\u062f\u0631\u0633 {{$json.lessonOrder}})",
+            "ActivityTypeMode": "manual",
+            "ActivityTypeIdManual": "={{$json.activityTypeId}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "IsDone": False,
+            "additionalFields": {
+                "Note": "={{$json.noteText}}"
+            }
+        }
+    })
+
     connect("Router", "Prep Lesson", 1)
     connect("Prep Lesson", "Search Deal")
     connect("Search Deal", "Extract Deal")
     connect("Extract Deal", "Update Deal Stage")
+    connect("Update Deal Stage", "IF Trigger Sales")
+    connect("IF Trigger Sales", "Sales Call Lesson", 0)  # true: trigger sales
+    # false path (output 1) goes to Prep Respond OK — connected below
 
     # ═══════════════════════════════════════════════════
     # FORM BRANCH (output 2) — unchanged
@@ -581,7 +630,8 @@ city:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};
 let cf={};
 for(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
-return [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,CONFIG:C}}];
+const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
+return [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,leadScore,CONFIG:C}}];
 """
 
     add_node({
@@ -759,8 +809,9 @@ activityNote:'\u063a\u06cc\u0631\u0641\u0639\u0627\u0644 48+ \u0633\u0627\u0639\
     prep_complete_code = r"""
 const d=$input.first().json; const C=d.CONFIG;
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
+const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;
 return [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,
-stageId:C.STAGES.sales_wait,ownerId,pipelineId:C.PIPELINE_ID,
+stageId:C.STAGES.sales_wait,ownerId,pipelineId:C.PIPELINE_ID,leadScore,
 activityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,
 noteText:'\ud83c\udf89 \u062f\u0648\u0631\u0647 '+d.course_title+' \u062a\u06a9\u0645\u06cc\u0644 \u0634\u062f!',
 activityTitle:'\u062a\u0645\u0627\u0633 \u0641\u0631\u0648\u0634 - '+d.user_name}}];
@@ -923,7 +974,8 @@ return [{json: {status: 'ok'}}];
     })
 
     # Connect all non-register branch endings to Respond OK
-    connect("Update Deal Stage", "Prep Respond OK")
+    connect("Sales Call Lesson", "Prep Respond OK")        # lesson trigger_sales=true
+    connect("IF Trigger Sales", "Prep Respond OK", 1)       # lesson trigger_sales=false
     connect("Update Person Fields", "Prep Respond OK")
     connect("Create Note", "Prep Respond OK")
     connect("Create Followup", "Prep Respond OK")
@@ -935,7 +987,7 @@ return [{json: {status: 'ok'}}];
     # ═══════════════════════════════════════════════════
 
     workflow = {
-        "name": "Course Bot - Didar CRM (v3)",
+        "name": "Course Bot - Didar CRM (v4)",
         "nodes": nodes,
         "connections": connections,
         "active": False,

@@ -549,3 +549,21 @@ class SalesOwner(Base):
 
     def __repr__(self):
         return f"<SalesOwner {self.name} w={self.weight}>"
+
+
+# ===========================
+# LEAD SCORING RULE MODEL
+# ===========================
+class LeadScoringRule(Base):
+    """Configurable scoring rule — admin can edit points per event type."""
+    __tablename__ = "lead_scoring_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<LeadScoringRule {self.event_type}={self.points}>"

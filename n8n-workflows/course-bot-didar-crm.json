@@ -1,5 +1,5 @@
 {
-  "name": "Course Bot - Didar CRM (v3)",
+  "name": "Course Bot - Didar CRM (v4)",
   "nodes": [
     {
       "id": "webhook",
@@ -92,7 +92,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\n// ── Weighted owner selection ──\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  // Build weighted pool\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user?.last_name || d.user?.first_name || 'User';\nconst firstName = d.user?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || '');\n\nreturn [{json: {\n  phone, firstName, lastName,\n  ownerId, ownerName,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '\\u062f\\u0648\\u0631\\u0647 ' + d.course_title + ' - ' + lastName,\n  CONFIG: C\n}}];\n",
+        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\n// ── Weighted owner selection ──\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  // Build weighted pool\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user?.last_name || d.user?.first_name || 'User';\nconst firstName = d.user?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || '');\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\nreturn [{json: {\n  phone, firstName, lastName,\n  ownerId, ownerName, leadScore,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '\\u062f\\u0648\\u0631\\u0647 ' + d.course_title + ' - ' + lastName,\n  CONFIG: C\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -402,7 +402,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst stageId=C.STAGES['lesson_'+d.lesson_order]||'';\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst triggerSales = d.payload?.trigger_sales || false;\nconst stageId = triggerSales ? C.STAGES.sales_wait : (C.STAGES['lesson_'+d.lesson_order]||'');\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\ntriggerSales, leadScore,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,\nuserName:d.user_name,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -484,6 +484,55 @@
       }
     },
     {
+      "id": "if_trigger_sales",
+      "name": "IF Trigger Sales",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.triggerSales}}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sales_call_lesson",
+      "name": "Sales Call Lesson",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        2300,
+        200
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "",
+          "name": "Didar CRM"
+        }
+      },
+      "parameters": {
+        "resource": "activity",
+        "operation": "create",
+        "Title": "=تماس فروش - {{$json.userName}} (درس {{$json.lessonOrder}})",
+        "ActivityTypeMode": "manual",
+        "ActivityTypeIdManual": "={{$json.activityTypeId}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "IsDone": false,
+        "additionalFields": {
+          "Note": "={{$json.noteText}}"
+        }
+      }
+    },
+    {
       "id": "prep_form",
       "name": "Prep Form",
       "type": "n8n-nodes-base.code",
@@ -493,7 +542,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,CONFIG:C}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\nreturn [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,leadScore,CONFIG:C}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -663,7 +712,7 @@
         1150
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,\nstageId:C.STAGES.sales_wait,ownerId,pipelineId:C.PIPELINE_ID,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,\nnoteText:'\\ud83c\\udf89 \\u062f\\u0648\\u0631\\u0647 '+d.course_title+' \\u062a\\u06a9\\u0645\\u06cc\\u0644 \\u0634\\u062f!',\nactivityTitle:'\\u062a\\u0645\\u0627\\u0633 \\u0641\\u0631\\u0648\\u0634 - '+d.user_name}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\nreturn [{json:{phone:d.user_phone,userName:d.user_name,courseTitle:d.course_title,\nstageId:C.STAGES.sales_wait,ownerId,pipelineId:C.PIPELINE_ID,leadScore,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,CONFIG:C,\nnoteText:'\\ud83c\\udf89 \\u062f\\u0648\\u0631\\u0647 '+d.course_title+' \\u062a\\u06a9\\u0645\\u06cc\\u0644 \\u0634\\u062f!',\nactivityTitle:'\\u062a\\u0645\\u0627\\u0633 \\u0641\\u0631\\u0648\\u0634 - '+d.user_name}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -1112,6 +1161,35 @@
         ]
       ]
     },
+    "Update Deal Stage": {
+      "main": [
+        [
+          {
+            "node": "IF Trigger Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Trigger Sales": {
+      "main": [
+        [
+          {
+            "node": "Sales Call Lesson",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Prep Form": {
       "main": [
         [
@@ -1233,7 +1311,7 @@
         ]
       ]
     },
-    "Update Deal Stage": {
+    "Sales Call Lesson": {
       "main": [
         [
           {

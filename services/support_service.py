@@ -13,7 +13,7 @@ import config
 logger = logging.getLogger(__name__)
 
 # Keys used in company_info table
-COMPANY_KEYS = ['name', 'phone', 'working_hours', 'address', 'website', 'extra_info']
+COMPANY_KEYS = ['name', 'phone', 'working_hours', 'address', 'website', 'extra_info', 'sales_trigger_lesson']
 
 COMPANY_KEY_LABELS = {
     'name': '🏢 نام شرکت',
@@ -22,6 +22,7 @@ COMPANY_KEY_LABELS = {
     'address': '📍 آدرس',
     'website': '🌐 وبسایت',
     'extra_info': '📝 اطلاعات بیشتر',
+    'sales_trigger_lesson': '🎯 تریگر فروش (شماره درس)',
 }
 
 

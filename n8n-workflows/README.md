@@ -15,7 +15,7 @@ and built-in error handling.
 | Event | Action in Didar CRM |
 |---|---|
 | `lead.register` | Find/Create Person (dedup) + Find/Create Deal (dedup) + Happy Call Activity + **Returns assigned owner** |
-| `lesson.complete` | Search Deal → Update stage (پایان درس ۱-۸) |
+| `lesson.complete` | Search Deal → Update stage → **IF trigger_sales** → Sales Call Activity |
 | `form.submit` | Find Person → Update custom fields (income, staff, job, etc.) |
 | `quiz.pass` | Create Note with score |
 | `quiz.fail` | Create Note with failure details |
@@ -23,7 +23,9 @@ and built-in error handling.
 | `course.complete` | Search Deal → Move to "در انتظار تماس فروش" + Sales Call Activity |
 | `speed.change` | Create Note tracking engagement level |
 
-### Key Features (v3)
+### Key Features (v4)
+- **Configurable Sales Trigger**: Admin sets a lesson number that triggers sales call activity — bot sends `trigger_sales: true` in payload
+- **Lead Scoring**: Every event carries `lead_score` from bot's scoring engine; visible in all webhook payloads
 - **Native Didar CRM Nodes**: Uses `n8n-nodes-didar-crm` instead of HTTP Request nodes
 - **Centralized Credentials**: API key managed via n8n's credential system (not in workflow)
 - **Weighted Owner Assignment**: Config defines OWNERS array with weights; each registration randomly selects an owner proportional to weight
@@ -35,7 +37,7 @@ and built-in error handling.
 - **Complete Branches**: All 8 event types have full action chains
 
 ### Node Statistics
-- **40 total nodes**: 14 native Didar CRM + 22 Code/Logic + 2 Respond + 2 other (Webhook, Switch)
+- **42 total nodes**: 15 native Didar CRM + 23 Code/Logic + 2 IF + 2 Respond + 2 other (Webhook, Switch)
 
 ---
 

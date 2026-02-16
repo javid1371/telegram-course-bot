@@ -36,7 +36,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session_maker
-from database.models import WebhookSetting, WebhookFailedEvent, User
+from database.models import WebhookSetting, WebhookFailedEvent, User, CompanyInfo
 import config
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,8 @@ def _build_user_block(user: User) -> dict:
         "referred_by": user.referred_by,
         "is_active": user.is_active,
         "is_completed": user.is_completed,
+        "lead_score": user.lead_score or 0,
+        "phone": (user.registration_data or {}).get("phone", ""),
         "created_at": (
             user.created_at.isoformat() if user.created_at else None
         ),
@@ -330,6 +332,26 @@ async def _process_owner_assignment(user, response_data: dict, session):
         logger.error(f"[EventEmitter] _process_owner_assignment error: {e}")
 
 
+# ───────────────────────── sales trigger check ──────────────
+
+async def _check_sales_trigger(lesson_order: int, session: AsyncSession) -> bool:
+    """
+    Check if this lesson_order matches the admin-configured
+    ``sales_trigger_lesson`` value.
+    """
+    try:
+        result = await session.execute(
+            select(CompanyInfo).where(CompanyInfo.key == 'sales_trigger_lesson')
+        )
+        row = result.scalar_one_or_none()
+        if not row or not row.value:
+            return False
+        trigger_lesson = int(row.value)
+        return trigger_lesson > 0 and lesson_order == trigger_lesson
+    except (ValueError, TypeError):
+        return False
+
+
 # ───────────────────────── public API ────────────────────────
 
 async def emit(
@@ -367,6 +389,32 @@ async def emit(
                    progress={"percent": 60, "completed": 3, "total": 5})
     """
     try:
+        event_key = f"{event_type}.{action}"
+
+        # ── Lead scoring: update user score before building payload ──
+        try:
+            from services.scoring_service import ScoringService
+            scoring_svc = ScoringService(session)
+            new_score = await scoring_svc.update_user_score(user, event_key)
+        except Exception as e:
+            logger.warning(f"[EventEmitter] scoring error: {e}")
+
+        # ── Sales trigger: check if this lesson triggers sales activity ──
+        trigger_sales = False
+        if event_key == "lesson.complete" and lesson:
+            lesson_order = lesson.get("order", 0)
+            if lesson_order:
+                trigger_sales = await _check_sales_trigger(lesson_order, session)
+
+        # Merge trigger_sales into extra_payload
+        if trigger_sales:
+            extra_payload = extra_payload or {}
+            extra_payload["trigger_sales"] = True
+
+        # Include lead_score in extra_payload
+        extra_payload = extra_payload or {}
+        extra_payload["lead_score"] = user.lead_score or 0
+
         payload = build_event_payload(
             event_type=event_type,
             action=action,
@@ -379,7 +427,6 @@ async def emit(
         )
 
         signature = payload.get("security", {}).get("signature", "")
-        event_key = f"{event_type}.{action}"
 
         # Query active webhooks (read-only)
         result = await session.execute(

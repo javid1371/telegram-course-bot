@@ -149,6 +149,12 @@ class AdminStates(StatesGroup):
     waiting_owner_didar = State()
     waiting_owner_weight = State()
 
+    # Lead scoring
+    waiting_scoring_points = State()
+
+    # Sales trigger
+    waiting_sales_trigger = State()
+
 
 # ===========================
 # ADMIN ENTRY
@@ -4137,3 +4143,200 @@ async def text_editor_reset_key(callback: CallbackQuery, state: FSMContext):
 async def noop(callback: CallbackQuery):
     """No operation - for pagination indicator"""
     await callback.answer()
+
+
+# ===========================
+# LEAD SCORING MANAGEMENT
+# ===========================
+
+@router.message(F.text == ADMIN_BUTTONS["lead_scoring"])
+@admin_only
+@log_errors
+async def lead_scoring_menu(message: Message):
+    """Show lead scoring rules + sales trigger setting"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        from services.scoring_service import ScoringService
+        scoring_svc = ScoringService(session)
+        rules = await scoring_svc.get_all_rules()
+
+        # Get sales trigger setting
+        support_service = SupportService(session)
+        info = await support_service.get_company_info()
+        trigger = info.get("sales_trigger_lesson", "")
+
+    # Build text
+    text = ADMIN["scoring_header"]
+    icons = {
+        "register": "📝", "lesson_complete": "📚", "quiz_pass": "✅",
+        "quiz_fail": "❌", "form_submit": "📋", "speed_2x": "⚡",
+        "course_complete": "🎉",
+    }
+    for rule in rules:
+        status = "" if rule.is_active else "(غیرفعال)"
+        icon = icons.get(rule.event_type, "📌")
+        text += ADMIN["scoring_rule"].format(
+            icon=icon, label=rule.label,
+            points=rule.points, status=status
+        ) + "\n"
+
+    text += "\n" + ADMIN["sales_trigger_header"]
+    if trigger and trigger != "0":
+        text += ADMIN["sales_trigger_current"].format(lesson=trigger)
+    else:
+        text += ADMIN["sales_trigger_none"]
+
+    # Build keyboard
+    builder = InlineKeyboardBuilder()
+    for rule in rules:
+        icon = icons.get(rule.event_type, "📌")
+        builder.row(
+            InlineKeyboardButton(
+                text=f"✏️ {rule.label} ({rule.points:+d})",
+                callback_data=f"admin:score:edit:{rule.event_type}"
+            ),
+            InlineKeyboardButton(
+                text="🔄" if rule.is_active else "⏸",
+                callback_data=f"admin:score:toggle:{rule.event_type}"
+            ),
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="🎯 تنظیم تریگر فروش",
+            callback_data="admin:score:trigger"
+        )
+    )
+
+    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("admin:score:edit:"))
+@admin_only
+@log_errors
+async def scoring_edit_start(callback: CallbackQuery, state: FSMContext):
+    """Start editing a scoring rule's points"""
+    event_type = callback.data.split(":")[3]
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        from services.scoring_service import ScoringService
+        scoring_svc = ScoringService(session)
+        rule = await scoring_svc.get_rule(event_type)
+        if not rule:
+            return
+
+        await state.set_state(AdminStates.waiting_scoring_points)
+        await state.update_data(scoring_event_type=event_type, scoring_label=rule.label)
+        await callback.message.answer(
+            ADMIN["scoring_edit_prompt"].format(label=rule.label),
+            parse_mode="HTML",
+        )
+
+
+@router.message(AdminStates.waiting_scoring_points)
+@admin_only
+@log_errors
+async def scoring_edit_save(message: Message, state: FSMContext):
+    """Save new scoring points"""
+    data = await state.get_data()
+    event_type = data.get("scoring_event_type")
+    label = data.get("scoring_label", "")
+    await state.clear()
+
+    try:
+        points = int(message.text.strip())
+    except (ValueError, TypeError):
+        await message.answer(ADMIN["scoring_invalid"])
+        return
+
+    async with async_session_maker() as session:
+        from services.scoring_service import ScoringService
+        scoring_svc = ScoringService(session)
+        await scoring_svc.update_rule_points(event_type, points)
+
+    await message.answer(
+        ADMIN["scoring_updated"].format(label=label, points=points),
+        reply_markup=get_admin_main_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:score:toggle:"))
+@admin_only
+@log_errors
+async def scoring_toggle(callback: CallbackQuery):
+    """Toggle a scoring rule active/inactive"""
+    event_type = callback.data.split(":")[3]
+    await callback.answer()
+
+    async with async_session_maker() as session:
+        from services.scoring_service import ScoringService
+        scoring_svc = ScoringService(session)
+        rule = await scoring_svc.get_rule(event_type)
+        if not rule:
+            return
+        label = rule.label
+        new_state = await scoring_svc.toggle_rule(event_type)
+
+    status = "فعال" if new_state else "غیرفعال"
+    await callback.message.answer(
+        ADMIN["scoring_toggled"].format(label=label, status=status),
+        reply_markup=get_admin_main_menu(),
+    )
+
+
+@router.callback_query(F.data == "admin:score:trigger")
+@admin_only
+@log_errors
+async def sales_trigger_start(callback: CallbackQuery, state: FSMContext):
+    """Start setting sales trigger lesson"""
+    await callback.answer()
+    await state.set_state(AdminStates.waiting_sales_trigger)
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        info = await support_service.get_company_info()
+        current = info.get("sales_trigger_lesson", "")
+
+    text = ADMIN["sales_trigger_header"]
+    if current and current != "0":
+        text += ADMIN["sales_trigger_current"].format(lesson=current)
+    else:
+        text += ADMIN["sales_trigger_none"]
+    text += "\n\n" + ADMIN["sales_trigger_prompt"]
+
+    await callback.message.answer(text, parse_mode="HTML")
+
+
+@router.message(AdminStates.waiting_sales_trigger)
+@admin_only
+@log_errors
+async def sales_trigger_save(message: Message, state: FSMContext):
+    """Save sales trigger lesson number"""
+    await state.clear()
+
+    try:
+        lesson_num = int(message.text.strip())
+    except (ValueError, TypeError):
+        await message.answer(ADMIN["sales_trigger_invalid"])
+        return
+
+    if lesson_num < 0:
+        await message.answer(ADMIN["sales_trigger_invalid"])
+        return
+
+    async with async_session_maker() as session:
+        support_service = SupportService(session)
+        if lesson_num == 0:
+            await support_service.set_company_info("sales_trigger_lesson", "")
+            await message.answer(
+                ADMIN["sales_trigger_cleared"],
+                reply_markup=get_admin_main_menu(),
+            )
+        else:
+            await support_service.set_company_info("sales_trigger_lesson", str(lesson_num))
+            await message.answer(
+                ADMIN["sales_trigger_saved"].format(lesson=lesson_num),
+                reply_markup=get_admin_main_menu(),
+            )

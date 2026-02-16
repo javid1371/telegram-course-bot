@@ -186,6 +186,7 @@ ADMIN_BUTTONS = SmartDict("ADMIN_BUTTONS", {
     # اطلاعات شرکت و فروش
     "company_info": "🏢 اطلاعات شرکت",
     "sales_owners": "👔 کارشناسان فروش",
+    "lead_scoring": "📊 امتیازدهی لید",
     "add_owner": "➕ افزودن کارشناس",
     "owner_list": "📋 لیست کارشناسان",
     "edit_owner": "✏️ ویرایش",
@@ -761,6 +762,23 @@ ADMIN = SmartDict("ADMIN", {
     "owner_deleted": "✅ کارشناس حذف شد.",
     "owner_weight_error": "⚠️ لطفاً عددی بین ۱ تا ۱۰ وارد کنید.",
     "owner_delete_confirm": "⚠️ آیا از حذف کارشناس «{name}» اطمینان دارید؟",
+
+    # امتیازدهی لید
+    "scoring_header": "📊 <b>امتیازدهی لید</b>\n\nامتیازی که با هر رویداد به کاربر اضافه/کم می‌شود:\n",
+    "scoring_rule": "{icon} {label}: <b>{points:+d}</b> امتیاز {status}",
+    "scoring_edit_prompt": "📊 امتیاز جدید برای «{label}» را وارد کنید:\n\nعدد مثبت (مثلاً 10) یا منفی (مثلاً -3):",
+    "scoring_updated": "✅ امتیاز «{label}» به {points:+d} تغییر کرد.",
+    "scoring_toggled": "🔄 قاعده «{label}» {status} شد.",
+    "scoring_invalid": "⚠️ لطفاً یک عدد صحیح وارد کنید.",
+
+    # تنظیم تریگر فروش
+    "sales_trigger_header": "🎯 <b>تریگر فعالیت فروش</b>\n\nشماره درسی که بعد از تکمیلش، فعالیت مذاکره فروش در CRM ساخته می‌شود:\n",
+    "sales_trigger_current": "📌 درس فعلی: <b>{lesson}</b>",
+    "sales_trigger_none": "📌 فعلاً تنظیم نشده (فقط با تکمیل دوره فعال می‌شود)",
+    "sales_trigger_prompt": "🔢 شماره درس را وارد کنید (مثلاً 8):\n\nیا 0 برای غیرفعال (فقط تکمیل دوره):",
+    "sales_trigger_saved": "✅ تریگر فروش روی درس {lesson} تنظیم شد.",
+    "sales_trigger_cleared": "✅ تریگر فروش غیرفعال شد. فقط تکمیل دوره فعالیت فروش می‌سازد.",
+    "sales_trigger_invalid": "⚠️ لطفاً یک عدد صحیح مثبت وارد کنید (یا 0 برای غیرفعال).",
 })
 
 
