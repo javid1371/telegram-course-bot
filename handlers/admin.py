@@ -1534,8 +1534,9 @@ _CONTENT_TYPE_LABELS = {
 
 
 def _get_lesson_contents(lesson) -> list:
-    """Get lesson contents, building from legacy fields if needed"""
-    contents = lesson.contents or []
+    """Get lesson contents, building from legacy fields if needed (returns a copy)"""
+    import copy
+    contents = copy.deepcopy(lesson.contents) if lesson.contents else []
     if not contents and (lesson.file_id or lesson.text_content):
         block = {"type": lesson.content_type.value if lesson.content_type else "text"}
         if lesson.file_id:
@@ -1548,12 +1549,14 @@ def _get_lesson_contents(lesson) -> list:
 
 async def _sync_lesson_primary_fields(lesson, contents, session):
     """Sync lesson.content_type, file_id, text_content from contents[0]"""
+    from sqlalchemy.orm.attributes import flag_modified
     content_type_map = {
         "text": ContentType.TEXT, "video": ContentType.VIDEO,
         "audio": ContentType.AUDIO, "voice": ContentType.VOICE,
         "document": ContentType.DOCUMENT, "photo": ContentType.PHOTO,
     }
     lesson.contents = contents if contents else None
+    flag_modified(lesson, "contents")
     if contents:
         first = contents[0]
         lesson.content_type = content_type_map.get(first.get("type", "text"), ContentType.TEXT)
