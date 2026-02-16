@@ -52,8 +52,29 @@ async def cmd_start(message: Message, state: FSMContext):
         user_service = UserService(session)
         user = await user_service.get_user_by_telegram_id(message.from_user.id)
 
+        # اگر کاربر با آیدی نبود، با شماره موبایل جستجو کن (cross-platform sync)
+        if not user:
+            # اگر شماره موبایل در registration_data ثبت شده باشد
+            phone = None
+            # اگر کاربر قبلاً ثبت‌نام کرده و شماره موبایل دارد
+            # باید از registration_data یا state یا پیام استخراج شود
+            # فرض: اگر کاربر قبلاً ثبت‌نام کرده باشد، شماره موبایل در registration_data ذخیره شده
+            # اگر کاربر تازه وارد است، باید در فرآیند ثبت‌نام دریافت شود
+            # در اینجا فقط اگر شماره موبایل در پیام یا state باشد
+            # (در حالت واقعی باید از فرم ثبت‌نام دریافت شود)
+            # اگر شماره موبایل در state باشد
+            data = await state.get_data()
+            reg_data = data.get("registration_data", {}) if data else {}
+            phone = reg_data.get("phone")
+            # اگر شماره موبایل در پیام باشد (مثلاً از start_param)
+            if not phone and hasattr(message, "contact") and message.contact:
+                phone = message.contact.phone_number
+            # اگر شماره موبایل پیدا شد، جستجو کن
+            if phone:
+                user = await user_service.get_user_by_phone(phone)
+
         if user:
-            # User already registered
+            # User already registered (cross-platform)
             if message.from_user.id in config.ADMIN_USER_IDS:
                 await message.answer(
                     ADMIN["welcome"],

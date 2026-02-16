@@ -13,6 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 class LessonService:
+        async def get_user_progress_by_phone(self, phone: str, course_id: Optional[int] = None) -> dict:
+            """Get progress summary for a user by phone (cross-platform sync)"""
+            from services.user_service import UserService
+            user_service = UserService(self.session)
+            user = await user_service.get_user_by_phone(phone)
+            if not user:
+                return {"total": 0, "completed": 0, "remaining": 0, "progress_percent": 0}
+            return await self.get_user_progress(user.id, course_id)
+
+        async def get_next_lesson_for_user_by_phone(self, phone: str, course_id: Optional[int] = None) -> Optional[Lesson]:
+            """Get the next uncompleted lesson for a user by phone (cross-platform sync)"""
+            from services.user_service import UserService
+            user_service = UserService(self.session)
+            user = await user_service.get_user_by_phone(phone)
+            if not user:
+                return None
+            return await self.get_next_lesson_for_user(user.id, course_id)
     """Service for lesson-related operations"""
 
     def __init__(self, session: AsyncSession):
