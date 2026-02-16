@@ -114,6 +114,23 @@ export const users = {
   get: (id) => request(`/users/${id}`),
 };
 
+// ── Registration Fields ──────────────
+export const registrationFields = {
+  list: () => request('/registration-fields'),
+  get: (id) => request(`/registration-fields/${id}`),
+  create: (data) =>
+    request('/registration-fields', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) =>
+    request(`/registration-fields/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) =>
+    request(`/registration-fields/${id}`, { method: 'DELETE' }),
+  reorder: (items) =>
+    request('/registration-fields/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
+    }),
+};
+
 // ── Upload ───────────────────────────
 export const upload = {
   /**

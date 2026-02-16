@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'داشبورد', icon: '📊' },
   { to: '/courses', label: 'دوره‌ها', icon: '📚' },
   { to: '/users', label: 'کاربران', icon: '👥' },
+  { to: '/registration-fields', label: 'فرم ثبت‌نام', icon: '📝' },
 ];
 
 export default function Layout({ children }) {

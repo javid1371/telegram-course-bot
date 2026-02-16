@@ -21,6 +21,7 @@ from web.api.lessons import router as lessons_router
 from web.api.users import router as users_router
 from web.api.stats import router as stats_router
 from web.api.upload import router as upload_router
+from web.api.registration_fields import router as regfields_router
 
 
 @asynccontextmanager
@@ -53,6 +54,7 @@ app.include_router(courses_router, prefix="/api/courses", tags=["Courses"])
 app.include_router(lessons_router, prefix="/api/lessons", tags=["Lessons"])
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(upload_router, prefix="/api/upload", tags=["Upload"])
+app.include_router(regfields_router, prefix="/api/registration-fields", tags=["Registration Fields"])
 
 # Serve React frontend (built files)
 STATIC_DIR = Path(__file__).parent / "static"
