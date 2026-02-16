@@ -1544,6 +1544,9 @@ def _get_lesson_contents(lesson) -> list:
         if lesson.text_content:
             block["text"] = lesson.text_content
         contents = [block]
+    if not contents and lesson.form_data:
+        field_count = len(lesson.form_data.get("fields", []))
+        contents = [{"type": "form", "text": f"فرم ({field_count} فیلد)"}]
     return contents
 
 
