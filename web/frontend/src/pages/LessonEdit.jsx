@@ -210,6 +210,7 @@ export default function LessonEdit() {
         description: lesson.description,
         is_active: lesson.is_active,
         order: lesson.order,
+        lesson_number: lesson.lesson_number,
         delay_hours: lesson.delay_hours,
         view_deadline_hours: lesson.view_deadline_hours,
         cta_text: lesson.cta_text,
@@ -546,6 +547,16 @@ export default function LessonEdit() {
               value={lesson.order}
               onChange={(e) => setLesson({ ...lesson, order: parseInt(e.target.value) || 0 })}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">شماره درس (n8n)</label>
+            <input
+              type="number"
+              value={lesson.lesson_number || ''}
+              onChange={(e) => setLesson({ ...lesson, lesson_number: e.target.value ? parseInt(e.target.value) : null })}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+              placeholder="شماره ثابت برای وبهوک"
             />
           </div>
           <div>

@@ -37,6 +37,7 @@ class LessonUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     order: Optional[int] = None
+    lesson_number: Optional[int] = None
     delay_hours: Optional[int] = None
     view_deadline_hours: Optional[int] = None
     cta_text: Optional[str] = None
@@ -132,6 +133,7 @@ async def get_lesson(lesson_id: int, _=Depends(get_current_user)):
             "content_type": lesson.content_type.value if lesson.content_type else "text",
             "is_active": lesson.is_active,
             "order": lesson.order,
+            "lesson_number": lesson.lesson_number,
             "delay_hours": lesson.delay_hours,
             "view_deadline_hours": lesson.view_deadline_hours,
             "cta_text": lesson.cta_text,

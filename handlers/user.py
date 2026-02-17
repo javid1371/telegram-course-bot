@@ -255,6 +255,7 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
             "id": next_lesson.id,
             "title": next_lesson.title,
             "order": next_lesson.order,
+            "lesson_number": next_lesson.lesson_number,
             "type": next_lesson.content_type.value,
         },
         extra_payload={
@@ -428,7 +429,7 @@ async def _send_lesson(message: Message, lesson):
     # Prepare lesson header
     description = lesson.description or ""
     lesson_text = USER["lesson_sent"].format(
-        lesson_number=lesson.order,
+        lesson_number=lesson.lesson_number or lesson.order,
         lesson_title=lesson.title,
         description=description,
     )
@@ -800,7 +801,7 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
             if non_form_indices:
                 description = lesson.description or ""
                 lesson_text = USER["lesson_sent"].format(
-                    lesson_number=lesson.order,
+                    lesson_number=lesson.lesson_number or lesson.order,
                     lesson_title=lesson.title,
                     description=description,
                 )
@@ -842,7 +843,7 @@ async def confirm_lesson(callback: CallbackQuery, state: FSMContext):
         # Emit lesson.confirm event
         await emit(
             "lesson", "confirm", user, session,
-            lesson={"id": lesson_id, "title": current_lesson.title, "order": current_lesson.order},
+            lesson={"id": lesson_id, "title": current_lesson.title, "order": current_lesson.order, "lesson_number": current_lesson.lesson_number},
         )
 
         # If lesson has a quiz, start quiz instead of completing
@@ -850,7 +851,7 @@ async def confirm_lesson(callback: CallbackQuery, state: FSMContext):
             # Emit quiz.start event
             await emit(
                 "quiz", "start", user, session,
-                lesson={"id": current_lesson.id, "title": current_lesson.title, "order": current_lesson.order},
+                lesson={"id": current_lesson.id, "title": current_lesson.title, "order": current_lesson.order, "lesson_number": current_lesson.lesson_number},
                 extra_payload={"total_questions": len(current_lesson.quiz_data.get("questions", []))},
             )
             await _start_quiz(callback.message, state, current_lesson, user.id)
@@ -1310,7 +1311,7 @@ async def quiz_retry(callback: CallbackQuery, state: FSMContext):
         # Emit quiz.start for retry
         await emit(
             "quiz", "start", user, session,
-            lesson={"id": lesson.id, "title": lesson.title, "order": lesson.order},
+            lesson={"id": lesson.id, "title": lesson.title, "order": lesson.order, "lesson_number": lesson.lesson_number},
             extra_payload={
                 "is_retry": True,
                 "retry_questions": retry_indices,
@@ -1438,7 +1439,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                 await emit(
                     "lesson", "open", user, session,
                     course={"id": course_id, "title": current_lesson.course.title if current_lesson and current_lesson.course else ""},
-                    lesson={"id": bonus_lesson.id, "title": bonus_lesson.title, "order": bonus_lesson.order},
+                    lesson={"id": bonus_lesson.id, "title": bonus_lesson.title, "order": bonus_lesson.order, "lesson_number": bonus_lesson.lesson_number},
                     extra_payload={
                         "has_quiz": bool(bonus_lesson.quiz_data),
                         "has_form": bool(bonus_lesson.form_data),
@@ -1527,7 +1528,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                 await emit(
                     "lesson", "open", user, session,
                     course={"id": course_id, "title": current_lesson.course.title if current_lesson and current_lesson.course else ""},
-                    lesson={"id": next_lesson.id, "title": next_lesson.title, "order": next_lesson.order},
+                    lesson={"id": next_lesson.id, "title": next_lesson.title, "order": next_lesson.order, "lesson_number": next_lesson.lesson_number},
                     extra_payload={
                         "has_quiz": bool(next_lesson.quiz_data),
                         "has_form": bool(next_lesson.form_data),
@@ -1551,6 +1552,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                 "id": lesson_id,
                 "title": current_lesson.title if current_lesson else "",
                 "order": current_lesson.order if current_lesson else 0,
+                "lesson_number": current_lesson.lesson_number if current_lesson else None,
             },
             progress={
                 "percent": progress["progress_percent"],

@@ -218,6 +218,7 @@ export default function CourseEdit() {
               >
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono bg-gray-200 rounded px-2 py-0.5">{l.order}</span>
+                  {l.lesson_number && <span className="text-xs font-mono bg-purple-100 text-purple-700 rounded px-2 py-0.5">#{l.lesson_number}</span>}
                   <span className="font-medium text-gray-800">{l.title}</span>
                   <span className={`text-xs px-1.5 py-0.5 rounded ${l.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {l.is_active ? 'فعال' : 'غیرفعال'}

@@ -195,6 +195,7 @@ class Lesson(Base):
 
     # Display settings
     order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    lesson_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Delay before sending next lesson (in minutes, 0 = instant)

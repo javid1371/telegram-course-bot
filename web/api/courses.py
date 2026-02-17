@@ -142,6 +142,7 @@ async def list_lessons_for_course(course_id: int, _=Depends(get_current_user)):
                 "id": l.id,
                 "title": l.title,
                 "order": l.order,
+                "lesson_number": l.lesson_number,
                 "content_type": l.content_type.value if l.content_type else None,
                 "is_active": l.is_active,
                 "delay_hours": l.delay_hours,
