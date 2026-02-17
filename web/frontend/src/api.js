@@ -311,4 +311,5 @@ export const media = {
   },
   get: (id) => request(`/media/${id}`),
   delete: (id) => request(`/media/${id}`, { method: 'DELETE' }),
+  platform: () => request('/media/platform'),
 };

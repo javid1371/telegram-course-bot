@@ -48,6 +48,7 @@ export default function MediaLibrary() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [platform, setPlatform] = useState({ platform: '', label: '' });
 
   const load = async () => {
     setLoading(true);
@@ -65,7 +66,10 @@ export default function MediaLibrary() {
     }
   };
 
-  useEffect(() => { load(); }, [filter]);
+  useEffect(() => {
+    media.platform().then(setPlatform).catch(() => {});
+    load();
+  }, [filter]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -87,17 +91,26 @@ export default function MediaLibrary() {
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">📁 کتابخانه فایل‌ها</h1>
-        <span className="text-sm text-gray-500">{total} فایل</span>
+        <div className="flex items-center gap-3">
+          {platform.label && (
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+              platform.platform === 'telegram' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+            }`}>
+              {platform.platform === 'telegram' ? '📱' : '💬'} {platform.label}
+            </span>
+          )}
+          <span className="text-sm text-gray-500">{total} فایل</span>
+        </div>
       </div>
 
       {/* Info Banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
         <p className="text-sm text-blue-800">
-          <strong>📌 نحوه افزودن فایل:</strong> فایل‌های خود را مستقیماً در چت بات تلگرام/بله ارسال کنید.
-          پس از ارسال، فایل‌ها اینجا ظاهر می‌شوند و در ویرایشگر درس قابل انتخاب هستند.
+          <strong>📌 نحوه افزودن فایل:</strong> فایل‌های خود را مستقیماً در چت بات {platform.label || 'تلگرام/بله'} ارسال کنید.
+          ابتدا دکمه «📁 کتابخانه فایل‌ها» را بزنید، سپس فایل بفرستید.
         </p>
         <p className="text-xs text-blue-600 mt-1">
-          📁 کتابخانه فایل‌ها → فایل ارسال کنید → در درس انتخاب کنید
+          ⚠️ فایل‌های هر پلتفرم جداگانه هستند — فایل آپلود شده در تلگرام فقط در پنل تلگرام نمایش داده می‌شود و بالعکس.
         </p>
       </div>
 

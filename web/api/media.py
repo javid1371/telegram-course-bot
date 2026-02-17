@@ -14,9 +14,17 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 PLATFORM = os.getenv("PLATFORM", "telegram").lower()
+PLATFORM_LABEL = "تلگرام" if PLATFORM == "telegram" else "بله"
+
+
+@router.get("/platform")
+async def get_platform(_=Depends(get_current_user)):
+    """Return current platform info"""
+    return {"platform": PLATFORM, "label": PLATFORM_LABEL}
 
 
 @router.get("")
+@router.get("/")
 async def list_media(
     file_type: str = None,
     search: str = None,
