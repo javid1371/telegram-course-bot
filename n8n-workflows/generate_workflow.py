@@ -110,27 +110,39 @@ return [{json: {...body, CONFIG, action,
         "parameters": {"jsCode": config_code, "mode": "runOnceForAllItems"}
     })
 
-    # ── Bug 12 fix: fallbackOutput → 8 (routes to Prep Respond OK) ──
+    # ── Fix: Switch v3 supports 9+ outputs (v1 only allowed 0-3) ──
+    def make_switch_rule(action_value, output_key):
+        return {
+            "conditions": {
+                "options": {"caseSensitive": True, "leftValue": ""},
+                "conditions": [{
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": action_value,
+                    "operator": {"type": "string", "operation": "equals"}
+                }]
+            },
+            "renameOutput": True,
+            "outputKey": output_key
+        }
+
     add_node({
         "id": "router",
         "name": "Router",
         "type": "n8n-nodes-base.switch",
-        "typeVersion": 1,
+        "typeVersion": 3,
         "position": [750, 500],
         "parameters": {
-            "dataType": "string",
-            "value1": "={{$json.action}}",
-            "rules": {"rules": [
-                {"value2": "lead.register", "output": 0},
-                {"value2": "lesson.complete", "output": 1},
-                {"value2": "form.submit", "output": 2},
-                {"value2": "quiz.pass", "output": 3},
-                {"value2": "quiz.fail", "output": 4},
-                {"value2": "inactivity.timeout", "output": 5},
-                {"value2": "course.complete", "output": 6},
-                {"value2": "speed.change", "output": 7}
+            "rules": {"values": [
+                make_switch_rule("lead.register", "Register"),
+                make_switch_rule("lesson.complete", "Lesson"),
+                make_switch_rule("form.submit", "Form"),
+                make_switch_rule("quiz.pass", "QuizPass"),
+                make_switch_rule("quiz.fail", "QuizFail"),
+                make_switch_rule("inactivity.timeout", "Inactivity"),
+                make_switch_rule("course.complete", "Complete"),
+                make_switch_rule("speed.change", "Speed"),
             ]},
-            "fallbackOutput": 8
+            "options": {"fallbackOutput": "extra"}
         }
     })
 
