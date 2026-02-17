@@ -302,3 +302,13 @@ export const upload = {
     });
   },
 };
+
+// ── Media Library ────────────────────
+export const media = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/media${qs ? '?' + qs : ''}`);
+  },
+  get: (id) => request(`/media/${id}`),
+  delete: (id) => request(`/media/${id}`, { method: 'DELETE' }),
+};

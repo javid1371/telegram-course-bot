@@ -202,6 +202,9 @@ ADMIN_BUTTONS = SmartDict("ADMIN_BUTTONS", {
     "content_replace_all": "🔄 جایگزینی کل",
     "reorder_lessons_course": "🔄 ترتیب درس‌ها",
 
+    # کتابخانه فایل‌ها
+    "media_library": "📁 کتابخانه فایل‌ها",
+
     # تایید حذف
     "confirm_delete": "✅ بله، حذف شود",
 })
@@ -757,6 +760,14 @@ ADMIN = SmartDict("ADMIN", {
     "company_info_edit_prompt": "📝 مقدار جدید «{label}» را وارد کنید:\n\n(برای خالی کردن، عبارت 'clear' را بفرستید)",
     "company_info_saved": "✅ «{label}» ذخیره شد.",
     "company_info_cleared": "✅ «{label}» پاک شد.",
+
+    # کتابخانه فایل‌ها
+    "media_library_header": "📁 <b>کتابخانه فایل‌ها</b>\n\nفایل‌های آپلود شده: {count}\n\nبرای افزودن فایل جدید، همین‌جا فایل (ویدیو، صوت، تصویر یا سند) ارسال کنید.\nفایل‌ها در کتابخانه ذخیره شده و برای استفاده در درس‌ها از پنل وب قابل انتخاب هستند.",
+    "media_library_empty": "📭 کتابخانه خالی است.\n\nبرای افزودن فایل، ویدیو/صوت/تصویر/سند خود را همین‌جا بفرستید.",
+    "media_saved": "✅ فایل ذخیره شد!\n\n📎 نام: {name}\n📦 نوع: {file_type}\n💾 حجم: {size}\n🆔 شناسه: <code>{file_id_short}</code>",
+    "media_deleted": "✅ فایل «{name}» حذف شد.",
+    "media_list_item": "📎 {name} ({file_type}) — {size}",
+    "media_send_file_prompt": "📁 یک فایل (ویدیو، صوت، تصویر یا سند) ارسال کنید تا به کتابخانه اضافه شود.\n\nبرای بازگشت /admin بزنید.",
 
     # کارشناسان فروش
     "owners_header": "👔 <b>کارشناسان فروش</b>\n\nکارشناسانی که به لیدهای جدید اختصاص داده می‌شوند:",

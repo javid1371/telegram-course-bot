@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { lessons, upload } from '../api';
+import { lessons, upload, media } from '../api';
 
 const CONTENT_TYPES = [
   { value: 'text', label: '📝 متن', icon: '📝' },
@@ -130,6 +130,56 @@ export default function LessonEdit() {
   const [replaceFieldLabel, setReplaceFieldLabel] = useState('');
   const [replaceFieldType, setReplaceFieldType] = useState('text');
   const [replaceFieldOptions, setReplaceFieldOptions] = useState('');
+
+  // Media library picker
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const [mediaPickerMode, setMediaPickerMode] = useState('add'); // 'add' or 'replace'
+  const [mediaPickerType, setMediaPickerType] = useState('');
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+
+  const loadMediaFiles = async (fileType = '') => {
+    setMediaLoading(true);
+    try {
+      const params = {};
+      if (fileType) params.file_type = fileType;
+      const data = await media.list(params);
+      setMediaFiles(data.items || []);
+    } catch (err) {
+      toast.error('خطا در بارگذاری کتابخانه');
+    } finally {
+      setMediaLoading(false);
+    }
+  };
+
+  const openMediaPicker = (mode, contentType = '') => {
+    setMediaPickerMode(mode);
+    setMediaPickerType(contentType);
+    setShowMediaPicker(true);
+    loadMediaFiles(contentType);
+  };
+
+  const selectMediaFile = async (file) => {
+    const item = { type: file.file_type, file_id: file.file_id };
+    try {
+      if (mediaPickerMode === 'replace' && replaceIndex >= 0) {
+        await lessons.replaceContent(id, replaceIndex, item);
+        const newContents = [...contents];
+        newContents[replaceIndex] = item;
+        setContents(newContents);
+        setReplaceIndex(null);
+        toast.success('محتوا از کتابخانه جایگزین شد');
+      } else {
+        await lessons.addContent(id, item);
+        setContents([...contents, item]);
+        setShowAdd(false);
+        toast.success('فایل از کتابخانه اضافه شد');
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+    setShowMediaPicker(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -740,6 +790,11 @@ export default function LessonEdit() {
                     disabled={!addFile || uploading}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 transition"
                   >{uploading ? '⏳ در حال آپلود...' : '✅ آپلود و ذخیره'}</button>
+                  <button
+                    onClick={() => openMediaPicker('add', addType)}
+                    disabled={uploading}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50 transition"
+                  >📁 انتخاب از کتابخانه</button>
                   <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm" disabled={uploading}>انصراف</button>
                 </div>
               </div>
@@ -893,6 +948,11 @@ export default function LessonEdit() {
                     disabled={!replaceFile || uploading}
                     className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700 disabled:opacity-50 transition"
                   >{uploading ? '⏳ در حال آپلود...' : '🔄 آپلود و جایگزینی'}</button>
+                  <button
+                    onClick={() => openMediaPicker('replace', replaceType)}
+                    disabled={uploading}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50 transition"
+                  >📁 از کتابخانه</button>
                   <button onClick={() => setReplaceIndex(null)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm" disabled={uploading}>انصراف</button>
                 </div>
               </div>
@@ -1008,6 +1068,77 @@ export default function LessonEdit() {
                 {replaceEditingFieldIndex !== null ? '✅ ذخیره' : '➕ افزودن'}
               </button>
               <button onClick={() => setShowReplaceFormFieldModal(false)} className="px-4 py-2 bg-gray-200 rounded-lg text-sm">انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Media Library Picker Modal */}
+      {showMediaPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowMediaPicker(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">📁 انتخاب از کتابخانه فایل‌ها</h3>
+              <button onClick={() => setShowMediaPicker(false)} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+            </div>
+
+            {/* Filter by type */}
+            <div className="flex gap-1 mb-4 flex-wrap">
+              {[
+                { key: '', label: 'همه' },
+                { key: 'video', label: '🎬 ویدیو' },
+                { key: 'audio', label: '🎵 صدا' },
+                { key: 'voice', label: '🎙 ویس' },
+                { key: 'photo', label: '🖼 عکس' },
+                { key: 'document', label: '📎 فایل' },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => { setMediaPickerType(t.key); loadMediaFiles(t.key); }}
+                  className={`px-3 py-1 rounded-full text-xs transition ${
+                    mediaPickerType === t.key ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* File list */}
+            <div className="flex-1 overflow-y-auto">
+              {mediaLoading ? (
+                <div className="text-center py-8 text-gray-400">در حال بارگذاری...</div>
+              ) : mediaFiles.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-400 text-3xl mb-2">📭</p>
+                  <p className="text-gray-500 text-sm">فایلی در کتابخانه یافت نشد</p>
+                  <p className="text-gray-400 text-xs mt-1">
+                    فایل‌ها رو از چت بات ارسال کنید (دکمه «📁 کتابخانه فایل‌ها»)
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {mediaFiles.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => selectMediaFile(f)}
+                      className="w-full flex items-center gap-3 p-3 bg-gray-50 border rounded-lg hover:bg-purple-50 hover:border-purple-300 transition text-right"
+                    >
+                      <span className="text-xl">
+                        {{ video: '🎬', audio: '🎵', voice: '🎙', photo: '🖼', document: '📎' }[f.file_type] || '📎'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{f.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {f.file_size ? (f.file_size > 1024*1024 ? `${(f.file_size / (1024*1024)).toFixed(1)} MB` : `${(f.file_size / 1024).toFixed(0)} KB`) : ''}
+                          {f.duration ? ` — ${Math.floor(f.duration / 60)}:${(f.duration % 60).toString().padStart(2, '0')}` : ''}
+                        </p>
+                      </div>
+                      <span className="text-purple-500 text-sm">انتخاب ←</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

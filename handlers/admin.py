@@ -159,6 +159,9 @@ class AdminStates(StatesGroup):
     # Sales trigger
     waiting_sales_trigger = State()
 
+    # Media library
+    waiting_media_upload = State()
+
 
 # ===========================
 # ADMIN ENTRY
@@ -4947,3 +4950,154 @@ async def sales_trigger_save(message: Message, state: FSMContext):
                 ADMIN["sales_trigger_saved"].format(lesson=lesson_num),
                 reply_markup=get_admin_main_menu(),
             )
+
+
+# ===========================
+# MEDIA LIBRARY
+# ===========================
+
+@router.message(F.text == ADMIN_BUTTONS["media_library"])
+@admin_only
+@log_errors
+async def media_library_menu(message: Message, state: FSMContext):
+    """Show media library and enter upload mode"""
+    await state.clear()
+    await state.set_state(AdminStates.waiting_media_upload)
+
+    async with async_session_maker() as session:
+        from database.models import MediaFile
+        import config as cfg
+        platform = getattr(cfg, 'PLATFORM', 'telegram').lower()
+        result = await session.execute(
+            select(MediaFile)
+            .where(MediaFile.platform == platform)
+            .order_by(MediaFile.created_at.desc())
+            .limit(20)
+        )
+        files = result.scalars().all()
+
+    count = len(files)
+    text = ADMIN["media_library_header"].format(count=count)
+
+    if files:
+        text += "\n\n📋 <b>فایل‌های اخیر:</b>\n"
+        for f in files[:20]:
+            size_str = _format_file_size(f.file_size) if f.file_size else "?"
+            text += f"\n📎 <b>{f.name}</b> ({f.file_type}) — {size_str}"
+    else:
+        text += "\n\n" + ADMIN["media_library_empty"]
+
+    await message.answer(text, parse_mode="HTML", reply_markup=get_admin_main_menu())
+
+
+def _format_file_size(size_bytes):
+    """Format file size to human-readable"""
+    if not size_bytes:
+        return "?"
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.0f}KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f}MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f}GB"
+
+
+@router.message(AdminStates.waiting_media_upload, F.video | F.audio | F.voice | F.document | F.photo)
+@admin_only
+@log_errors
+async def media_library_receive_file(message: Message, state: FSMContext):
+    """Receive a file from admin and save to media library"""
+    from database.models import MediaFile
+    import config as cfg
+    platform = getattr(cfg, 'PLATFORM', 'telegram').lower()
+
+    file_id = None
+    file_type = None
+    file_name = None
+    file_size = None
+    mime_type = None
+    duration = None
+
+    if message.video:
+        file_id = message.video.file_id
+        file_type = "video"
+        file_name = message.video.file_name or f"video_{message.video.file_unique_id}"
+        file_size = message.video.file_size
+        mime_type = message.video.mime_type
+        duration = message.video.duration
+    elif message.audio:
+        file_id = message.audio.file_id
+        file_type = "audio"
+        file_name = message.audio.file_name or f"audio_{message.audio.file_unique_id}"
+        file_size = message.audio.file_size
+        mime_type = message.audio.mime_type
+        duration = message.audio.duration
+    elif message.voice:
+        file_id = message.voice.file_id
+        file_type = "voice"
+        file_name = f"voice_{message.voice.file_unique_id}"
+        file_size = message.voice.file_size
+        mime_type = message.voice.mime_type
+        duration = message.voice.duration
+    elif message.document:
+        file_id = message.document.file_id
+        file_type = "document"
+        file_name = message.document.file_name or f"doc_{message.document.file_unique_id}"
+        file_size = message.document.file_size
+        mime_type = message.document.mime_type
+    elif message.photo:
+        photo = message.photo[-1]  # largest
+        file_id = photo.file_id
+        file_type = "photo"
+        file_name = f"photo_{photo.file_unique_id}"
+        file_size = photo.file_size
+
+    if not file_id:
+        await message.answer("❌ فایل شناسایی نشد. دوباره ارسال کنید.")
+        return
+
+    # Save to DB
+    async with async_session_maker() as session:
+        media = MediaFile(
+            name=file_name,
+            file_type=file_type,
+            file_id=file_id,
+            platform=platform,
+            file_size=file_size,
+            mime_type=mime_type,
+            duration=duration,
+            uploaded_by=message.from_user.id,
+        )
+        session.add(media)
+        await session.commit()
+
+    size_str = _format_file_size(file_size)
+    file_id_short = file_id[:30] + "..." if len(file_id) > 30 else file_id
+
+    await message.answer(
+        ADMIN["media_saved"].format(
+            name=file_name,
+            file_type=file_type,
+            size=size_str,
+            file_id_short=file_id_short,
+        ),
+        parse_mode="HTML",
+    )
+    # Stay in upload mode — admin can keep sending files
+    await message.answer(
+        "📁 فایل بعدی رو بفرست یا برای بازگشت /admin بزن.",
+    )
+
+
+@router.message(AdminStates.waiting_media_upload, F.text)
+@admin_only
+@log_errors
+async def media_library_text_in_upload_mode(message: Message, state: FSMContext):
+    """Handle text messages while in media upload mode"""
+    if message.text and message.text.startswith("/"):
+        # Let commands pass through
+        await state.clear()
+        return
+    await message.answer(ADMIN["media_send_file_prompt"])

@@ -571,3 +571,28 @@ class LeadScoringRule(Base):
 
     def __repr__(self):
         return f"<LeadScoringRule {self.event_type}={self.points}>"
+
+
+# ===========================
+# MEDIA LIBRARY MODEL
+# ===========================
+class MediaFile(Base):
+    """
+    Media Library — files uploaded by admin via bot chat.
+    Stores file_id per platform so they can be reused in lessons.
+    """
+    __tablename__ = "media_library"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(500), nullable=False)  # file name / label
+    file_type: Mapped[str] = mapped_column(String(50), nullable=False)  # video, audio, document, photo, voice
+    file_id: Mapped[str] = mapped_column(String(500), nullable=False)  # platform file_id
+    platform: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # telegram / bale
+    file_size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)  # bytes
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # seconds (audio/video)
+    uploaded_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)  # admin telegram_user_id
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<MediaFile {self.id} - {self.name} ({self.file_type}@{self.platform})>"
