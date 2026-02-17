@@ -706,7 +706,7 @@ async def form_option_selected(callback: CallbackQuery, state: FSMContext):
     else:
         # Form complete
         await state.clear()
-        await _submit_form(callback.message, lesson_id, responses, callback.from_user.id, data.get("form_title", ""))
+        await _submit_form(callback.message, state, lesson_id, responses, callback.from_user.id, data.get("form_title", ""))
 
 
 @router.message(UserStates.filling_form)
@@ -760,10 +760,10 @@ async def process_form_text_input(message: Message, state: FSMContext):
         # Form complete
         form_title = data.get("form_title", "")
         await state.clear()
-        await _submit_form(message, lesson_id, responses, message.from_user.id, form_title)
+        await _submit_form(message, state, lesson_id, responses, message.from_user.id, form_title)
 
 
-async def _submit_form(message: Message, lesson_id: int, responses: dict, telegram_user_id: int, form_title: str):
+async def _submit_form(message: Message, state: FSMContext, lesson_id: int, responses: dict, telegram_user_id: int, form_title: str):
     """Save form response and complete the lesson"""
     async with async_session_maker() as session:
         user_service = UserService(session)
@@ -814,7 +814,17 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
                         lesson_id=lesson.id, block_index=orig_i,
                     )
 
-        # Complete the lesson
+        # Check if lesson has a quiz — start quiz before completing
+        if lesson and lesson.quiz_data and lesson.quiz_data.get("questions"):
+            await emit(
+                "quiz", "start", user, session,
+                lesson={"id": lesson.id, "title": lesson.title, "order": lesson.order, "lesson_number": lesson.lesson_number},
+                extra_payload={"total_questions": len(lesson.quiz_data.get("questions", []))},
+            )
+            await _start_quiz(message, state, lesson, user.id)
+            return
+
+        # No quiz — complete directly
         await _complete_lesson_flow(message, user, lesson_id, session)
 
 
