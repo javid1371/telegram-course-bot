@@ -138,6 +138,17 @@ export default function LessonEdit() {
   const [mediaFiles, setMediaFiles] = useState([]);
   const [mediaLoading, setMediaLoading] = useState(false);
 
+  // Quiz builder state
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [showQuizModal, setShowQuizModal] = useState(false);
+  const [editingQuizIndex, setEditingQuizIndex] = useState(null);
+  const [quizText, setQuizText] = useState('');
+  const [quizOptions, setQuizOptions] = useState(['', '']);
+  const [quizCorrect, setQuizCorrect] = useState(0);
+  const [quizMultiSelect, setQuizMultiSelect] = useState(false);
+  const [quizMultiCorrect, setQuizMultiCorrect] = useState([]);
+  const [savingQuiz, setSavingQuiz] = useState(false);
+
   const loadMediaFiles = async (fileType = '') => {
     setMediaLoading(true);
     try {
@@ -190,6 +201,7 @@ export default function LessonEdit() {
       ]);
       setLesson(data);
       setContents(data.contents || []);
+      setQuizQuestions(data.quiz_data?.questions || []);
       if (cfg) setUploadConfig(cfg);
     } catch {
       toast.error('خطا در بارگذاری');
@@ -505,6 +517,104 @@ export default function LessonEdit() {
     setReplaceFormFields(newFields);
   };
 
+  // Quiz helpers
+  const openAddQuizQuestion = () => {
+    setQuizText('');
+    setQuizOptions(['', '']);
+    setQuizCorrect(0);
+    setQuizMultiSelect(false);
+    setQuizMultiCorrect([]);
+    setEditingQuizIndex(null);
+    setShowQuizModal(true);
+  };
+
+  const openEditQuizQuestion = (idx) => {
+    const q = quizQuestions[idx];
+    setQuizText(q.text);
+    setQuizOptions([...q.options]);
+    setQuizMultiSelect(q.multi_select || false);
+    if (q.multi_select) {
+      setQuizMultiCorrect(Array.isArray(q.correct) ? [...q.correct] : [q.correct]);
+      setQuizCorrect(0);
+    } else {
+      setQuizCorrect(typeof q.correct === 'number' ? q.correct : 0);
+      setQuizMultiCorrect([]);
+    }
+    setEditingQuizIndex(idx);
+    setShowQuizModal(true);
+  };
+
+  const saveQuizQuestion = () => {
+    if (!quizText.trim()) { toast.error('متن سوال خالی است'); return; }
+    const validOptions = quizOptions.filter(o => o.trim());
+    if (validOptions.length < 2) { toast.error('حداقل ۲ گزینه وارد کنید'); return; }
+
+    const question = {
+      text: quizText.trim(),
+      options: validOptions,
+      multi_select: quizMultiSelect,
+    };
+    if (quizMultiSelect) {
+      const validCorrect = quizMultiCorrect.filter(i => i < validOptions.length);
+      if (validCorrect.length === 0) { toast.error('حداقل یک پاسخ صحیح انتخاب کنید'); return; }
+      question.correct = validCorrect;
+    } else {
+      if (quizCorrect >= validOptions.length) question.correct = 0;
+      else question.correct = quizCorrect;
+    }
+
+    const newQuestions = [...quizQuestions];
+    if (editingQuizIndex !== null) {
+      newQuestions[editingQuizIndex] = question;
+    } else {
+      newQuestions.push(question);
+    }
+    setQuizQuestions(newQuestions);
+    setShowQuizModal(false);
+  };
+
+  const deleteQuizQuestion = (idx) => {
+    setQuizQuestions(quizQuestions.filter((_, i) => i !== idx));
+  };
+
+  const moveQuizQuestion = (idx, dir) => {
+    const newQ = [...quizQuestions];
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= newQ.length) return;
+    [newQ[idx], newQ[newIdx]] = [newQ[newIdx], newQ[idx]];
+    setQuizQuestions(newQ);
+  };
+
+  const handleSaveQuiz = async () => {
+    if (quizQuestions.length === 0) {
+      // Delete quiz
+      setSavingQuiz(true);
+      try {
+        await lessons.deleteQuiz(id);
+        toast.success('کوییز حذف شد');
+      } catch (err) { toast.error(err.message); }
+      finally { setSavingQuiz(false); }
+      return;
+    }
+    setSavingQuiz(true);
+    try {
+      await lessons.saveQuiz(id, { questions: quizQuestions });
+      toast.success(`کوییز با ${quizQuestions.length} سوال ذخیره شد`);
+    } catch (err) { toast.error(err.message); }
+    finally { setSavingQuiz(false); }
+  };
+
+  const handleDeleteQuiz = async () => {
+    if (!confirm('آیا از حذف کل کوییز مطمئنید؟')) return;
+    setSavingQuiz(true);
+    try {
+      await lessons.deleteQuiz(id);
+      setQuizQuestions([]);
+      toast.success('کوییز حذف شد');
+    } catch (err) { toast.error(err.message); }
+    finally { setSavingQuiz(false); }
+  };
+
   if (loading) return <div className="text-center py-20 text-gray-500">در حال بارگذاری...</div>;
   if (!lesson) return <div className="text-center py-20 text-red-500">درس یافت نشد</div>;
 
@@ -651,6 +761,247 @@ export default function LessonEdit() {
           </div>
         )}
       </div>
+
+      {/* Quiz builder section */}
+      <div className="bg-white rounded-xl border p-5 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold">🧠 کوییز پایان درس ({quizQuestions.length} سوال)</h2>
+          <div className="flex gap-2">
+            {quizQuestions.length > 0 && (
+              <button
+                onClick={handleDeleteQuiz}
+                disabled={savingQuiz}
+                className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100 transition disabled:opacity-50"
+              >
+                🗑️ حذف کوییز
+              </button>
+            )}
+            <button
+              onClick={handleSaveQuiz}
+              disabled={savingQuiz || quizQuestions.length === 0}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition disabled:opacity-50"
+            >
+              {savingQuiz ? '⏳ ذخیره...' : '💾 ذخیره کوییز'}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-500 mb-3">
+          کوییز بعد از تمام محتواهای درس به کاربر نمایش داده می‌شود. کاربر باید به همه سوالات درست پاسخ دهد تا درس تکمیل شود.
+        </p>
+
+        {quizQuestions.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-gray-400 mb-2">هیچ سوالی اضافه نشده</p>
+            <button
+              onClick={openAddQuizQuestion}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition"
+            >
+              ➕ افزودن اولین سوال
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {quizQuestions.map((q, idx) => (
+              <div key={idx} className="flex items-start gap-3 p-3 bg-gray-50 border rounded-lg group hover:shadow-sm transition">
+                <div className="flex flex-col gap-1 pt-1">
+                  <button
+                    onClick={() => moveQuizQuestion(idx, -1)}
+                    disabled={idx === 0}
+                    className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20"
+                  >▲</button>
+                  <button
+                    onClick={() => moveQuizQuestion(idx, 1)}
+                    disabled={idx === quizQuestions.length - 1}
+                    className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20"
+                  >▼</button>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">
+                    <span className="text-blue-600">سوال {idx + 1}:</span> {q.text}
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {q.options.map((opt, oi) => {
+                      const isCorrect = q.multi_select
+                        ? (Array.isArray(q.correct) ? q.correct.includes(oi) : q.correct === oi)
+                        : q.correct === oi;
+                      return (
+                        <span
+                          key={oi}
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            isCorrect ? 'bg-green-100 text-green-700 font-medium' : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {isCorrect ? '✅' : '⬜️'} {opt}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {q.multi_select && (
+                    <p className="text-xs text-purple-500 mt-1">🔀 چند انتخابی</p>
+                  )}
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => openEditQuizQuestion(idx)}
+                    className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs hover:bg-blue-100"
+                  >✏️</button>
+                  <button
+                    onClick={() => deleteQuizQuestion(idx)}
+                    className="px-2 py-1 bg-red-50 text-red-700 rounded text-xs hover:bg-red-100"
+                  >🗑️</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {quizQuestions.length > 0 && (
+          <button
+            onClick={openAddQuizQuestion}
+            className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-green-400 hover:text-green-600 transition"
+          >
+            ➕ افزودن سوال جدید
+          </button>
+        )}
+      </div>
+
+      {/* Quiz question modal */}
+      {showQuizModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowQuizModal(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-4">
+              {editingQuizIndex !== null ? '✏️ ویرایش سوال' : '➕ سوال جدید'}
+            </h3>
+
+            <div className="space-y-4">
+              {/* Question text */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">متن سوال</label>
+                <textarea
+                  value={quizText}
+                  onChange={(e) => setQuizText(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-h-[80px]"
+                  placeholder="سوال خود را وارد کنید..."
+                  autoFocus
+                />
+              </div>
+
+              {/* Multi-select toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={quizMultiSelect}
+                  onChange={(e) => {
+                    setQuizMultiSelect(e.target.checked);
+                    if (e.target.checked) {
+                      setQuizMultiCorrect([quizCorrect]);
+                    } else {
+                      setQuizCorrect(quizMultiCorrect[0] || 0);
+                      setQuizMultiCorrect([]);
+                    }
+                  }}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">🔀 چند انتخابی (بیش از یک پاسخ صحیح)</span>
+              </label>
+
+              {/* Options */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  گزینه‌ها {quizMultiSelect ? '(روی پاسخ‌های صحیح کلیک کنید)' : '(پاسخ صحیح را انتخاب کنید)'}
+                </label>
+                <div className="space-y-2">
+                  {quizOptions.map((opt, oi) => (
+                    <div key={oi} className="flex items-center gap-2">
+                      {quizMultiSelect ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuizMultiCorrect(prev =>
+                              prev.includes(oi) ? prev.filter(i => i !== oi) : [...prev, oi]
+                            );
+                          }}
+                          className={`w-7 h-7 rounded flex-shrink-0 flex items-center justify-center text-sm border transition ${
+                            quizMultiCorrect.includes(oi)
+                              ? 'bg-green-500 text-white border-green-500'
+                              : 'bg-white text-gray-400 border-gray-300 hover:border-green-400'
+                          }`}
+                        >
+                          {quizMultiCorrect.includes(oi) ? '✓' : ''}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setQuizCorrect(oi)}
+                          className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-sm border transition ${
+                            quizCorrect === oi
+                              ? 'bg-green-500 text-white border-green-500'
+                              : 'bg-white text-gray-400 border-gray-300 hover:border-green-400'
+                          }`}
+                        >
+                          {quizCorrect === oi ? '✓' : ''}
+                        </button>
+                      )}
+                      <input
+                        type="text"
+                        value={opt}
+                        onChange={(e) => {
+                          const newOpts = [...quizOptions];
+                          newOpts[oi] = e.target.value;
+                          setQuizOptions(newOpts);
+                        }}
+                        className="flex-1 px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        placeholder={`گزینه ${oi + 1}`}
+                      />
+                      {quizOptions.length > 2 && (
+                        <button
+                          onClick={() => {
+                            const newOpts = quizOptions.filter((_, i) => i !== oi);
+                            setQuizOptions(newOpts);
+                            // Fix correct indices
+                            if (quizMultiSelect) {
+                              setQuizMultiCorrect(prev =>
+                                prev.filter(i => i !== oi).map(i => i > oi ? i - 1 : i)
+                              );
+                            } else if (quizCorrect === oi) {
+                              setQuizCorrect(0);
+                            } else if (quizCorrect > oi) {
+                              setQuizCorrect(quizCorrect - 1);
+                            }
+                          }}
+                          className="text-red-400 hover:text-red-600 text-sm"
+                        >✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {quizOptions.length < 6 && (
+                  <button
+                    onClick={() => setQuizOptions([...quizOptions, ''])}
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    ➕ افزودن گزینه
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={saveQuizQuestion}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+              >
+                {editingQuizIndex !== null ? '✅ ذخیره تغییرات' : '➕ افزودن سوال'}
+              </button>
+              <button
+                onClick={() => setShowQuizModal(false)}
+                className="px-4 py-2 bg-gray-200 rounded-lg text-sm"
+              >انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add content modal */}
       {showAdd && (

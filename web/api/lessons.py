@@ -62,6 +62,21 @@ class FormData(BaseModel):
     fields: List[FormField]
 
 
+class QuizOption(BaseModel):
+    text: str
+
+
+class QuizQuestion(BaseModel):
+    text: str
+    options: List[str]
+    correct: Any  # int for single, list[int] for multi_select
+    multi_select: bool = False
+
+
+class QuizData(BaseModel):
+    questions: List[QuizQuestion]
+
+
 class ContentReorder(BaseModel):
     """Full list of content items in new order."""
     contents: List[ContentItem]
@@ -371,6 +386,39 @@ async def delete_form(lesson_id: int, _=Depends(get_current_user)):
         lesson.contents = copy.deepcopy(contents) if contents else None
         flag_modified(lesson, "contents")
         _sync_primary_fields(lesson, contents)
+
+        await session.commit()
+        return {"ok": True}
+
+
+# ── Quiz Data Management ─────────────────────────────────
+
+@router.put("/{lesson_id}/quiz")
+async def save_quiz(lesson_id: int, data: QuizData, _=Depends(get_current_user)):
+    """Create or update quiz data for a lesson."""
+    async with async_session_maker() as session:
+        lesson = await session.get(Lesson, lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="درس یافت نشد")
+
+        quiz_dict = {"questions": [q.model_dump() for q in data.questions]}
+        lesson.quiz_data = quiz_dict
+        flag_modified(lesson, "quiz_data")
+
+        await session.commit()
+        return {"ok": True, "question_count": len(data.questions)}
+
+
+@router.delete("/{lesson_id}/quiz")
+async def delete_quiz(lesson_id: int, _=Depends(get_current_user)):
+    """Delete quiz data from a lesson."""
+    async with async_session_maker() as session:
+        lesson = await session.get(Lesson, lesson_id)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="درس یافت نشد")
+
+        lesson.quiz_data = None
+        flag_modified(lesson, "quiz_data")
 
         await session.commit()
         return {"ok": True}

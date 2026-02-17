@@ -110,6 +110,13 @@ export const lessons = {
     }),
   deleteForm: (id) =>
     request(`/lessons/${id}/form`, { method: 'DELETE' }),
+  saveQuiz: (id, quizData) =>
+    request(`/lessons/${id}/quiz`, {
+      method: 'PUT',
+      body: JSON.stringify(quizData),
+    }),
+  deleteQuiz: (id) =>
+    request(`/lessons/${id}/quiz`, { method: 'DELETE' }),
 };
 
 // ── Users ────────────────────────────
