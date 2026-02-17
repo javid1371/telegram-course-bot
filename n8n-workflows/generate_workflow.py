@@ -110,16 +110,23 @@ return [{json: {...body, CONFIG, action,
         "parameters": {"jsCode": config_code, "mode": "runOnceForAllItems"}
     })
 
-    # ── Fix: Switch v3 supports 9+ outputs (v1 only allowed 0-3) ──
+    # ── Fix: Switch v3.2 supports 9+ outputs (v1 only allowed 0-3) ──
+    # NOTE: combinator + typeValidation are REQUIRED for proper rule evaluation
     def make_switch_rule(action_value, output_key):
         return {
             "conditions": {
-                "options": {"caseSensitive": True, "leftValue": ""},
+                "options": {
+                    "caseSensitive": True,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                },
                 "conditions": [{
+                    "id": f"cond_{output_key}",
                     "leftValue": "={{ $json.action }}",
                     "rightValue": action_value,
                     "operator": {"type": "string", "operation": "equals"}
-                }]
+                }],
+                "combinator": "and",
             },
             "renameOutput": True,
             "outputKey": output_key
@@ -129,7 +136,7 @@ return [{json: {...body, CONFIG, action,
         "id": "router",
         "name": "Router",
         "type": "n8n-nodes-base.switch",
-        "typeVersion": 3,
+        "typeVersion": 3.2,
         "position": [750, 500],
         "parameters": {
             "rules": {"values": [
