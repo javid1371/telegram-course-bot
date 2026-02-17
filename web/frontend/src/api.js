@@ -194,4 +194,83 @@ export const upload = {
       xhr.send(form);
     });
   },
+
+  /**
+   * Upload a large file by splitting it on the server.
+   * Returns an array of content block items (each with file_id).
+   * @param {File} file
+   * @param {string} contentType
+   * @param {string} caption
+   * @param {(percent: number, status: string) => void} onProgress
+   * @returns {Promise<{parts: Array<{type: string, file_id: string}>, total_parts: number}>}
+   */
+  splitFile: (file, contentType, caption = '', onProgress = null) => {
+    return new Promise((resolve, reject) => {
+      const token = getToken();
+      const form = new FormData();
+      form.append('file', file);
+      form.append('content_type', contentType);
+      if (caption) form.append('caption', caption);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/upload/split`);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) {
+          // 0-50% = uploading to our server
+          const pct = Math.round((e.loaded / e.total) * 50);
+          onProgress(pct, 'آپلود به سرور...');
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (onProgress) onProgress(100, 'تکمیل شد');
+        if (xhr.status === 401) {
+          clearToken();
+          window.location.href = '/login';
+          return reject(new Error('Unauthorized'));
+        }
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(data);
+          } else {
+            reject(new Error(data.detail || `HTTP ${xhr.status}`));
+          }
+        } catch {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('خطا در اتصال')));
+      xhr.addEventListener('abort', () => reject(new Error('آپلود لغو شد')));
+
+      // After upload finishes, server is splitting & uploading parts (50-99%)
+      let serverPhaseStarted = false;
+      xhr.upload.addEventListener('loadend', () => {
+        if (!serverPhaseStarted) {
+          serverPhaseStarted = true;
+          if (onProgress) onProgress(55, 'تقسیم و آپلود قطعات...');
+          // Simulate progress during server processing
+          let fakePct = 55;
+          const interval = setInterval(() => {
+            if (fakePct < 95) {
+              fakePct += 2;
+              if (onProgress) onProgress(fakePct, 'تقسیم و آپلود قطعات...');
+            } else {
+              clearInterval(interval);
+            }
+          }, 3000);
+          xhr._progressInterval = interval;
+        }
+      });
+
+      xhr.addEventListener('loadend', () => {
+        if (xhr._progressInterval) clearInterval(xhr._progressInterval);
+      });
+
+      xhr.send(form);
+    });
+  },
 };

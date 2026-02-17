@@ -98,6 +98,7 @@ export default function LessonEdit() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState('');
 
   // Add content modal
   const [showAdd, setShowAdd] = useState(false);
@@ -282,36 +283,80 @@ export default function LessonEdit() {
     setFormFields(newFields);
   };
 
+  const FILE_SPLIT_THRESHOLD = 50 * 1024 * 1024; // 50MB
+
   const handleFileUpload = async (file, contentType, caption = '', isReplace = false, index = -1) => {
     setUploading(true);
     setUploadProgress(0);
-    try {
-      const result = await upload.file(file, contentType, caption, (pct) => setUploadProgress(pct));
-      // Use the type returned by server (may have fallen back to 'document')
-      const actualType = result.type || contentType;
-      const item = { type: actualType, file_id: result.file_id };
-      if (caption) item.caption = caption;
+    setUploadStatus('');
 
-      if (isReplace && index >= 0) {
-        await lessons.replaceContent(id, index, item);
-        const newContents = [...contents];
-        newContents[index] = item;
-        setContents(newContents);
-        setReplaceIndex(null);
-        setReplaceFile(null);
-        toast.success('محتوا جایگزین شد');
+    const needsSplit = file.size > FILE_SPLIT_THRESHOLD;
+
+    try {
+      if (needsSplit) {
+        // Large file → split upload
+        setUploadStatus(`فایل ${(file.size / (1024*1024)).toFixed(0)}MB — در حال تقسیم و آپلود...`);
+        const result = await upload.splitFile(file, contentType, caption, (pct, status) => {
+          setUploadProgress(pct);
+          if (status) setUploadStatus(status);
+        });
+
+        const parts = result.parts || [];
+        if (parts.length === 0) throw new Error('هیچ قطعه‌ای آپلود نشد');
+
+        if (isReplace && index >= 0) {
+          // Replace: put first part at index, insert rest after
+          await lessons.replaceContent(id, index, parts[0]);
+          const newContents = [...contents];
+          newContents[index] = parts[0];
+          for (let i = 1; i < parts.length; i++) {
+            await lessons.addContent(id, parts[i]);
+            newContents.splice(index + i, 0, parts[i]);
+          }
+          setContents(newContents);
+          setReplaceIndex(null);
+          setReplaceFile(null);
+        } else {
+          // Add: append all parts as content blocks
+          const newContents = [...contents];
+          for (const part of parts) {
+            await lessons.addContent(id, part);
+            newContents.push(part);
+          }
+          setContents(newContents);
+          setShowAdd(false);
+          setAddFile(null);
+        }
+        toast.success(`✅ ${parts.length} قطعه آپلود و اضافه شد`);
       } else {
-        await lessons.addContent(id, item);
-        setContents([...contents, item]);
-        setShowAdd(false);
-        setAddFile(null);
-        toast.success('فایل آپلود و اضافه شد');
+        // Normal upload (< 50MB)
+        const result = await upload.file(file, contentType, caption, (pct) => setUploadProgress(pct));
+        const actualType = result.type || contentType;
+        const item = { type: actualType, file_id: result.file_id };
+        if (caption) item.caption = caption;
+
+        if (isReplace && index >= 0) {
+          await lessons.replaceContent(id, index, item);
+          const newContents = [...contents];
+          newContents[index] = item;
+          setContents(newContents);
+          setReplaceIndex(null);
+          setReplaceFile(null);
+          toast.success('محتوا جایگزین شد');
+        } else {
+          await lessons.addContent(id, item);
+          setContents([...contents, item]);
+          setShowAdd(false);
+          setAddFile(null);
+          toast.success('فایل آپلود و اضافه شد');
+        }
       }
     } catch (err) {
       toast.error(err.message);
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setUploadStatus('');
     }
   };
 
@@ -647,14 +692,21 @@ export default function LessonEdit() {
                   className="w-full"
                 />
                 {addFile && !uploading && (
-                  <p className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
-                    📎 {addFile.name} ({(addFile.size / 1024).toFixed(0)} KB)
-                  </p>
+                  <div className="mt-2">
+                    <p className="text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
+                      📎 {addFile.name} ({addFile.size > 1024*1024 ? (addFile.size / (1024*1024)).toFixed(1) + ' MB' : (addFile.size / 1024).toFixed(0) + ' KB'})
+                    </p>
+                    {addFile.size > FILE_SPLIT_THRESHOLD && (
+                      <p className="mt-1 text-xs text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg">
+                        ⚠️ فایل بزرگتر از ۵۰MB — به صورت خودکار تقسیم و آپلود می‌شود
+                      </p>
+                    )}
+                  </div>
                 )}
                 {uploading && (
                   <div className="mt-2">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-blue-500 text-sm">⏳ در حال آپلود... {uploadProgress}%</span>
+                      <span className="text-blue-500 text-sm">⏳ {uploadStatus || `در حال آپلود... ${uploadProgress}%`}</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div
@@ -780,14 +832,21 @@ export default function LessonEdit() {
                   className="w-full"
                 />
                 {replaceFile && !uploading && (
-                  <p className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
-                    📎 {replaceFile.name} ({(replaceFile.size / 1024).toFixed(0)} KB)
-                  </p>
+                  <div className="mt-2">
+                    <p className="text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
+                      📎 {replaceFile.name} ({replaceFile.size > 1024*1024 ? (replaceFile.size / (1024*1024)).toFixed(1) + ' MB' : (replaceFile.size / 1024).toFixed(0) + ' KB'})
+                    </p>
+                    {replaceFile.size > FILE_SPLIT_THRESHOLD && (
+                      <p className="mt-1 text-xs text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg">
+                        ⚠️ فایل بزرگتر از ۵۰MB — به صورت خودکار تقسیم و آپلود می‌شود
+                      </p>
+                    )}
+                  </div>
                 )}
                 {uploading && (
                   <div className="mt-2">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-blue-500 text-sm">⏳ در حال آپلود... {uploadProgress}%</span>
+                      <span className="text-blue-500 text-sm">⏳ {uploadStatus || `در حال آپلود... ${uploadProgress}%`}</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div

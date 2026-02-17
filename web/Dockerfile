@@ -10,8 +10,8 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# System deps
-RUN apt-get update && apt-get install -y gcc postgresql-client && rm -rf /var/lib/apt/lists/*
+# System deps (ffmpeg for video splitting)
+RUN apt-get update && apt-get install -y gcc postgresql-client ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Python deps — install both bot and web requirements
 COPY requirements.txt ./requirements-bot.txt
