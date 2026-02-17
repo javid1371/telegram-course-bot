@@ -711,14 +711,27 @@ export default function LessonEdit() {
                 {uploading && (
                   <div className="mt-2">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-blue-500 text-sm">⏳ {uploadStatus || `در حال آپلود... ${uploadProgress}%`}</span>
+                      <span className="text-blue-500 text-sm">
+                        ⏳ {uploadStatus || (
+                          uploadProgress >= 90 && uploadProgress < 100
+                            ? `در حال ارسال به سرور تلگرام... ${uploadProgress}% — لطفاً صبر کنید`
+                            : `در حال آپلود... ${uploadProgress}%`
+                        )}
+                      </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div
-                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        className={`h-2.5 rounded-full transition-all duration-300 ${
+                          uploadProgress >= 90 && uploadProgress < 100 ? 'bg-orange-500 animate-pulse' : 'bg-blue-600'
+                        }`}
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
+                    {uploadProgress >= 90 && uploadProgress < 100 && (
+                      <p className="text-xs text-orange-500 mt-1">
+                        فایل به سرور رسید — در حال ارسال به تلگرام (ممکن است چند دقیقه طول بکشد)
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="mt-4 flex gap-2">
@@ -851,14 +864,27 @@ export default function LessonEdit() {
                 {uploading && (
                   <div className="mt-2">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-blue-500 text-sm">⏳ {uploadStatus || `در حال آپلود... ${uploadProgress}%`}</span>
+                      <span className="text-blue-500 text-sm">
+                        ⏳ {uploadStatus || (
+                          uploadProgress >= 90 && uploadProgress < 100
+                            ? `در حال ارسال به سرور تلگرام... ${uploadProgress}% — لطفاً صبر کنید`
+                            : `در حال آپلود... ${uploadProgress}%`
+                        )}
+                      </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div
-                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        className={`h-2.5 rounded-full transition-all duration-300 ${
+                          uploadProgress >= 90 && uploadProgress < 100 ? 'bg-orange-500 animate-pulse' : 'bg-blue-600'
+                        }`}
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
+                    {uploadProgress >= 90 && uploadProgress < 100 && (
+                      <p className="text-xs text-orange-500 mt-1">
+                        فایل به سرور رسید — در حال ارسال به تلگرام (ممکن است چند دقیقه طول بکشد)
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="mt-4 flex gap-2">

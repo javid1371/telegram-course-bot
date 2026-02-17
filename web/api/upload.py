@@ -97,10 +97,18 @@ async def upload_file(
         if caption:
             form.add_field("caption", caption)
 
+        # Dynamic timeout: min 120s, +60s per 50MB of file data
+        file_size_mb = len(file_data) / (1024 * 1024)
+        timeout_seconds = max(120, int(60 + file_size_mb * 1.5))
+        logger.info(f"Uploading {file.filename} ({file_size_mb:.1f}MB) via {method}, timeout={timeout_seconds}s")
+
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+                async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=timeout_seconds)) as resp:
                     result = await resp.json()
+            except asyncio.TimeoutError:
+                logger.error(f"Upload timed out after {timeout_seconds}s for {file.filename} ({file_size_mb:.1f}MB)")
+                raise HTTPException(status_code=504, detail=f"تایم‌اوت آپلود — فایل {file_size_mb:.0f}MB خیلی بزرگ است یا سرور پاسخ نداد")
             except Exception as e:
                 logger.error(f"Upload request failed: {e}")
                 raise HTTPException(status_code=500, detail=f"خطا در اتصال به سرور: {str(e)}")

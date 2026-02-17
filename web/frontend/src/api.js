@@ -166,16 +166,32 @@ export const upload = {
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
       // Upload progress (local → server)
+      let serverWaitTimer = null;
+      let serverPct = 90;
+
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && onProgress) {
-          // 0-90% = upload to our server, 90-100% = server forwarding to Telegram
+          // 0-90% = upload to our server
           const pct = Math.round((e.loaded / e.total) * 90);
           onProgress(pct);
         }
       });
 
+      // When upload to server finishes, animate 90→98% while waiting for server to forward to Telegram
+      xhr.upload.addEventListener('load', () => {
+        if (onProgress) {
+          onProgress(90);
+          serverWaitTimer = setInterval(() => {
+            if (serverPct < 98) {
+              serverPct += 0.5;
+              onProgress(Math.round(serverPct));
+            }
+          }, 2000);
+        }
+      });
+
       xhr.addEventListener('load', () => {
-        if (onProgress) onProgress(100);
+        if (serverWaitTimer) clearInterval(serverWaitTimer);
         if (xhr.status === 401) {
           clearToken();
           window.location.href = '/login';
@@ -184,6 +200,7 @@ export const upload = {
         try {
           const data = JSON.parse(xhr.responseText);
           if (xhr.status >= 200 && xhr.status < 300) {
+            if (onProgress) onProgress(100);
             resolve(data);
           } else {
             reject(new Error(data.detail || `HTTP ${xhr.status}`));
@@ -193,8 +210,14 @@ export const upload = {
         }
       });
 
-      xhr.addEventListener('error', () => reject(new Error('خطا در اتصال')));
-      xhr.addEventListener('abort', () => reject(new Error('آپلود لغو شد')));
+      xhr.addEventListener('error', () => {
+        if (serverWaitTimer) clearInterval(serverWaitTimer);
+        reject(new Error('خطا در اتصال'));
+      });
+      xhr.addEventListener('abort', () => {
+        if (serverWaitTimer) clearInterval(serverWaitTimer);
+        reject(new Error('آپلود لغو شد'));
+      });
 
       xhr.send(form);
     });
