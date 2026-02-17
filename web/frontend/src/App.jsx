@@ -10,6 +10,7 @@ import LessonEdit from './pages/LessonEdit';
 import Users from './pages/Users';
 import RegistrationFields from './pages/RegistrationFields';
 import MediaLibrary from './pages/MediaLibrary';
+import Settings from './pages/Settings';
 
 function PrivateRoute({ children }) {
   return isAuthenticated() ? children : <Navigate to="/login" />;
@@ -34,6 +35,7 @@ export default function App() {
                   <Route path="/users" element={<Users />} />
                   <Route path="/registration-fields" element={<RegistrationFields />} />
                   <Route path="/media" element={<MediaLibrary />} />
+                  <Route path="/settings" element={<Settings />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

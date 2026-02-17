@@ -313,3 +313,36 @@ export const media = {
   delete: (id) => request(`/media/${id}`, { method: 'DELETE' }),
   platform: () => request('/media/platform'),
 };
+
+// ── Settings ─────────────────────────────
+export const settings = {
+  // Company info
+  getCompany: () => request('/settings/company'),
+  updateCompany: (items) => request('/settings/company', {
+    method: 'PUT',
+    body: JSON.stringify(items),
+  }),
+  // Webhooks
+  getWebhooks: () => request('/settings/webhooks'),
+  createWebhook: (data) => request('/settings/webhooks', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  updateWebhook: (id, data) => request(`/settings/webhooks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  deleteWebhook: (id) => request(`/settings/webhooks/${id}`, { method: 'DELETE' }),
+  // Bot texts
+  getBotTexts: () => request('/settings/bot-texts'),
+  updateBotText: (id, value) => request(`/settings/bot-texts/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  }),
+  // Scoring rules
+  getScoringRules: () => request('/settings/scoring-rules'),
+  updateScoringRule: (id, data) => request(`/settings/scoring-rules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+};
