@@ -3,7 +3,7 @@ User handlers - handles user-facing bot interactions
 Lesson delivery, progress tracking, support, quiz, form
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -140,18 +140,19 @@ async def _continue_specific_course(message: Message, state: FSMContext, user, c
 
     # Check if there's a pending scheduled lesson (delay active)
     from sqlalchemy import select as sa_select
+    now = datetime.now(timezone.utc)
     pending_result = await session.execute(
         sa_select(ScheduledMessage).where(
             ScheduledMessage.user_id == user.id,
             ScheduledMessage.message_type == "next_lesson",
             ScheduledMessage.status == MessageStatus.PENDING,
-            ScheduledMessage.send_at > datetime.utcnow(),
+            ScheduledMessage.send_at > now,
         )
     )
     pending_scheduled = pending_result.scalars().first()
     if pending_scheduled:
         # Calculate remaining time
-        remaining_seconds = int((pending_scheduled.send_at - datetime.utcnow()).total_seconds())
+        remaining_seconds = int((pending_scheduled.send_at - now).total_seconds())
         remaining_text = format_duration(max(remaining_seconds, 0))
 
         from aiogram.types import InlineKeyboardButton
@@ -1471,7 +1472,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             ds_courses[str(course_id)] = ds_data
             user.double_speed_courses = ds_courses
 
-            send_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
+            send_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
             scheduled = ScheduledMessage(
                 user_id=user.id,
                 message="__next_lesson__",
@@ -1488,7 +1489,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
 
         elif delay_minutes > 0:
             # Normal delay (no 2x)
-            send_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
+            send_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
             scheduled = ScheduledMessage(
                 user_id=user.id,
                 message="__next_lesson__",

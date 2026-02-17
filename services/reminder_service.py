@@ -263,16 +263,17 @@ class ReminderService:
         # Build caption
         description = next_lesson.description or ""
         lesson_text = USER["lesson_sent"].format(
-            lesson_number=next_lesson.order,
+            lesson_number=next_lesson.lesson_number or next_lesson.order,
             lesson_title=next_lesson.title,
             description=description,
         )
 
-        # Build keyboard
+        # Build keyboard — quiz-aware button text
+        has_quiz = bool(next_lesson.quiz_data and next_lesson.quiz_data.get("questions"))
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(
-                text=USER_BUTTONS["lesson_seen_delayed"],
+                text=USER_BUTTONS["lesson_seen_quiz"] if has_quiz else USER_BUTTONS["lesson_seen_delayed"],
                 callback_data=f"confirm_lesson:{next_lesson.id}"
             )
         )

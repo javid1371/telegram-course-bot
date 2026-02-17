@@ -352,6 +352,32 @@ async def _check_sales_trigger(lesson_order: int, session: AsyncSession) -> bool
         return False
 
 
+# ───────────────────────── webhook snapshot helper ───────────
+
+class _WebhookSnapshot:
+    """Lightweight stand-in for WebhookSetting ORM objects used after session closes."""
+    __slots__ = ("id", "name", "url", "headers", "timeout", "events")
+
+    def __init__(self, id, name, url, headers, timeout, events):
+        self.id = id
+        self.name = name
+        self.url = url
+        self.headers = headers
+        self.timeout = timeout
+        self.events = events
+
+
+def _snap_to_webhook_obj(snap: dict) -> _WebhookSnapshot:
+    return _WebhookSnapshot(
+        id=snap["id"],
+        name=snap["name"],
+        url=snap["url"],
+        headers=snap["headers"],
+        timeout=snap["timeout"],
+        events=snap.get("events"),
+    )
+
+
 # ───────────────────────── public API ────────────────────────
 
 async def emit(
@@ -391,20 +417,62 @@ async def emit(
     try:
         event_key = f"{event_type}.{action}"
 
-        # ── Lead scoring: update user score before building payload ──
+        # ── Lead scoring: update user score in its own session to avoid greenlet issues ──
         try:
             from services.scoring_service import ScoringService
-            scoring_svc = ScoringService(session)
-            new_score = await scoring_svc.update_user_score(user, event_key)
+            async with async_session_maker() as scoring_session:
+                scoring_svc = ScoringService(scoring_session)
+                # Re-load user in scoring session to safely update lead_score
+                from sqlalchemy import select as _sel
+                _u = (await scoring_session.execute(
+                    _sel(User).where(User.id == user.id)
+                )).scalar_one_or_none()
+                if _u:
+                    new_score = await scoring_svc.update_user_score(_u, event_key)
+                    # Sync score back to caller's user object (in-memory only)
+                    user.lead_score = new_score
         except Exception as e:
             logger.warning(f"[EventEmitter] scoring error: {e}")
 
-        # ── Sales trigger: check if this lesson triggers sales activity ──
+        # ── Sales trigger & webhook query in own session ──
         trigger_sales = False
-        if event_key == "lesson.complete" and lesson:
-            lesson_order = lesson.get("order", 0)
-            if lesson_order:
-                trigger_sales = await _check_sales_trigger(lesson_order, session)
+        webhook_snapshots = []
+        async with async_session_maker() as emit_session:
+            if event_key == "lesson.complete" and lesson:
+                lesson_order = lesson.get("order", 0)
+                if lesson_order:
+                    trigger_sales = await _check_sales_trigger(lesson_order, emit_session)
+
+            # Query active webhooks (read-only)
+            result = await emit_session.execute(
+                select(WebhookSetting).where(WebhookSetting.is_active == True)
+            )
+            webhooks = list(result.scalars().all())
+
+            if not webhooks:
+                logger.debug(f"[EventEmitter] No active webhooks for {event_key}")
+                return
+
+            # Filter by events list
+            for webhook in webhooks:
+                if webhook.events:
+                    try:
+                        allowed = webhook.events if isinstance(webhook.events, list) else json.loads(webhook.events)
+                        if event_key not in allowed:
+                            logger.debug(
+                                f"[EventEmitter] [{webhook.name}] skipping {event_key} (not in events filter)"
+                            )
+                            continue
+                    except (json.JSONDecodeError, TypeError):
+                        pass  # malformed → send anyway
+                webhook_snapshots.append({
+                    "id": webhook.id,
+                    "name": webhook.name,
+                    "url": webhook.url,
+                    "headers": dict(webhook.headers or {}),
+                    "timeout": webhook.timeout,
+                    "events": webhook.events,
+                })
 
         # Merge trigger_sales into extra_payload
         if trigger_sales:
@@ -428,48 +496,27 @@ async def emit(
 
         signature = payload.get("security", {}).get("signature", "")
 
-        # Query active webhooks (read-only)
-        result = await session.execute(
-            select(WebhookSetting).where(WebhookSetting.is_active == True)
-        )
-        webhooks = list(result.scalars().all())
-
-        if not webhooks:
-            logger.debug(f"[EventEmitter] No active webhooks for {event_key}")
+        if not webhook_snapshots:
             return
-
-        # Snapshot webhook data needed for background tasks (avoid lazy-load issues)
-        webhook_snapshots = []
-        for webhook in webhooks:
-            # ── Events filter: skip if webhook has an events list and this event isn't in it ──
-            if webhook.events:
-                try:
-                    allowed = webhook.events if isinstance(webhook.events, list) else json.loads(webhook.events)
-                    if event_key not in allowed:
-                        logger.debug(
-                            f"[EventEmitter] [{webhook.name}] skipping {event_key} (not in events filter)"
-                        )
-                        continue
-                except (json.JSONDecodeError, TypeError):
-                    pass  # malformed → send anyway
-            webhook_snapshots.append(webhook)
 
         # Fire webhook deliveries as a background task so bot responses aren't blocked.
         # The only exception: lead.register needs the response for owner assignment,
         # so that one is awaited inline.
         if event_key == "lead.register":
-            for webhook in webhook_snapshots:
-                success, response_data = await _send_to_endpoint(webhook, payload, signature)
+            for wh_snap in webhook_snapshots:
+                wh_obj = _snap_to_webhook_obj(wh_snap)
+                success, response_data = await _send_to_endpoint(wh_obj, payload, signature)
                 if not success:
                     await _store_failed_event(
-                        webhook.id, webhook.name, event_key, payload,
+                        wh_snap["id"], wh_snap["name"], event_key, payload,
                         f"Failed after {MAX_IMMEDIATE_RETRIES} immediate retries",
                     )
                 elif response_data:
                     await _process_owner_assignment(user, response_data, session)
         else:
+            wh_objs = [_snap_to_webhook_obj(s) for s in webhook_snapshots]
             asyncio.create_task(
-                _deliver_webhooks_background(webhook_snapshots, event_key, payload, signature)
+                _deliver_webhooks_background(wh_objs, event_key, payload, signature)
             )
 
     except Exception as e:
