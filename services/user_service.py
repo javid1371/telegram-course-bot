@@ -270,7 +270,7 @@ class UserService:
 
     async def reset_user_progress(self, user_id: int) -> bool:
         """Reset all progress for a user (lessons, quizzes, forms, courses)"""
-        from database.models import QuizAttempt, FormResponse
+        from database.models import QuizAttempt, FormResponse, ScheduledMessage, MessageStatus
         await self.session.execute(
             delete(UserProgress).where(UserProgress.user_id == user_id)
         )
@@ -280,12 +280,24 @@ class UserService:
         await self.session.execute(
             delete(FormResponse).where(FormResponse.user_id == user_id)
         )
+        # Cancel any pending scheduled messages so the user isn't blocked by old timers
+        from sqlalchemy import update
+        await self.session.execute(
+            update(ScheduledMessage)
+            .where(
+                ScheduledMessage.user_id == user_id,
+                ScheduledMessage.status == MessageStatus.PENDING,
+            )
+            .values(status=MessageStatus.CANCELLED)
+        )
         user = await self.get_user_by_id(user_id)
         if user:
             user.current_lesson_id = None
             user.current_course_id = None
             user.is_completed = False
             user.completed_courses = {}
+            user.double_speed_courses = {}
+            user.fast_track_courses = {}
             await self.session.commit()
             return True
         return False
