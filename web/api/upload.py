@@ -44,12 +44,12 @@ UPLOAD_MAP = {
 @router.get("/config")
 async def upload_config(_=Depends(get_current_user)):
     """Return upload configuration (platform, max size, etc.)"""
-    is_bale = PLATFORM == "bale"
+    # Both Telegram and Bale Bot API have a 50MB upload limit for multipart uploads
     return {
         "platform": PLATFORM,
-        "max_file_size": 50 * 1024 * 1024 if is_bale else 2000 * 1024 * 1024,
-        "split_enabled": is_bale,
-        "split_threshold": 50 * 1024 * 1024 if is_bale else 0,
+        "max_file_size": 50 * 1024 * 1024,
+        "split_enabled": True,
+        "split_threshold": 50 * 1024 * 1024,
     }
 
 
@@ -145,6 +145,12 @@ async def upload_file(
             error_code = result.get('error_code', '?')
             last_error = f"({error_code}): {error_desc}"
             logger.warning(f"Bot API error [{error_code}]: {error_desc} (method={method}, file={file.filename}, size={len(file_data)})")
+            if error_code == 413:
+                file_mb = len(file_data) / (1024 * 1024)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"فایل {file_mb:.0f}MB بزرگتر از حد مجاز ۵۰MB است. لطفاً از قابلیت تقسیم خودکار استفاده کنید."
+                )
             if attempt_type != content_type:
                 # Already tried fallback
                 pass
