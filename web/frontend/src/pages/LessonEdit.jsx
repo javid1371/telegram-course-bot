@@ -99,6 +99,7 @@ export default function LessonEdit() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadConfig, setUploadConfig] = useState(null); // {platform, split_enabled, split_threshold}
 
   // Add content modal
   const [showAdd, setShowAdd] = useState(false);
@@ -133,9 +134,13 @@ export default function LessonEdit() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await lessons.get(id);
+      const [data, cfg] = await Promise.all([
+        lessons.get(id),
+        upload.config().catch(() => null),
+      ]);
       setLesson(data);
       setContents(data.contents || []);
+      if (cfg) setUploadConfig(cfg);
     } catch {
       toast.error('خطا در بارگذاری');
     } finally {
@@ -283,7 +288,7 @@ export default function LessonEdit() {
     setFormFields(newFields);
   };
 
-  const FILE_SPLIT_THRESHOLD = 50 * 1024 * 1024; // 50MB
+  const FILE_SPLIT_THRESHOLD = uploadConfig?.split_enabled ? (uploadConfig.split_threshold || 50 * 1024 * 1024) : Infinity;
 
   const handleFileUpload = async (file, contentType, caption = '', isReplace = false, index = -1) => {
     setUploading(true);

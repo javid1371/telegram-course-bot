@@ -141,6 +141,11 @@ export const registrationFields = {
 // ── Upload ───────────────────────────
 export const upload = {
   /**
+   * Get upload config (platform, max size, split settings)
+   */
+  config: () => request('/upload/config'),
+
+  /**
    * Upload file with progress tracking via XMLHttpRequest.
    * @param {File} file
    * @param {string} contentType

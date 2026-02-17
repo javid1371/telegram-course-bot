@@ -41,6 +41,18 @@ UPLOAD_MAP = {
 }
 
 
+@router.get("/config")
+async def upload_config(_=Depends(get_current_user)):
+    """Return upload configuration (platform, max size, etc.)"""
+    is_bale = PLATFORM == "bale"
+    return {
+        "platform": PLATFORM,
+        "max_file_size": 50 * 1024 * 1024 if is_bale else 2000 * 1024 * 1024,
+        "split_enabled": is_bale,
+        "split_threshold": 50 * 1024 * 1024 if is_bale else 0,
+    }
+
+
 @router.post("")
 async def upload_file(
     file: UploadFile = File(...),
