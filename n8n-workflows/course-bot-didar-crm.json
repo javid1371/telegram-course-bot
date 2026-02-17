@@ -1,5 +1,5 @@
 {
-  "name": "Course Bot - Didar CRM (v6)",
+  "name": "Course Bot - Didar CRM (v7)",
   "nodes": [
     {
       "id": "webhook",
@@ -27,7 +27,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  OWNERS: [\n    {id: 'OWNER_GUID_1', name: 'Owner 1', weight: 3},\n    {id: 'OWNER_GUID_2', name: 'Owner 2', weight: 2},\n  ],\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE',\n    won: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || (user.registration_data?.phone || user.registration_data?.mobile || ''),\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
+        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  OWNERS: [\n    {id: 'OWNER_GUID_1', name: 'Owner 1', weight: 3},\n    {id: 'OWNER_GUID_2', name: 'Owner 2', weight: 2},\n  ],\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE',\n    won: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || (user.registration_data?.phone || user.registration_data?.mobile || ''),\\n  phone_search: (function(p) { p = (p||'').replace(/[^0-9]/g, ''); return p.length >= 10 ? p.slice(-10) : p; })(user.phone || (user.registration_data?.phone || user.registration_data?.mobile || '')),\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -188,7 +188,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user?.last_name || d.user?.first_name || 'User';\nconst firstName = d.user?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || '');\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\n// Build lead_score custom field JSON\nlet leadScoreFieldJson = '{}';\nif (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json: {\n  phone, firstName, lastName,\n  ownerId, ownerName, leadScore, leadScoreFieldJson,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '\\u062f\\u0648\\u0631\\u0647 ' + d.course_title + ' - ' + lastName,\n  CONFIG: C\n}}];\n",
+        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user?.last_name || d.user?.first_name || 'User';\nconst firstName = d.user?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || d.user?.registration_data?.mobile || '');\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\n// Build lead_score custom field JSON\nlet leadScoreFieldJson = '{}';\nif (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json: {\n  phone, firstName, lastName,\n  ownerId, ownerName, leadScore, leadScoreFieldJson,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '\\u062f\\u0648\\u0631\\u0647 ' + d.course_title + ' - ' + lastName,\n  CONFIG: C\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -209,8 +209,11 @@
       },
       "parameters": {
         "resource": "person",
-        "operation": "getByPhone",
-        "MobilePhone": "={{$json.phone}}"
+        "operation": "search",
+        "Keywords": "={{$json.phoneSearch}}",
+        "additionalFields": {
+          "Limit": 1
+        }
       }
     },
     {
@@ -223,7 +226,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "\nconst prev = $('Prep Register').first().json;\nconst resp = $input.first().json;\nconst found = resp?.Response?.Id || null;\nreturn [{json: {...prev, personExists: !!found, personId: found || null}}];\n",
+        "jsCode": "\nconst prev = $('Prep Register').first().json;\nconst resp = $input.first().json;\nconst list = resp?.Response?.List || [];\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\nreturn [{json: {...prev, personExists: !!personId, personId}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -500,7 +503,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst triggerSales = d.payload?.trigger_sales || false;\nconst stageId = triggerSales ? C.STAGES.sales_wait : (C.STAGES['lesson_'+d.lesson_order]||'');\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\nlet leadScoreFieldJson = '{}';\nif (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json:{phone:d.user_phone,stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\ntriggerSales, leadScore, leadScoreFieldJson,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,\nuserName:d.user_name,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst triggerSales = d.payload?.trigger_sales || false;\nconst stageId = triggerSales ? C.STAGES.sales_wait : (C.STAGES['lesson_'+d.lesson_order]||'');\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\nlet leadScoreFieldJson = '{}';\nif (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\ntriggerSales, leadScore, leadScoreFieldJson,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,\nuserName:d.user_name,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -521,8 +524,11 @@
       },
       "parameters": {
         "resource": "person",
-        "operation": "getByPhone",
-        "MobilePhone": "={{$json.phone}}"
+        "operation": "search",
+        "Keywords": "={{$json.phoneSearch}}",
+        "additionalFields": {
+          "Limit": 1
+        }
       }
     },
     {
@@ -535,7 +541,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst personId=resp?.Response?.Id||null;\nconst lastName=resp?.Response?.LastName||'';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -751,7 +757,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\n// Bug 8 fix: include lead_score in custom fields\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\nif (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  cf[C.CUSTOM_FIELDS.lead_score] = String(leadScore);\n}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,customFieldsJson:JSON.stringify(cf),ownerId,leadScore,CONFIG:C}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\nconst map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\njob:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\ncity:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\nlet cf={};\nfor(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\n// Bug 8 fix: include lead_score in custom fields\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\nif (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  cf[C.CUSTOM_FIELDS.lead_score] = String(leadScore);\n}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst phoneSearch = d.phone_search || '';\nreturn [{json:{phone:d.user_phone,phoneSearch,customFieldsJson:JSON.stringify(cf),ownerId,leadScore,CONFIG:C}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -772,8 +778,11 @@
       },
       "parameters": {
         "resource": "person",
-        "operation": "getByPhone",
-        "MobilePhone": "={{$json.phone}}"
+        "operation": "search",
+        "Keywords": "={{$json.phoneSearch}}",
+        "additionalFields": {
+          "Limit": 1
+        }
       }
     },
     {
@@ -786,7 +795,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst personId=resp?.Response?.Id||null;\nconst lastName=resp?.Response?.LastName||'User';\nif(!personId) return [{json:{skip:true,reason:'person not found by phone'}}];\nreturn [{json:{...prev,personId,lastName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'User';\nif(!personId) return [{json:{skip:true,reason:'person not found by phone'}}];\nreturn [{json:{...prev,personId,lastName}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -942,8 +951,11 @@
       },
       "parameters": {
         "resource": "person",
-        "operation": "getByPhone",
-        "MobilePhone": "={{$json.phone}}"
+        "operation": "search",
+        "Keywords": "={{$json.phoneSearch}}",
+        "additionalFields": {
+          "Limit": 1
+        }
       }
     },
     {
@@ -956,7 +968,7 @@
         1150
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst personId=resp?.Response?.Id||null;\nconst lastName=resp?.Response?.LastName||'';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
