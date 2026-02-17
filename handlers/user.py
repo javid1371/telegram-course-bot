@@ -790,6 +790,28 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
             },
         )
 
+        # Deliver remaining content blocks (non-form) if lesson has multi-content
+        lesson = await lesson_service.get_lesson_by_id(lesson_id)
+        if lesson and lesson.contents:
+            non_form_indices = [
+                (i, block) for i, block in enumerate(lesson.contents)
+                if block.get("type") != "form"
+            ]
+            if non_form_indices:
+                description = lesson.description or ""
+                lesson_text = USER["lesson_sent"].format(
+                    lesson_number=lesson.order,
+                    lesson_title=lesson.title,
+                    description=description,
+                )
+                for idx, (orig_i, block) in enumerate(non_form_indices):
+                    is_first = (idx == 0)
+                    caption = lesson_text if is_first else None
+                    await _send_content_block(
+                        message, block, caption, None,
+                        lesson_id=lesson.id, block_index=orig_i,
+                    )
+
         # Complete the lesson
         await _complete_lesson_flow(message, user, lesson_id, session)
 
