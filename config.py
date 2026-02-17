@@ -73,6 +73,7 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 FIELD_MAPPING = {
     "name": "person.name",
     "phone": "person.phone",
+    "mobile": "person.phone",
     "email": "person.email",
 }
 

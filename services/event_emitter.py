@@ -97,20 +97,29 @@ def _build_fields_mapping(user: User) -> tuple:
 
 def _build_user_block(user: User) -> dict:
     """Build the ``user`` section of the event payload."""
+    reg = user.registration_data or {}
+    # Phone field may be stored as "phone" or "mobile" depending on registration_fields config
+    phone = reg.get("phone") or reg.get("mobile") or ""
+    # Also check any field with PHONE-like key names
+    if not phone:
+        for k, v in reg.items():
+            if isinstance(v, str) and v.startswith("09") and len(v) >= 10:
+                phone = v
+                break
     return {
         "telegram_id": user.telegram_user_id,
         "platform": getattr(user, "platform", config.PLATFORM),
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,
-        "registration_data": user.registration_data or {},
+        "registration_data": reg,
         "tags": user.tags or [],
         "referral_code": user.referral_code,
         "referred_by": user.referred_by,
         "is_active": user.is_active,
         "is_completed": user.is_completed,
         "lead_score": user.lead_score or 0,
-        "phone": (user.registration_data or {}).get("phone", ""),
+        "phone": phone,
         "created_at": (
             user.created_at.isoformat() if user.created_at else None
         ),

@@ -65,7 +65,7 @@ async def cmd_start(message: Message, state: FSMContext):
             # اگر شماره موبایل در state باشد
             data = await state.get_data()
             reg_data = data.get("registration_data", {}) if data else {}
-            phone = reg_data.get("phone")
+            phone = reg_data.get("phone") or reg_data.get("mobile")
             # اگر شماره موبایل در پیام باشد (مثلاً از start_param)
             if not phone and hasattr(message, "contact") and message.contact:
                 phone = message.contact.phone_number
