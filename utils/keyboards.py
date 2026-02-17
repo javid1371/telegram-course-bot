@@ -34,8 +34,6 @@ def get_lesson_keyboard(lesson_id: int, cta_text: str = None, cta_url: str = Non
     # Context-aware confirmation button
     if has_quiz:
         btn_text = USER_BUTTONS["lesson_seen_quiz"]
-    elif not has_delay:
-        btn_text = USER_BUTTONS["lesson_seen_next"]
     else:
         btn_text = USER_BUTTONS["lesson_seen"]
 

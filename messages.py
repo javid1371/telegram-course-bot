@@ -269,6 +269,7 @@ USER = SmartDict("USER", {
     "lesson_sent": "📚 درس {lesson_number} - {lesson_title}\n\n{description}",
     "lesson_completed": "✅ تبریک! درس {lesson_number} را تکمیل کردید.\n\n🎯 پیشرفت شما: {progress}%",
     "lesson_completed_auto": "\n\n📩 درس بعدی به‌صورت خودکار برای شما ارسال خواهد شد.",
+    "lesson_next_auto_time": "📩 درس بعدی تا <b>{remaining}</b> دیگه خودکار ارسال می‌شه.",
     "lesson_completed_manual": "\n\n📚 برای دریافت درس بعدی روی «ادامه دوره» کلیک کنید.",
     "course_completed": "🎉 تبریک! شما دوره را با موفقیت تکمیل کردید!\n\n🏆 آفرین!",
     "course_completed_next": "\n\n📚 دوره‌های دیگه‌ای هم هست. کدوم رو شروع کنی؟",

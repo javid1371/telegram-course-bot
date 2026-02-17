@@ -780,13 +780,6 @@ async def _submit_form(message: Message, lesson_id: int, responses: dict, telegr
         session.add(form_response)
         await session.commit()
 
-        # Show confirmation
-        text = USER["form_submitted"] + "\n\n"
-        text += f"📋 {form_title}\n\n"
-        for key, val in responses.items():
-            text += f"• {key}: {val}\n"
-        await message.answer(text)
-
         # Send webhook
         await emit(
             "form", "submit", user, session,
@@ -1412,47 +1405,6 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             user.double_speed_courses = ds_courses
             await session.commit()
 
-            # Show completion of current lesson + bonus notice
-            await message.answer(
-                USER["lesson_completed"].format(
-                    lesson_number=lesson.order if lesson else "?",
-                    progress=progress["progress_percent"],
-                ) + USER["lesson_completed_2x_bonus"]
-            )
-
-            # Get and deliver the bonus lesson immediately
-            bonus_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
-            if bonus_lesson:
-                await lesson_service.mark_lesson_started(user.id, bonus_lesson.id)
-                user.current_lesson_id = bonus_lesson.id
-                await session.commit()
-
-                if bonus_lesson.content_type == ContentType.FORM and bonus_lesson.form_data:
-                    # Can't auto-start form without FSM state; tell user to click continue
-                    await message.answer(
-                        USER["lesson_completed_manual"]
-                    )
-                else:
-                    await _send_lesson(message, bonus_lesson)
-            else:
-                # No more lessons — course completed
-                await message.answer(USER["course_completed"])
-        if delay_minutes > 0 and is_2x and not bonus_delivered:
-            # 2x mode: deliver bonus lesson immediately instead of scheduling
-            # Mark this as the first of the pair
-            ds_data["bonus_delivered"] = True
-            ds_courses[str(course_id)] = ds_data
-            user.double_speed_courses = ds_courses
-            await session.commit()
-
-            # Show completion of current lesson + bonus notice
-            await message.answer(
-                USER["lesson_completed"].format(
-                    lesson_number=lesson.order if lesson else "?",
-                    progress=progress["progress_percent"],
-                ) + USER["lesson_completed_2x_bonus"]
-            )
-
             # Get and deliver the bonus lesson immediately
             bonus_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
             if bonus_lesson:
@@ -1463,7 +1415,7 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                 # Emit lesson.open for bonus lesson
                 await emit(
                     "lesson", "open", user, session,
-                    course={"id": course_id, "title": course.title if course else ""},
+                    course={"id": course_id, "title": current_lesson.course.title if current_lesson and current_lesson.course else ""},
                     lesson={"id": bonus_lesson.id, "title": bonus_lesson.title, "order": bonus_lesson.order},
                     extra_payload={
                         "has_quiz": bool(bonus_lesson.quiz_data),
@@ -1473,13 +1425,21 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
 
                 if bonus_lesson.content_type == ContentType.FORM and bonus_lesson.form_data:
                     # Can't auto-start form without FSM state; tell user to click continue
+                    from aiogram.types import InlineKeyboardButton
+                    from aiogram.utils.keyboard import InlineKeyboardBuilder
+                    builder = InlineKeyboardBuilder()
+                    builder.row(InlineKeyboardButton(
+                        text=USER["next_lesson_btn"],
+                        callback_data=f"select_course:{course_id}",
+                    ))
                     await message.answer(
-                        USER["lesson_completed_manual"]
+                        USER["lesson_completed_manual"],
+                        reply_markup=builder.as_markup(),
                     )
                 else:
                     await _send_lesson(message, bonus_lesson)
             else:
-                # No more lessons \u2014 course completed
+                # No more lessons — course completed
                 await message.answer(USER["course_completed"])
 
         elif delay_minutes > 0 and is_2x and bonus_delivered:
@@ -1498,11 +1458,9 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             session.add(scheduled)
             await session.commit()
 
+            remaining_text = format_duration(delay_minutes * 60)
             await message.answer(
-                USER["lesson_completed"].format(
-                    lesson_number=lesson.order if lesson else "?",
-                    progress=progress["progress_percent"],
-                ) + USER["lesson_completed_auto"]
+                USER["lesson_next_auto_time"].format(remaining=remaining_text)
             )
 
         elif delay_minutes > 0:
@@ -1517,18 +1475,12 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             session.add(scheduled)
             await session.commit()
 
+            remaining_text = format_duration(delay_minutes * 60)
             await message.answer(
-                USER["lesson_completed"].format(
-                    lesson_number=lesson.order if lesson else "?",
-                    progress=progress["progress_percent"],
-                ) + USER["lesson_completed_auto"]
+                USER["lesson_next_auto_time"].format(remaining=remaining_text)
             )
         else:
-            # Instant — auto-deliver next lesson
-            completion_text = USER["lesson_completed"].format(
-                lesson_number=lesson.order if lesson else "?",
-                progress=progress["progress_percent"],
-            )
+            # Instant — auto-deliver next lesson (no congratulation message)
             next_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
             if next_lesson and next_lesson.content_type == ContentType.FORM and next_lesson.form_data:
                 # Form lessons need FSM — show inline button
@@ -1540,19 +1492,30 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                     callback_data=f"select_course:{course_id}",
                 ))
                 await message.answer(
-                    completion_text + USER["lesson_completed_manual"],
+                    USER["lesson_completed_manual"],
                     reply_markup=builder.as_markup(),
                 )
             elif next_lesson:
-                await message.answer(completion_text)
                 # Auto-deliver next lesson
                 await lesson_service.mark_lesson_started(user.id, next_lesson.id)
                 user.current_lesson_id = next_lesson.id
                 await session.commit()
+
+                # Emit lesson.open for instant lesson
+                await emit(
+                    "lesson", "open", user, session,
+                    course={"id": course_id, "title": current_lesson.course.title if current_lesson and current_lesson.course else ""},
+                    lesson={"id": next_lesson.id, "title": next_lesson.title, "order": next_lesson.order},
+                    extra_payload={
+                        "has_quiz": bool(next_lesson.quiz_data),
+                        "has_form": bool(next_lesson.form_data),
+                    },
+                )
+
                 await _send_lesson(message, next_lesson)
             else:
                 await message.answer(
-                    completion_text + USER["lesson_completed_manual"]
+                    USER["lesson_completed_manual"]
                 )
 
         # Send webhook — lesson.complete
@@ -1587,49 +1550,6 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             )
         except Exception:
             pass  # Non-critical, don't break flow
-        else:
-            # Instant \u2014 auto-deliver next lesson
-            completion_text = USER["lesson_completed"].format(
-                lesson_number=lesson.order if lesson else "?",
-                progress=progress["progress_percent"],
-            )
-            next_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
-            if next_lesson and next_lesson.content_type == ContentType.FORM and next_lesson.form_data:
-                # Form lessons need FSM \u2014 show inline button
-                from aiogram.types import InlineKeyboardButton
-                from aiogram.utils.keyboard import InlineKeyboardBuilder
-                builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(
-                    text=USER["next_lesson_btn"],
-                    callback_data=f"select_course:{course_id}",
-                ))
-                await message.answer(
-                    completion_text + USER["lesson_completed_manual"],
-                    reply_markup=builder.as_markup(),
-                )
-            elif next_lesson:
-                await message.answer(completion_text)
-                # Auto-deliver next lesson
-                await lesson_service.mark_lesson_started(user.id, next_lesson.id)
-                user.current_lesson_id = next_lesson.id
-                await session.commit()
-
-                # Emit lesson.open for instant lesson
-                await emit(
-                    "lesson", "open", user, session,
-                    course={"id": course_id, "title": course.title if course else ""},
-                    lesson={"id": next_lesson.id, "title": next_lesson.title, "order": next_lesson.order},
-                    extra_payload={
-                        "has_quiz": bool(next_lesson.quiz_data),
-                        "has_form": bool(next_lesson.form_data),
-                    },
-                )
-
-                await _send_lesson(message, next_lesson)
-            else:
-                await message.answer(
-                    completion_text + USER["lesson_completed_manual"]
-                )
 
 
 # ===========================
