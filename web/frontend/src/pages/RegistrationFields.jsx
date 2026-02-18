@@ -16,8 +16,10 @@ const CRM_FIELD_PRESETS = [
   { value: '', label: '— بدون مپینگ (یادداشت) —' },
   { value: 'note', label: '📝 یادداشت CRM' },
   { value: 'person.name', label: '👤 نام شخص (person.name)' },
+  { value: 'person.last_name', label: '👤 نام خانوادگی (person.last_name)' },
   { value: 'person.phone', label: '📱 تلفن شخص (person.phone)' },
   { value: 'person.email', label: '📧 ایمیل شخص (person.email)' },
+  { value: 'person.organization', label: '🏢 سازمان (person.organization)' },
   { value: 'custom', label: '🔧 فیلد سفارشی دیدار...' },
 ];
 

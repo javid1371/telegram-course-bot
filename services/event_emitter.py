@@ -49,6 +49,8 @@ WEBHOOK_SECRET = getattr(config, "WEBHOOK_SECRET", "")
 _FALLBACK_FIELD_MAPPING = {
     "name": "person.name",
     "full_name": "person.name",
+    "last_name": "person.last_name",
+    "family": "person.last_name",
     "phone": "person.phone",
     "mobile": "person.phone",
     "email": "person.email",
