@@ -541,7 +541,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -795,7 +795,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'User';\nif(!personId) return [{json:{skip:true,reason:'person not found by phone'}}];\nreturn [{json:{...prev,personId,lastName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'User';\nif(!personId) return [];\nreturn [{json:{...prev,personId,lastName}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -968,7 +968,7 @@
         1150
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found'}}];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst list=resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
