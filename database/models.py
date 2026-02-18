@@ -78,6 +78,14 @@ class RegistrationField(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # CRM field mapping — maps this registration field to a CRM (Didar) field.
+    # Conventions:
+    #   null / ""       → included as a note (default)
+    #   "note"          → explicitly a note
+    #   "person.phone"  → standard CRM person field (FirstName, LastName, MobilePhone)
+    #   "Field_996_0_26" → Didar custom field ID
+    crm_field: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     def __repr__(self):
         return f"<RegistrationField {self.field_name} - {self.field_type.value}>"
 

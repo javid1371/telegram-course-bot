@@ -11,6 +11,16 @@ const FIELD_TYPES = [
   { value: 'select', label: 'انتخابی' },
 ];
 
+// Pre-defined CRM field mappings for quick selection
+const CRM_FIELD_PRESETS = [
+  { value: '', label: '— بدون مپینگ (یادداشت) —' },
+  { value: 'note', label: '📝 یادداشت CRM' },
+  { value: 'person.name', label: '👤 نام شخص (person.name)' },
+  { value: 'person.phone', label: '📱 تلفن شخص (person.phone)' },
+  { value: 'person.email', label: '📧 ایمیل شخص (person.email)' },
+  { value: 'custom', label: '🔧 فیلد سفارشی دیدار...' },
+];
+
 const EMPTY_FORM = {
   field_name: '',
   field_label: '',
@@ -20,6 +30,7 @@ const EMPTY_FORM = {
   validation_rule: '',
   options: null,
   is_active: true,
+  crm_field: '',
 };
 
 export default function RegistrationFieldsPage() {
@@ -29,6 +40,7 @@ export default function RegistrationFieldsPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [selectOptions, setSelectOptions] = useState('');
+  const [crmFieldMode, setCrmFieldMode] = useState(''); // '' | 'note' | 'person.*' | 'custom'
 
   const load = () => {
     setLoading(true);
@@ -45,6 +57,7 @@ export default function RegistrationFieldsPage() {
     setEditingId(null);
     setForm({ ...EMPTY_FORM, order: items.length });
     setSelectOptions('');
+    setCrmFieldMode('');
     setShowForm(true);
   };
 
@@ -59,10 +72,17 @@ export default function RegistrationFieldsPage() {
       validation_rule: field.validation_rule || '',
       options: field.options,
       is_active: field.is_active,
+      crm_field: field.crm_field || '',
     });
     setSelectOptions(
       field.options?.choices ? field.options.choices.join('\n') : ''
     );
+    // Determine CRM field mode
+    const cf = field.crm_field || '';
+    if (!cf) setCrmFieldMode('');
+    else if (cf === 'note') setCrmFieldMode('note');
+    else if (cf.startsWith('person.')) setCrmFieldMode(cf);
+    else setCrmFieldMode('custom');
     setShowForm(true);
   };
 
@@ -241,6 +261,43 @@ export default function RegistrationFieldsPage() {
                 dir="ltr"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                🔗 مپینگ CRM (دیدار)
+              </label>
+              <select
+                value={crmFieldMode}
+                onChange={(e) => {
+                  const mode = e.target.value;
+                  setCrmFieldMode(mode);
+                  if (mode === 'custom') {
+                    // Keep current crm_field if it looks like a custom field, else clear
+                    if (!form.crm_field || form.crm_field.startsWith('person.') || form.crm_field === 'note') {
+                      setForm({ ...form, crm_field: '' });
+                    }
+                  } else {
+                    setForm({ ...form, crm_field: mode });
+                  }
+                }}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                {CRM_FIELD_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              {crmFieldMode === 'custom' && (
+                <input
+                  type="text"
+                  value={form.crm_field}
+                  onChange={(e) => setForm({ ...form, crm_field: e.target.value })}
+                  placeholder="مثلاً: Field_996_0_26"
+                  className="w-full mt-2 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left font-mono text-sm"
+                  dir="ltr"
+                />
+              )}
+            </div>
             <div className="flex items-center gap-6 pt-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -322,6 +379,7 @@ export default function RegistrationFieldsPage() {
                 <th className="px-4 py-3 text-right">برچسب</th>
                 <th className="px-4 py-3 text-right">نام فیلد</th>
                 <th className="px-4 py-3 text-right">نوع</th>
+                <th className="px-4 py-3 text-right">فیلد CRM</th>
                 <th className="px-4 py-3 text-center">اجباری</th>
                 <th className="px-4 py-3 text-center">وضعیت</th>
                 <th className="px-4 py-3 text-center">عملیات</th>
@@ -361,7 +419,11 @@ export default function RegistrationFieldsPage() {
                     {f.field_name}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                    <span className={`px-2 py-0.5 rounded text-xs ${
+                      FIELD_TYPES.find((t) => t.value === f.field_type)
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'bg-gray-50 text-gray-600'
+                    }`}>
                       {FIELD_TYPES.find((t) => t.value === f.field_type)
                         ?.label || f.field_type}
                     </span>
@@ -369,6 +431,21 @@ export default function RegistrationFieldsPage() {
                       <span className="text-xs text-gray-400 mr-1">
                         ({f.options.choices.length} گزینه)
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {f.crm_field ? (
+                      <span className={`px-2 py-0.5 rounded text-xs font-mono ${
+                        f.crm_field === 'note'
+                          ? 'bg-yellow-50 text-yellow-700'
+                          : f.crm_field.startsWith('person.')
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-purple-50 text-purple-700'
+                      }`}>
+                        {f.crm_field}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">

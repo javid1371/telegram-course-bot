@@ -36,7 +36,7 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session_maker
-from database.models import WebhookSetting, WebhookFailedEvent, User, CompanyInfo, ScheduledMessage, MessageStatus
+from database.models import WebhookSetting, WebhookFailedEvent, User, CompanyInfo, ScheduledMessage, MessageStatus, RegistrationField
 import config
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,15 @@ logger = logging.getLogger(__name__)
 # ───────────────────────── constants ─────────────────────────
 BOT_USERNAME = getattr(config, "BOT_USERNAME", "course_bot")
 WEBHOOK_SECRET = getattr(config, "WEBHOOK_SECRET", "")
-FIELD_MAPPING = getattr(config, "FIELD_MAPPING", {})
+
+# Fallback mapping used when DB has no crm_field configured
+_FALLBACK_FIELD_MAPPING = {
+    "name": "person.name",
+    "full_name": "person.name",
+    "phone": "person.phone",
+    "mobile": "person.phone",
+    "email": "person.email",
+}
 
 MAX_IMMEDIATE_RETRIES = 3
 RETRY_BASE_DELAY = 2  # seconds
@@ -63,21 +71,30 @@ def _sign_payload(payload_bytes: bytes) -> str:
     ).hexdigest()
 
 
-def _build_fields_mapping(user: User) -> tuple:
+def _build_fields_mapping(user: User, field_mappings: dict = None) -> tuple:
     """
     Split user registration_data into CRM fields vs notes
-    based on FIELD_MAPPING config.
+    using dynamic field_mappings from DB (with fallback to defaults).
+
+    Parameters
+    ----------
+    user : User
+    field_mappings : dict
+        ``{field_name: crm_field}`` from RegistrationField table.
+        If None, uses ``_FALLBACK_FIELD_MAPPING``.
 
     Returns ``(fields_to_update, note_to_create)``.
     """
+    mapping = field_mappings if field_mappings is not None else _FALLBACK_FIELD_MAPPING
+
     fields_to_update: dict = {}
     note_parts: list = []
 
     reg_data = user.registration_data or {}
     for key, value in reg_data.items():
-        mapping = FIELD_MAPPING.get(key)
-        if mapping and mapping != "note":
-            fields_to_update[mapping] = value
+        crm_field = mapping.get(key)
+        if crm_field and crm_field != "note":
+            fields_to_update[crm_field] = value
         else:
             note_parts.append(f"{key}: {value}")
 
@@ -93,6 +110,44 @@ def _build_fields_mapping(user: User) -> tuple:
 
     note_text = "\n".join(note_parts) if note_parts else ""
     return fields_to_update, note_text
+
+
+def _build_crm_fields_json(data: dict, field_mappings: dict, lead_score: int = 0) -> str:
+    """
+    Build a ready-to-use JSON string of ``{didar_field_id: value}``
+    that n8n can pass directly to Didar API ``Fields`` parameter.
+
+    Only includes fields whose ``crm_field`` looks like a Didar custom
+    field ID (starts with ``Field_`` or is a single-letter like ``J``).
+
+    Parameters
+    ----------
+    data : dict
+        Key/value pairs (e.g. form_responses or registration_data).
+    field_mappings : dict
+        ``{field_name: crm_field}`` from RegistrationField table.
+    lead_score : int
+        If > 0, also includes lead_score in the JSON (using the
+        ``lead_score`` key from field_mappings if available).
+
+    Returns
+    -------
+    str
+        JSON string like ``'{"Field_996_0_26": "5000000"}'``.
+    """
+    crm_fields = {}
+    for key, value in data.items():
+        crm_field = field_mappings.get(key, "")
+        if crm_field and crm_field != "note" and not crm_field.startswith("person."):
+            # This is a custom field ID (e.g. Field_996_0_26, J)
+            crm_fields[crm_field] = str(value)
+
+    # Add lead_score if mapping exists
+    lead_score_field = field_mappings.get("lead_score", "")
+    if lead_score_field and lead_score > 0:
+        crm_fields[lead_score_field] = str(lead_score)
+
+    return json.dumps(crm_fields) if crm_fields else "{}"
 
 
 def _build_user_block(user: User) -> dict:
@@ -140,6 +195,7 @@ def build_event_payload(
     lesson: dict = None,
     progress: dict = None,
     extra_payload: dict = None,
+    field_mappings: dict = None,
 ) -> dict:
     """
     Build the standardised event payload.
@@ -158,6 +214,7 @@ def build_event_payload(
             "payload":    {
                 "fields_to_update": { … },
                 "note_to_create":   "…",
+                "crm_field_mapping": { … },
                 …extra
             },
             "security":   {"signature", "idempotency_key"}
@@ -165,12 +222,17 @@ def build_event_payload(
     """
     event_id = str(uuid.uuid4())
 
-    fields_to_update, note_text = _build_fields_mapping(user)
+    fields_to_update, note_text = _build_fields_mapping(user, field_mappings)
 
     payload_block: dict = {
         "fields_to_update": fields_to_update,
         "note_to_create": note_text,
     }
+
+    # Include dynamic CRM field mapping so n8n can use it
+    if field_mappings:
+        payload_block["crm_field_mapping"] = field_mappings
+
     if extra_payload:
         payload_block.update(extra_payload)
 
@@ -449,6 +511,7 @@ async def emit(
         trigger_sales = False
         webhook_snapshots = []
         fresh_user = None
+        field_mappings = {}
         async with async_session_maker() as emit_session:
             # Re-load user to safely access all attributes
             from sqlalchemy import select as _sel2
@@ -457,6 +520,21 @@ async def emit(
             )).scalar_one_or_none()
             if not fresh_user:
                 fresh_user = user  # fallback
+
+            # ── Load dynamic CRM field mappings from DB ──
+            try:
+                reg_fields_result = await emit_session.execute(
+                    select(RegistrationField).where(RegistrationField.is_active == True)
+                )
+                for rf in reg_fields_result.scalars().all():
+                    if rf.crm_field:
+                        field_mappings[rf.field_name] = rf.crm_field
+            except Exception as e:
+                logger.warning(f"[EventEmitter] Failed to load field mappings: {e}")
+
+            # Merge with fallback for unmapped fields
+            merged_mappings = dict(_FALLBACK_FIELD_MAPPING)
+            merged_mappings.update(field_mappings)
 
             if event_key == "lesson.complete" and lesson:
                 lesson_order = lesson.get("order", 0)
@@ -500,7 +578,26 @@ async def emit(
                 extra_payload["trigger_sales"] = True
 
             extra_payload = extra_payload or {}
-            extra_payload["lead_score"] = fresh_user.lead_score or 0
+            lead_score = fresh_user.lead_score or 0
+            extra_payload["lead_score"] = lead_score
+
+            # ── Build ready-to-use CRM field JSON strings for n8n ──
+            # lead_score_field_json: used by Prep Register/Lesson/Complete
+            lead_score_field = merged_mappings.get("lead_score", "")
+            if lead_score_field and lead_score > 0:
+                extra_payload["lead_score_field_json"] = json.dumps(
+                    {lead_score_field: str(lead_score)}
+                )
+            else:
+                extra_payload["lead_score_field_json"] = "{}"
+
+            # crm_form_fields_json: for form.submit — form_responses mapped to CRM field IDs
+            if event_key == "form.submit" and extra_payload.get("form_responses"):
+                extra_payload["crm_form_fields_json"] = _build_crm_fields_json(
+                    extra_payload["form_responses"],
+                    merged_mappings,
+                    lead_score=lead_score,
+                )
 
             payload = build_event_payload(
                 event_type=event_type,
@@ -511,6 +608,7 @@ async def emit(
                 lesson=lesson,
                 progress=progress,
                 extra_payload=extra_payload,
+                field_mappings=merged_mappings,
             )
 
         signature = payload.get("security", {}).get("signature", "")

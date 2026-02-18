@@ -66,11 +66,10 @@ WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8443"))
 # Webhook Security — HMAC-SHA256 signing for CRM/n8n verification
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 
-# CRM Field Mapping
-# Keys = registration_data field names
-# Values = CRM field path (e.g. "person.name", "person.phone") or "note"
-# Fields not listed here are automatically included as notes
-FIELD_MAPPING = {
+# CRM Field Mapping (DEPRECATED — now stored in DB via RegistrationField.crm_field)
+# Kept as fallback for backwards compatibility when DB has no mappings.
+# Managed from Admin Panel → Registration Fields → CRM Field column.
+_LEGACY_FIELD_MAPPING = {
     "name": "person.name",
     "phone": "person.phone",
     "mobile": "person.phone",

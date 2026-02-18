@@ -22,6 +22,7 @@ class FieldCreate(BaseModel):
     validation_rule: Optional[str] = None
     options: Optional[dict] = None  # for select type: {"choices": ["opt1", "opt2"]}
     is_active: bool = True
+    crm_field: Optional[str] = None  # CRM field mapping (e.g. "person.phone", "Field_996_0_26", "note")
 
 
 class FieldUpdate(BaseModel):
@@ -33,6 +34,7 @@ class FieldUpdate(BaseModel):
     validation_rule: Optional[str] = None
     options: Optional[dict] = None
     is_active: Optional[bool] = None
+    crm_field: Optional[str] = None
 
 
 class ReorderItem(BaseModel):
@@ -55,6 +57,7 @@ def field_to_dict(f: RegistrationField) -> dict:
         "validation_rule": f.validation_rule,
         "options": f.options,
         "is_active": f.is_active,
+        "crm_field": f.crm_field,
         "created_at": f.created_at.isoformat() if f.created_at else None,
     }
 
@@ -107,6 +110,7 @@ async def create_field(data: FieldCreate, _=Depends(get_current_user)):
             validation_rule=data.validation_rule,
             options=data.options,
             is_active=data.is_active,
+            crm_field=data.crm_field,
         )
         session.add(field)
         await session.commit()
