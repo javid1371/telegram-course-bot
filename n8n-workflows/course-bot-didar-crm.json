@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-02-18T01:16:24.000Z",
+  "updatedAt": "2026-02-18T01:36:55.000Z",
   "createdAt": "2026-02-16T15:18:30.048Z",
   "id": "HGKNtU5jSUmnXQpY",
   "name": "Course Bot - Didar CRM (v7)",
@@ -1204,9 +1204,10 @@
       "parameters": {
         "resource": "note",
         "operation": "create",
-        "ResultNote": "={{$json.noteText}}",
+        "ResultNote": "={{ $('Prep Form').item.json.noteText }}",
+        "PersonId": "={{ $('Extract Person Form').item.json.personId }}",
         "OwnerMode": "manual",
-        "OwnerIdManual": "={{$json.ownerId}}"
+        "OwnerIdManual": "={{ $('Prep Form').item.json.ownerId }}"
       },
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
@@ -1906,9 +1907,9 @@
   "staticData": null,
   "meta": null,
   "pinData": {},
-  "versionId": "c0c7b64d-f039-4133-a56e-7a1aa4991e1a",
-  "activeVersionId": "c0c7b64d-f039-4133-a56e-7a1aa4991e1a",
-  "versionCounter": 97,
+  "versionId": "00b2e9b6-f006-4ab3-8c6f-179ac1832f49",
+  "activeVersionId": "00b2e9b6-f006-4ab3-8c6f-179ac1832f49",
+  "versionCounter": 102,
   "triggerCount": 1,
   "tags": [
     {
