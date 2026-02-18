@@ -653,7 +653,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Recover Person Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.search_respons?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found'}}];\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||prev.personId,\nstageId:prev.stageId,ownerId:realOwner,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\ntriggerSales:prev.triggerSales,userName:prev.userName,lessonOrder:prev.lessonOrder,\nactivityTypeId:prev.activityTypeId,leadScore:prev.leadScore,\nnoteText:prev.noteText,CONFIG:prev.CONFIG,skip:false}}];"
+        "jsCode": "const prev=$('Recover Person Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.search_respons?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found',\n  dealTitle:'\\u062f\\u0648\\u0631\\u0647 '+prev.courseTitle+' - '+(prev.userName||'User'),\n  companyId:prev.CONFIG?.COMPANY_ID||'00000000-0000-0000-0000-000000000000'}}];\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||prev.personId,\nstageId:prev.stageId,ownerId:realOwner,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\ntriggerSales:prev.triggerSales,userName:prev.userName,lessonOrder:prev.lessonOrder,\nactivityTypeId:prev.activityTypeId,leadScore:prev.leadScore,\nnoteText:prev.noteText,CONFIG:prev.CONFIG,skip:false}}];"
       },
       "id": "extract_deal",
       "name": "Extract Deal",
@@ -1058,7 +1058,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Recover Person Complete').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.search_respons?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found for completion'}}];\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{...prev,ownerId:realOwner,dealId:deal.Id,dealTitle:deal.Title,\npersonId:deal.PersonId||prev.personId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',skip:false}}];"
+        "jsCode": "const prev=$('Recover Person Complete').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.search_respons?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found for completion',\n  dealTitle:'\\u062f\\u0648\\u0631\\u0647 '+prev.courseTitle+' - '+(prev.userName||'User'),\n  companyId:prev.CONFIG?.COMPANY_ID||'00000000-0000-0000-0000-000000000000'}}];\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{...prev,ownerId:realOwner,dealId:deal.Id,dealTitle:deal.Title,\npersonId:deal.PersonId||prev.personId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',skip:false}}];"
       },
       "id": "extract_deal_complete",
       "name": "Extract Deal Complete",
@@ -1223,6 +1223,79 @@
           "name": "MasireSefidDidar"
         }
       }
+    },
+    {
+      "parameters": {
+        "Title": "={{$json.dealTitle}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "PipelineMode": "manual",
+        "PipelineId": "={{$json.pipelineId}}",
+        "StageMode": "manual",
+        "PipelineStageId": "={{$json.stageId}}",
+        "PersonId": "={{$json.personId}}",
+        "CompanyId": "={{$json.companyId}}",
+        "additionalFields": {
+          "VisibilityType": "Owner"
+        }
+      },
+      "id": "create-deal-lesson",
+      "name": "Create Deal Lesson",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        2746,
+        708
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "Title": "={{$json.dealTitle}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "PipelineMode": "manual",
+        "PipelineId": "={{$json.pipelineId}}",
+        "StageMode": "manual",
+        "PipelineStageId": "={{$json.stageId}}",
+        "PersonId": "={{$json.personId}}",
+        "CompanyId": "={{$json.companyId}}",
+        "additionalFields": {
+          "VisibilityType": "Owner"
+        }
+      },
+      "id": "create-deal-complete2",
+      "name": "Create Deal Complete2",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        2970,
+        1812
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev=$('Extract Deal Complete').first().json;\nconst resp=$input.first().json;\nconst newDealId=resp?.Response?.Id||'';\nreturn [{json:{...prev,dealId:newDealId,skip:false}}];"
+      },
+      "id": "after-create-deal-complete",
+      "name": "After Create Deal Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        3220,
+        1812
+      ]
     }
   ],
   "connections": {
@@ -1582,7 +1655,7 @@
         ],
         [
           {
-            "node": "Prep Respond OK",
+            "node": "Create Deal Lesson",
             "type": "main",
             "index": 0
           }
@@ -1783,7 +1856,7 @@
         ],
         [
           {
-            "node": "Prep Respond OK",
+            "node": "Create Deal Complete2",
             "type": "main",
             "index": 0
           }
@@ -1894,6 +1967,39 @@
         [
           {
             "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Deal Lesson": {
+      "main": [
+        [
+          {
+            "node": "Prep Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Deal Complete2": {
+      "main": [
+        [
+          {
+            "node": "After Create Deal Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Create Deal Complete": {
+      "main": [
+        [
+          {
+            "node": "Sales Call",
             "type": "main",
             "index": 0
           }
