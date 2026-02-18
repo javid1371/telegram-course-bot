@@ -11,6 +11,23 @@ All notable changes to this project will be documented in this file.
 - [ ] Multi-language support
 - [ ] Comprehensive test suite
 
+## [0.3.1] - 2025-07-14
+
+### n8n Workflow v8 - Critical CRM Bug Fixes
+
+#### Fixed
+- **Critical: Didar CRM search result parsing** — All 7 Code nodes used `Response.List` but Didar `search` operation returns `search_respons.List`. This caused:
+  - Register path: Always created duplicate persons → "Duplicate contacts" error
+  - Lesson path: Person not found → no deal stage updates
+  - Form path: Person not found → no field updates
+  - Complete path: Person not found → no completion processing
+  - Deal paths: Deals never searched → never updated
+- All 7 nodes now use `search_respons.List` with `Response.List` fallback for robustness
+
+#### Added
+- **Form → Note**: Form responses now saved as a note (یادداشت) in Didar CRM with formatted text (📋 title + bullet-point answers)
+- New `Create Note Form` Didar CRM node in form submission path
+
 ## [0.3.0] - 2026-02-10
 
 ### Phase 3 - Admin Panel ✅

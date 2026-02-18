@@ -16,28 +16,30 @@ and built-in error handling.
 |---|---|
 | `lead.register` | Find/Create Person (dedup) + Find/Create Deal (dedup) + Happy Call Activity + **Returns assigned owner** |
 | `lesson.complete` | Search Deal → Update stage → **IF trigger_sales** → Sales Call Activity |
-| `form.submit` | Find Person → Update custom fields (income, staff, job, etc.) |
+| `form.submit` | Find Person → Update custom fields + **Create Note with form responses** |
 | `quiz.pass` | Create Note with score |
 | `quiz.fail` | Create Note with failure details |
 | `inactivity.timeout` | Create Follow-up Activity for sales team |
 | `course.complete` | Search Deal → Move to "در انتظار تماس فروش" + Sales Call Activity |
 | `speed.change` | Create Note tracking engagement level |
 
-### Key Features (v4)
+### Key Features (v8)
 - **Configurable Sales Trigger**: Admin sets a lesson number that triggers sales call activity — bot sends `trigger_sales: true` in payload
 - **Lead Scoring**: Every event carries `lead_score` from bot's scoring engine; visible in all webhook payloads
 - **Native Didar CRM Nodes**: Uses `n8n-nodes-didar-crm` instead of HTTP Request nodes
 - **Centralized Credentials**: API key managed via n8n's credential system (not in workflow)
 - **Weighted Owner Assignment**: Config defines OWNERS array with weights; each registration randomly selects an owner proportional to weight
-- **Person Deduplication**: Searches by phone before creating — uses existing person if found
+- **Person Deduplication**: Searches by phone (`search` operation) before creating — uses existing person if found
 - **Deal Deduplication**: Searches for existing open deal before creating a new one
-- **Webhook Response**: Register branch returns assigned owner info to the bot (lastNode mode)
+- **Webhook Response**: Register branch returns assigned owner info to the bot (`onReceived` mode)
 - **Auto Stage Movement**: Deal stage updates automatically with lesson progress
 - **Custom Field Mapping**: Form responses → CRM custom fields
+- **Form Notes**: Form responses saved as notes in Didar CRM (📋 formatted)
 - **Complete Branches**: All 8 event types have full action chains
+- **Correct Didar Response Parsing**: Handles both `search_respons.List` (search) and `Response.List` (legacy) formats
 
 ### Node Statistics
-- **42 total nodes**: 15 native Didar CRM + 23 Code/Logic + 2 IF + 2 Respond + 2 other (Webhook, Switch)
+- **55 total nodes**: Router (Switch v3.2) + Didar CRM nodes + Code/Logic + IF + Respond + Webhook
 
 ---
 
