@@ -444,9 +444,20 @@ async def emit(
             logger.warning(f"[EventEmitter] scoring error: {e}")
 
         # ── Sales trigger & webhook query in own session ──
+        # Re-load user in a fresh session to avoid greenlet_spawn errors
+        # when accessing lazy-loaded attributes outside the caller's session.
         trigger_sales = False
         webhook_snapshots = []
+        fresh_user = None
         async with async_session_maker() as emit_session:
+            # Re-load user to safely access all attributes
+            from sqlalchemy import select as _sel2
+            fresh_user = (await emit_session.execute(
+                _sel2(User).where(User.id == user.id)
+            )).scalar_one_or_none()
+            if not fresh_user:
+                fresh_user = user  # fallback
+
             if event_key == "lesson.complete" and lesson:
                 lesson_order = lesson.get("order", 0)
                 if lesson_order:
@@ -483,25 +494,24 @@ async def emit(
                     "events": webhook.events,
                 })
 
-        # Merge trigger_sales into extra_payload
-        if trigger_sales:
+            # Build payload INSIDE session so user attributes are accessible
+            if trigger_sales:
+                extra_payload = extra_payload or {}
+                extra_payload["trigger_sales"] = True
+
             extra_payload = extra_payload or {}
-            extra_payload["trigger_sales"] = True
+            extra_payload["lead_score"] = fresh_user.lead_score or 0
 
-        # Include lead_score in extra_payload
-        extra_payload = extra_payload or {}
-        extra_payload["lead_score"] = user.lead_score or 0
-
-        payload = build_event_payload(
-            event_type=event_type,
-            action=action,
-            user=user,
-            status=status,
-            course=course,
-            lesson=lesson,
-            progress=progress,
-            extra_payload=extra_payload,
-        )
+            payload = build_event_payload(
+                event_type=event_type,
+                action=action,
+                user=fresh_user,
+                status=status,
+                course=course,
+                lesson=lesson,
+                progress=progress,
+                extra_payload=extra_payload,
+            )
 
         signature = payload.get("security", {}).get("signature", "")
 
