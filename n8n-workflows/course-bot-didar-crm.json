@@ -13,7 +13,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "course-bot",
-        "responseMode": "lastNode",
+        "responseMode": "onReceived",
         "options": {}
       }
     },
