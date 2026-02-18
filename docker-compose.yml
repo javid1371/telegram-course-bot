@@ -69,6 +69,8 @@ services:
 
       # Other settings
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      BOT_USERNAME: ${BOT_USERNAME:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
 
       # ── Cross-platform ──
       CROSS_PLATFORM_BOT_LINK: ${CROSS_PLATFORM_BOT_LINK:-}
