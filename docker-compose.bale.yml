@@ -93,6 +93,8 @@ services:
 
       # ── Other ──
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    extra_hosts:
+      - "irn8n.javidmgdm.com:host-gateway"
     volumes:
       - ./files:/app/files
       - ./backups:/app/backups
