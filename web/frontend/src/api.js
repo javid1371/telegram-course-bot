@@ -340,6 +340,7 @@ export const settings = {
     body: JSON.stringify(data),
   }),
   deleteWebhook: (id) => request(`/settings/webhooks/${id}`, { method: 'DELETE' }),
+  testWebhook: (id) => request(`/settings/webhooks/${id}/test`, { method: 'POST' }),
   // Bot texts
   getBotTexts: () => request('/settings/bot-texts'),
   updateBotText: (id, value) => request(`/settings/bot-texts/${id}`, {

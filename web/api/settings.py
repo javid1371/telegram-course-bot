@@ -155,6 +155,61 @@ async def delete_webhook(webhook_id: int, _=Depends(get_current_user)):
         return {"status": "ok"}
 
 
+@router.post("/webhooks/{webhook_id}/test")
+async def test_webhook(webhook_id: int, _=Depends(get_current_user)):
+    """Send a test payload to a webhook endpoint"""
+    import aiohttp
+    from datetime import datetime
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(WebhookSetting).where(WebhookSetting.id == webhook_id)
+        )
+        webhook = result.scalar_one_or_none()
+        if not webhook:
+            raise HTTPException(status_code=404, detail="Webhook not found")
+
+        test_payload = {
+            "event_id": "test-" + str(webhook_id),
+            "event_time": datetime.utcnow().isoformat() + "Z",
+            "source": "admin-panel-test",
+            "platform": "test",
+            "event": {"type": "test", "action": "ping", "status": "success"},
+            "user": {
+                "telegram_id": 0,
+                "platform": "test",
+                "username": "test_user",
+                "first_name": "تست",
+                "last_name": "وب‌هوک",
+                "registration_data": {"name": "Test User"},
+                "tags": [],
+                "phone": "09120000000",
+            },
+            "course": None,
+            "lesson": None,
+            "progress": None,
+            "payload": {"fields_to_update": {}, "note_to_create": "Test webhook from admin panel"},
+        }
+
+        headers = dict(webhook.headers or {})
+        headers.setdefault("Content-Type", "application/json")
+
+        try:
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.post(
+                    webhook.url,
+                    json=test_payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=webhook.timeout),
+                ) as response:
+                    return {
+                        "success": response.status < 400,
+                        "detail": f"HTTP {response.status}",
+                    }
+        except Exception as e:
+            return {"success": False, "detail": str(e)}
+
+
 # ── Bot Texts ────────────────────────────────────────────
 
 @router.get("/bot-texts")

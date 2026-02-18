@@ -82,14 +82,139 @@ function CompanyTab() {
 }
 
 
+/* ── Available Bot Events ────────────────── */
+
+const EVENT_GROUPS = [
+  {
+    label: '👤 کاربر / لید',
+    events: [
+      { key: 'lead.register',      label: 'ثبت‌نام کاربر جدید',         icon: '📝' },
+    ],
+  },
+  {
+    label: '📚 درس',
+    events: [
+      { key: 'lesson.open',        label: 'ارسال درس به کاربر',         icon: '📤' },
+      { key: 'lesson.confirm',     label: 'تأیید دریافت درس',           icon: '✅' },
+      { key: 'lesson.complete',    label: 'تکمیل درس',                 icon: '🏁' },
+    ],
+  },
+  {
+    label: '🎓 دوره',
+    events: [
+      { key: 'course.select',     label: 'انتخاب دوره',                icon: '📌' },
+      { key: 'course.complete',   label: 'اتمام دوره',                 icon: '🎉' },
+    ],
+  },
+  {
+    label: '📋 فرم و کوییز',
+    events: [
+      { key: 'form.submit',       label: 'ارسال فرم',                  icon: '📋' },
+      { key: 'quiz.start',        label: 'شروع کوییز',                 icon: '❓' },
+      { key: 'quiz.pass',         label: 'قبولی در کوییز',             icon: '🟢' },
+      { key: 'quiz.fail',         label: 'عدم قبولی در کوییز',         icon: '🔴' },
+    ],
+  },
+  {
+    label: '⚙️ سیستم',
+    events: [
+      { key: 'speed.change',      label: 'تغییر سرعت (2x / فَست‌ترک)', icon: '⚡' },
+      { key: 'reminder.sent',     label: 'ارسال یادآوری',              icon: '🔔' },
+      { key: 'inactivity.timeout', label: 'عدم فعالیت (48 ساعت+)',     icon: '⏰' },
+    ],
+  },
+];
+
+const ALL_EVENT_KEYS = EVENT_GROUPS.flatMap((g) => g.events.map((e) => e.key));
+
+/* ── Event Picker Component ─────────────── */
+
+function EventPicker({ selected, onChange }) {
+  const isAllSelected = !selected || selected.length === 0;
+
+  const toggleAll = () => {
+    onChange(isAllSelected ? [...ALL_EVENT_KEYS] : []);
+  };
+
+  const toggleEvent = (key) => {
+    if (isAllSelected) {
+      // switching from "all" to specific: select all except this one
+      onChange(ALL_EVENT_KEYS.filter((k) => k !== key));
+    } else if (selected.includes(key)) {
+      const next = selected.filter((k) => k !== key);
+      onChange(next.length === 0 ? [] : next); // empty = all
+      return;
+    } else {
+      const next = [...selected, key];
+      // if all selected, switch back to "all" mode
+      onChange(next.length >= ALL_EVENT_KEYS.length ? [] : next);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-gray-500 font-medium">رویدادهای ارسالی</label>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className={`text-xs px-3 py-1 rounded-full font-bold transition-colors ${
+            isAllSelected
+              ? 'bg-indigo-100 text-indigo-700'
+              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+          }`}
+        >
+          {isAllSelected ? '📡 همه رویدادها' : `${selected.length} از ${ALL_EVENT_KEYS.length} رویداد`}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {EVENT_GROUPS.map((group) => (
+          <div key={group.label} className="bg-white border rounded-lg p-2">
+            <div className="text-xs font-bold text-gray-500 mb-1.5 px-1">{group.label}</div>
+            <div className="space-y-1">
+              {group.events.map((ev) => {
+                const checked = isAllSelected || (selected && selected.includes(ev.key));
+                return (
+                  <label
+                    key={ev.key}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm transition-colors ${
+                      checked ? 'bg-indigo-50 text-indigo-800' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleEvent(ev.key)}
+                      className="accent-indigo-600"
+                    />
+                    <span>{ev.icon}</span>
+                    <span className="flex-1">{ev.label}</span>
+                    <span dir="ltr" className="text-[10px] font-mono text-gray-400">{ev.key}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 /* ── Webhooks Tab ────────────────────────── */
 
 function WebhooksTab() {
   const [webhooks, setWebhooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name: '', url: '', is_active: true, timeout: 10, retry_count: 3, events: '', headers: '' });
+  const [form, setForm] = useState({
+    name: '', url: '', is_active: true, timeout: 10, retry_count: 3,
+    events: [],  // [] = all events
+    headers: '',
+  });
   const [showNew, setShowNew] = useState(false);
+  const [testing, setTesting] = useState(null); // webhook id being tested
 
   const load = () => {
     setLoading(true);
@@ -102,7 +227,7 @@ function WebhooksTab() {
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
-    setForm({ name: '', url: '', is_active: true, timeout: 10, retry_count: 3, events: '', headers: '' });
+    setForm({ name: '', url: '', is_active: true, timeout: 10, retry_count: 3, events: [], headers: '' });
     setEditId(null);
     setShowNew(false);
   };
@@ -116,12 +241,16 @@ function WebhooksTab() {
       is_active: w.is_active !== false,
       timeout: w.timeout || 10,
       retry_count: w.retry_count || 3,
-      events: w.events ? JSON.stringify(w.events) : '',
+      events: Array.isArray(w.events) ? w.events : [],
       headers: w.headers ? JSON.stringify(w.headers) : '',
     });
   };
 
   const handleSave = async () => {
+    if (!form.name || !form.url) {
+      toast.error('نام و URL الزامی است');
+      return;
+    }
     try {
       const payload = {
         name: form.name,
@@ -129,7 +258,7 @@ function WebhooksTab() {
         is_active: form.is_active,
         timeout: parseInt(form.timeout) || 10,
         retry_count: parseInt(form.retry_count) || 3,
-        events: form.events ? JSON.parse(form.events) : null,
+        events: form.events && form.events.length > 0 ? form.events : null,
         headers: form.headers ? JSON.parse(form.headers) : null,
       };
       if (editId) {
@@ -157,6 +286,26 @@ function WebhooksTab() {
     }
   };
 
+  const handleTest = async (id) => {
+    setTesting(id);
+    try {
+      const res = await settings.testWebhook(id);
+      if (res.success) {
+        toast.success(`✅ تست موفق — ${res.detail}`);
+      } else {
+        toast.error(`❌ تست ناموفق — ${res.detail}`);
+      }
+    } catch (e) {
+      toast.error(e.message || 'خطا در تست');
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  // Build event label lookup
+  const eventLabelMap = {};
+  EVENT_GROUPS.forEach((g) => g.events.forEach((e) => { eventLabelMap[e.key] = `${e.icon} ${e.label}`; }));
+
   if (loading) return <div className="text-center py-10 text-gray-400">در حال بارگذاری...</div>;
 
   return (
@@ -174,41 +323,41 @@ function WebhooksTab() {
       {showNew && (
         <div className="bg-gray-50 rounded-lg p-4 mb-4 border space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="نام" className="border rounded px-3 py-2 text-sm" value={form.name}
+            <input placeholder="نام (مثلاً: n8n-crm)" className="border rounded px-3 py-2 text-sm" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input placeholder="URL" dir="ltr" className="border rounded px-3 py-2 text-sm" value={form.url}
+            <input placeholder="https://n8n.example.com/webhook/..." dir="ltr" className="border rounded px-3 py-2 text-sm" value={form.url}
               onChange={(e) => setForm({ ...form, url: e.target.value })} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-gray-500">Timeout (s)</label>
+              <label className="text-xs text-gray-500">Timeout (ثانیه)</label>
               <input type="number" className="w-full border rounded px-3 py-2 text-sm" value={form.timeout}
                 onChange={(e) => setForm({ ...form, timeout: e.target.value })} />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Retry</label>
+              <label className="text-xs text-gray-500">تعداد تلاش مجدد</label>
               <input type="number" className="w-full border rounded px-3 py-2 text-sm" value={form.retry_count}
                 onChange={(e) => setForm({ ...form, retry_count: e.target.value })} />
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.is_active}
+                <input type="checkbox" checked={form.is_active} className="accent-indigo-600"
                   onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
                 فعال
               </label>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500">Events (JSON array)</label>
-              <input dir="ltr" className="w-full border rounded px-3 py-2 text-sm font-mono" value={form.events}
-                onChange={(e) => setForm({ ...form, events: e.target.value })} placeholder='["lesson_completed"]' />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Headers (JSON)</label>
-              <input dir="ltr" className="w-full border rounded px-3 py-2 text-sm font-mono" value={form.headers}
-                onChange={(e) => setForm({ ...form, headers: e.target.value })} placeholder='{"X-Token": "..."}' />
-            </div>
+
+          {/* Event Picker */}
+          <EventPicker
+            selected={form.events}
+            onChange={(events) => setForm({ ...form, events })}
+          />
+
+          <div>
+            <label className="text-xs text-gray-500">هدرهای سفارشی (JSON)</label>
+            <input dir="ltr" className="w-full border rounded px-3 py-2 text-sm font-mono" value={form.headers}
+              onChange={(e) => setForm({ ...form, headers: e.target.value })} placeholder='{"X-Token": "..."}' />
           </div>
           <div className="flex gap-2 pt-2">
             <button onClick={handleSave} className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
@@ -221,25 +370,54 @@ function WebhooksTab() {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {webhooks.map((w) => (
-          <div key={w.id} className="flex items-center justify-between bg-white border rounded-lg px-4 py-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className={`text-xs px-2 py-1 rounded-full font-bold ${w.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                {w.is_active ? '✅ فعال' : '⛔ غیرفعال'}
-              </span>
-              <div className="min-w-0">
-                <div className="font-medium text-sm">{w.name}</div>
-                <div dir="ltr" className="text-xs text-gray-400 truncate max-w-xs">{w.url}</div>
+          <div key={w.id} className="bg-white border rounded-lg px-4 py-3 space-y-2">
+            {/* Header row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className={`text-xs px-2 py-1 rounded-full font-bold ${w.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {w.is_active ? '✅ فعال' : '⛔ غیرفعال'}
+                </span>
+                <div className="min-w-0">
+                  <div className="font-medium text-sm">{w.name}</div>
+                  <div dir="ltr" className="text-xs text-gray-400 truncate max-w-xs">{w.url}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleTest(w.id)}
+                  disabled={testing === w.id}
+                  className="text-xs px-3 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+                >
+                  {testing === w.id ? '⏳' : '🧪 تست'}
+                </button>
+                <button onClick={() => handleEdit(w)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
+                <button onClick={() => handleDelete(w.id, w.name)} className="text-red-500 hover:text-red-700 text-sm">🗑️</button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => handleEdit(w)} className="text-indigo-600 hover:text-indigo-800 text-sm">✏️</button>
-              <button onClick={() => handleDelete(w.id, w.name)} className="text-red-500 hover:text-red-700 text-sm">🗑️</button>
+            {/* Event tags */}
+            <div className="flex flex-wrap gap-1">
+              {(!w.events || w.events.length === 0) ? (
+                <span className="text-[11px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">📡 همه رویدادها</span>
+              ) : (
+                w.events.map((ev) => (
+                  <span key={ev} className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                    {eventLabelMap[ev] || ev}
+                  </span>
+                ))
+              )}
+              <span className="text-[11px] text-gray-400 px-1">• timeout: {w.timeout}s • retry: {w.retry_count}x</span>
             </div>
           </div>
         ))}
-        {webhooks.length === 0 && <p className="text-center text-gray-400 py-6">وب‌هوکی تعریف نشده است</p>}
+        {webhooks.length === 0 && (
+          <div className="text-center py-10 text-gray-400">
+            <p className="text-lg mb-2">🔗</p>
+            <p>هیچ وب‌هوکی تعریف نشده</p>
+            <p className="text-xs mt-1">برای اتصال بات به CRM یا n8n، یک وب‌هوک جدید اضافه کنید</p>
+          </div>
+        )}
       </div>
     </div>
   );
