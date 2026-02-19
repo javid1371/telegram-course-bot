@@ -61,6 +61,7 @@ export const auth = {
 // ── Stats ────────────────────────────
 export const stats = {
   get: () => request('/stats'),
+  funnel: (courseId) => request(`/stats/funnel${courseId ? `?course_id=${courseId}` : ''}`),
 };
 
 // ── Courses ──────────────────────────

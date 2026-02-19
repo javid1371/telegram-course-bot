@@ -2,7 +2,8 @@
 Dashboard Statistics API Routes
 """
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 
 from database import async_session_maker
@@ -85,3 +86,24 @@ async def get_stats(_=Depends(get_current_user)):
                 for row in daily_regs
             ],
         }
+
+
+@router.get("/funnel")
+async def get_funnel(
+    course_id: Optional[int] = Query(None),
+    _=Depends(get_current_user),
+):
+    """Lesson-by-lesson funnel analysis (drop-off rates)."""
+    from services.analytics_service import AnalyticsService
+
+    async with async_session_maker() as session:
+        analytics = AnalyticsService(session)
+        funnel = await analytics.get_funnel_analysis(course_id=course_id)
+
+        # Also get list of courses for the filter dropdown
+        courses_q = await session.execute(
+            select(Course.id, Course.title).order_by(Course.id)
+        )
+        courses_list = [{"id": row[0], "title": row[1]} for row in courses_q.all()]
+
+        return {"funnel": funnel, "courses": courses_list}
