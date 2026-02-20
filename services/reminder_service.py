@@ -477,3 +477,240 @@ class ReminderService:
 
         await self.session.commit()
         return {"sent": sent, "failed": failed}
+
+    # ── Lesson Nudge Reminders ──────────────────────────────────────────────
+
+    # Tiers: hours after lesson started_at → message_type
+    LESSON_NUDGE_TIERS = [
+        (4, "lesson_nudge_4h"),
+        (24, "lesson_nudge_24h"),
+        (48, "lesson_nudge_48h"),
+        (72, "lesson_nudge_72h"),
+    ]
+
+    async def send_lesson_nudge_reminders(self) -> dict:
+        """
+        Send nudge reminders to users who received a lesson but haven't
+        confirmed it (started_at set, completed_at NULL).
+        Runs every hour.  Sends escalating reminders at 4h / 24h / 48h / 72h.
+        Each tier is sent at most once per lesson per user.
+        """
+        now = datetime.utcnow()
+        sent = 0
+        failed = 0
+        skipped = 0
+
+        # Find all in-progress lessons (started but not completed)
+        result = await self.session.execute(
+            select(UserProgress).join(User).where(
+                UserProgress.started_at.isnot(None),
+                UserProgress.completed_at.is_(None),
+                User.is_active == True,
+            )
+        )
+        open_progress = list(result.scalars().all())
+
+        if not open_progress:
+            return {"sent": 0, "failed": 0, "skipped": 0}
+
+        for progress in open_progress:
+            elapsed = now - progress.started_at.replace(tzinfo=None)
+            elapsed_hours = elapsed.total_seconds() / 3600
+
+            # Determine highest applicable tier
+            applicable_tier = None
+            for hours_threshold, tier_type in self.LESSON_NUDGE_TIERS:
+                if elapsed_hours >= hours_threshold:
+                    applicable_tier = (hours_threshold, tier_type)
+
+            if not applicable_tier:
+                continue
+
+            _, tier_type = applicable_tier
+
+            # Check if already sent this tier for this lesson
+            existing = await self.session.execute(
+                select(func.count(ScheduledMessage.id)).where(
+                    ScheduledMessage.user_id == progress.user_id,
+                    ScheduledMessage.message_type == tier_type,
+                    ScheduledMessage.status == MessageStatus.SENT,
+                    ScheduledMessage.message.contains(f"lesson:{progress.lesson_id}"),
+                )
+            )
+            if (existing.scalar() or 0) > 0:
+                skipped += 1
+                continue
+
+            # Get user
+            user_result = await self.session.execute(
+                select(User).where(User.id == progress.user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if not user:
+                continue
+
+            # Get lesson info
+            lesson_result = await self.session.execute(
+                select(Lesson).where(Lesson.id == progress.lesson_id)
+            )
+            lesson = lesson_result.scalar_one_or_none()
+            if not lesson:
+                continue
+
+            name = user.first_name or REMINDERS["default_name"]
+            template = REMINDERS.get(tier_type, REMINDERS["lesson_nudge_4h"])
+            msg_text = template.format(name=name, lesson_title=lesson.title)
+
+            # Build inline keyboard with confirm button
+            builder = InlineKeyboardBuilder()
+            has_quiz = bool(lesson.quiz_data and lesson.quiz_data.get("questions"))
+            builder.row(
+                InlineKeyboardButton(
+                    text=USER_BUTTONS["lesson_seen_quiz"] if has_quiz else USER_BUTTONS["lesson_seen_delayed"],
+                    callback_data=f"confirm_lesson:{lesson.id}",
+                )
+            )
+            keyboard = builder.as_markup()
+
+            try:
+                await self.bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=msg_text,
+                    reply_markup=keyboard,
+                )
+
+                # Log the nudge
+                nudge_log = ScheduledMessage(
+                    user_id=user.id,
+                    message=f"lesson:{lesson.id} - {msg_text[:100]}",
+                    message_type=tier_type,
+                    send_at=now,
+                    status=MessageStatus.SENT,
+                    sent_at=now,
+                )
+                self.session.add(nudge_log)
+                sent += 1
+                logger.info(
+                    f"Lesson nudge ({tier_type}) sent to user {user.telegram_user_id} "
+                    f"for lesson {lesson.id}"
+                )
+            except Exception as e:
+                failed += 1
+                logger.warning(
+                    f"Failed to send lesson nudge to {user.telegram_user_id}: {e}"
+                )
+
+        await self.session.commit()
+        logger.info(
+            f"Lesson nudge reminders: {sent} sent, {skipped} skipped, {failed} failed"
+        )
+        return {"sent": sent, "failed": failed, "skipped": skipped}
+
+    # ── Start Course Nudge Reminders ────────────────────────────────────────
+
+    # Tiers: hours after registration → message_type
+    START_NUDGE_TIERS = [
+        (24, "start_nudge_24h"),
+        (72, "start_nudge_72h"),
+        (168, "start_nudge_7d"),  # 7 days
+    ]
+
+    async def send_start_course_reminders(self) -> dict:
+        """
+        Send nudge reminders to users who registered but never started
+        any lesson (zero completed progress records).
+        Runs daily at 11 AM.  Sends at 24h / 72h / 7d after registration.
+        """
+        now = datetime.utcnow()
+        sent = 0
+        failed = 0
+        skipped = 0
+
+        # Find users with zero completed lessons
+        # Sub-query: users who have at least one completed progress
+        completed_subq = (
+            select(UserProgress.user_id)
+            .where(UserProgress.completed_at.isnot(None))
+            .distinct()
+            .subquery()
+        )
+
+        result = await self.session.execute(
+            select(User).where(
+                User.is_active == True,
+                User.is_completed == False,
+                User.id.notin_(select(completed_subq.c.user_id)),
+            )
+        )
+        never_completed_users = list(result.scalars().all())
+
+        if not never_completed_users:
+            return {"sent": 0, "failed": 0, "skipped": 0}
+
+        for user in never_completed_users:
+            reg_time = user.created_at
+            if reg_time and reg_time.tzinfo:
+                reg_time = reg_time.replace(tzinfo=None)
+            if not reg_time:
+                continue
+
+            elapsed_hours = (now - reg_time).total_seconds() / 3600
+
+            # Determine highest applicable tier
+            applicable_tier = None
+            for hours_threshold, tier_type in self.START_NUDGE_TIERS:
+                if elapsed_hours >= hours_threshold:
+                    applicable_tier = (hours_threshold, tier_type)
+
+            if not applicable_tier:
+                continue
+
+            _, tier_type = applicable_tier
+
+            # Check if already sent this tier
+            existing = await self.session.execute(
+                select(func.count(ScheduledMessage.id)).where(
+                    ScheduledMessage.user_id == user.id,
+                    ScheduledMessage.message_type == tier_type,
+                    ScheduledMessage.status == MessageStatus.SENT,
+                )
+            )
+            if (existing.scalar() or 0) > 0:
+                skipped += 1
+                continue
+
+            name = user.first_name or REMINDERS["default_name"]
+            template = REMINDERS.get(tier_type, REMINDERS["start_nudge_24h"])
+            msg_text = template.format(name=name)
+
+            try:
+                await self.bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=msg_text,
+                )
+
+                # Log
+                nudge_log = ScheduledMessage(
+                    user_id=user.id,
+                    message=msg_text[:200],
+                    message_type=tier_type,
+                    send_at=now,
+                    status=MessageStatus.SENT,
+                    sent_at=now,
+                )
+                self.session.add(nudge_log)
+                sent += 1
+                logger.info(
+                    f"Start nudge ({tier_type}) sent to user {user.telegram_user_id}"
+                )
+            except Exception as e:
+                failed += 1
+                logger.warning(
+                    f"Failed to send start nudge to {user.telegram_user_id}: {e}"
+                )
+
+        await self.session.commit()
+        logger.info(
+            f"Start course reminders: {sent} sent, {skipped} skipped, {failed} failed"
+        )
+        return {"sent": sent, "failed": failed, "skipped": skipped}

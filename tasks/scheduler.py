@@ -96,6 +96,44 @@ def setup_scheduler(bot: Bot):
     # ── Webhook retry & inactivity jobs ──
 
     @scheduler.scheduled_job(
+        IntervalTrigger(hours=1),
+        id="send_lesson_nudges",
+        name="Send lesson nudge reminders (unconfirmed lessons)",
+    )
+    async def send_lesson_nudges_job():
+        """Send nudge reminders to users who haven't confirmed their lesson"""
+        try:
+            async with async_session_maker() as session:
+                reminder_service = ReminderService(session, bot)
+                result = await reminder_service.send_lesson_nudge_reminders()
+                if result["sent"] > 0 or result["failed"] > 0:
+                    logger.info(
+                        f"Lesson nudges: {result['sent']} sent, "
+                        f"{result['skipped']} skipped, {result['failed']} failed"
+                    )
+        except Exception as e:
+            logger.error(f"Error in lesson nudge job: {e}")
+
+    @scheduler.scheduled_job(
+        CronTrigger(hour=11, minute=0),  # Every day at 11:00 AM
+        id="send_start_nudges",
+        name="Send start course reminders (never-started users)",
+    )
+    async def send_start_nudges_job():
+        """Send reminders to users who registered but never started"""
+        try:
+            async with async_session_maker() as session:
+                reminder_service = ReminderService(session, bot)
+                result = await reminder_service.send_start_course_reminders()
+                if result["sent"] > 0 or result["failed"] > 0:
+                    logger.info(
+                        f"Start nudges: {result['sent']} sent, "
+                        f"{result['skipped']} skipped, {result['failed']} failed"
+                    )
+        except Exception as e:
+            logger.error(f"Error in start nudge job: {e}")
+
+    @scheduler.scheduled_job(
         IntervalTrigger(minutes=5),
         id="retry_failed_webhooks",
         name="Retry failed webhook events",
