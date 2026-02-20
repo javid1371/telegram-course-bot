@@ -7,6 +7,7 @@ import random
 from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -242,6 +243,15 @@ class ReminderService:
 
         if not next_lesson:
             return
+
+        # Re-fetch lesson with eager-loaded 'course' relationship to avoid
+        # greenlet_spawn / lazy-load error in async context
+        result = await self.session.execute(
+            select(Lesson)
+            .options(selectinload(Lesson.course))
+            .where(Lesson.id == next_lesson.id)
+        )
+        next_lesson = result.scalar_one()
 
         # Mark lesson as started
         await lesson_service.mark_lesson_started(user.id, next_lesson.id)
