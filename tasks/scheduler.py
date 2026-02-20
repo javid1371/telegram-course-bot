@@ -134,6 +134,25 @@ def setup_scheduler(bot: Bot):
             logger.error(f"Error in start nudge job: {e}")
 
     @scheduler.scheduled_job(
+        CronTrigger(hour=4, minute=0),  # 4:00 AM UTC = 7:30 AM Iran time
+        id="send_morning_teasers",
+        name="Send morning lesson teasers",
+    )
+    async def send_morning_teasers_job():
+        """Send morning teaser to users with a lesson due today"""
+        try:
+            async with async_session_maker() as session:
+                reminder_service = ReminderService(session, bot)
+                result = await reminder_service.send_morning_lesson_teasers()
+                if result["sent"] > 0 or result["failed"] > 0:
+                    logger.info(
+                        f"Morning teasers: {result['sent']} sent, "
+                        f"{result['skipped']} skipped, {result['failed']} failed"
+                    )
+        except Exception as e:
+            logger.error(f"Error in morning teaser job: {e}")
+
+    @scheduler.scheduled_job(
         IntervalTrigger(minutes=5),
         id="retry_failed_webhooks",
         name="Retry failed webhook events",

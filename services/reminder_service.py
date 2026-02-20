@@ -714,3 +714,102 @@ class ReminderService:
             f"Start course reminders: {sent} sent, {skipped} skipped, {failed} failed"
         )
         return {"sent": sent, "failed": failed, "skipped": skipped}
+
+    # ── Morning Lesson Teaser ───────────────────────────────────────────────
+
+    async def send_morning_lesson_teasers(self) -> dict:
+        """
+        Send a morning teaser to users who have a lesson scheduled for today.
+        Runs daily at 7:30 AM Iran time (4:00 AM UTC).
+        Finds PENDING next_lesson messages due within the next 18 hours.
+        """
+        now = datetime.utcnow()
+        window_end = now + timedelta(hours=18)
+        sent = 0
+        failed = 0
+        skipped = 0
+
+        # Find PENDING next_lesson messages due today
+        result = await self.session.execute(
+            select(ScheduledMessage).where(
+                ScheduledMessage.status == MessageStatus.PENDING,
+                ScheduledMessage.message_type == "next_lesson",
+                ScheduledMessage.send_at > now,
+                ScheduledMessage.send_at <= window_end,
+            )
+        )
+        pending_lessons = list(result.scalars().all())
+
+        if not pending_lessons:
+            return {"sent": 0, "failed": 0, "skipped": 0}
+
+        for scheduled in pending_lessons:
+            if not scheduled.user_id:
+                continue
+
+            # Check if teaser already sent for this scheduled message
+            existing = await self.session.execute(
+                select(func.count(ScheduledMessage.id)).where(
+                    ScheduledMessage.user_id == scheduled.user_id,
+                    ScheduledMessage.message_type == "lesson_teaser",
+                    ScheduledMessage.status == MessageStatus.SENT,
+                    ScheduledMessage.message.contains(f"sched:{scheduled.id}"),
+                )
+            )
+            if (existing.scalar() or 0) > 0:
+                skipped += 1
+                continue
+
+            # Get user
+            user_result = await self.session.execute(
+                select(User).where(User.id == scheduled.user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if not user:
+                continue
+
+            name = user.first_name or REMINDERS["default_name"]
+
+            # Calculate delivery time in Iran timezone (UTC+3:30)
+            delivery_utc = scheduled.send_at
+            if delivery_utc.tzinfo:
+                delivery_utc = delivery_utc.replace(tzinfo=None)
+            iran_offset = timedelta(hours=3, minutes=30)
+            delivery_iran = delivery_utc + iran_offset
+            delivery_time = delivery_iran.strftime("%H:%M")
+
+            template = REMINDERS.get("lesson_teaser", "📖 درس جدید امروز ساعت {delivery_time} برات ارسال میشه!")
+            msg_text = template.format(name=name, delivery_time=delivery_time)
+
+            try:
+                await self.bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=msg_text,
+                )
+
+                # Log
+                teaser_log = ScheduledMessage(
+                    user_id=user.id,
+                    message=f"sched:{scheduled.id} - {msg_text[:100]}",
+                    message_type="lesson_teaser",
+                    send_at=now,
+                    status=MessageStatus.SENT,
+                    sent_at=now,
+                )
+                self.session.add(teaser_log)
+                sent += 1
+                logger.info(
+                    f"Morning teaser sent to user {user.telegram_user_id} "
+                    f"(lesson at {delivery_time} Iran time)"
+                )
+            except Exception as e:
+                failed += 1
+                logger.warning(
+                    f"Failed to send morning teaser to {user.telegram_user_id}: {e}"
+                )
+
+        await self.session.commit()
+        logger.info(
+            f"Morning teasers: {sent} sent, {skipped} skipped, {failed} failed"
+        )
+        return {"sent": sent, "failed": failed, "skipped": skipped}
