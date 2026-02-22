@@ -8,6 +8,8 @@ import Courses from './pages/Courses';
 import CourseEdit from './pages/CourseEdit';
 import LessonEdit from './pages/LessonEdit';
 import Users from './pages/Users';
+import UserDetail from './pages/UserDetail';
+import LessonProgress from './pages/LessonProgress';
 import RegistrationFields from './pages/RegistrationFields';
 import MediaLibrary from './pages/MediaLibrary';
 import Settings from './pages/Settings';
@@ -33,6 +35,8 @@ export default function App() {
                   <Route path="/courses/:id" element={<CourseEdit />} />
                   <Route path="/lessons/:id" element={<LessonEdit />} />
                   <Route path="/users" element={<Users />} />
+                  <Route path="/users/:id" element={<UserDetail />} />
+                  <Route path="/lesson-progress" element={<LessonProgress />} />
                   <Route path="/registration-fields" element={<RegistrationFields />} />
                   <Route path="/media" element={<MediaLibrary />} />
                   <Route path="/settings" element={<Settings />} />

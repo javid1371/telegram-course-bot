@@ -127,6 +127,11 @@ export const users = {
     return request(`/users${qs ? '?' + qs : ''}`);
   },
   get: (id) => request(`/users/${id}`),
+  byLesson: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/users/by-lesson${qs ? '?' + qs : ''}`);
+  },
+  byLessonDetail: (lessonId) => request(`/users/by-lesson/${lessonId}`),
 };
 
 // ── Registration Fields ──────────────
