@@ -24,6 +24,7 @@ from web.api.upload import router as upload_router
 from web.api.registration_fields import router as regfields_router
 from web.api.media import router as media_router
 from web.api.settings import router as settings_router
+from web.api.sync import router as sync_router
 
 
 @asynccontextmanager
@@ -59,6 +60,7 @@ app.include_router(upload_router, prefix="/api/upload", tags=["Upload"])
 app.include_router(regfields_router, prefix="/api/registration-fields", tags=["Registration Fields"])
 app.include_router(media_router, prefix="/api/media", tags=["Media Library"])
 app.include_router(settings_router, prefix="/api/settings", tags=["Settings"])
+app.include_router(sync_router, prefix="/api/sync", tags=["Sync"])
 
 # Serve React frontend (built files)
 STATIC_DIR = Path(__file__).parent / "static"
