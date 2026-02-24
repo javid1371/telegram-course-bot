@@ -59,3 +59,11 @@ exports/
 
 # Redis
 dump.rdb
+
+# Frontend build artifacts
+web/static/
+web/frontend/node_modules/
+web/frontend/package-lock.json
+
+# Temp audit scripts
+stage_audit.py
