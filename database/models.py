@@ -605,3 +605,43 @@ class MediaFile(Base):
 
     def __repr__(self):
         return f"<MediaFile {self.id} - {self.name} ({self.file_type}@{self.platform})>"
+
+
+# ===========================
+# SYNC EVENT QUEUE MODEL
+# ===========================
+class SyncEvent(Base):
+    """
+    Queue of user-progress events destined for the peer platform.
+
+    Phase 1 (monitor-only): events are logged with status='logged' — nothing is pushed.
+    Phase 3+: a background worker reads 'pending' rows, pushes to peer, and marks 'synced'.
+    """
+    __tablename__ = "sync_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    # e.g. "lesson.complete", "quiz.pass", "form.submit", "course.complete", "lead.register"
+
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    # Phone extracted from registration_data.mobile — used for cross-platform user matching
+
+    # Snapshot of relevant data at event time
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    # Delivery status
+    status: Mapped[str] = mapped_column(String(20), default="logged", nullable=False, index=True)
+    # logged  = Phase 1 monitor-only (no push attempted)
+    # pending = queued for push (Phase 3+)
+    # synced  = successfully delivered to peer
+    # failed  = delivery failed (will retry)
+    # skipped = no phone → can't match across platforms
+
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<SyncEvent {self.id} {self.event_type} user={self.user_id} status={self.status}>"

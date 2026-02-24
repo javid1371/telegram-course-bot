@@ -19,10 +19,13 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import select, delete
 
 from database import async_session_maker
+from sqlalchemy import func as sa_func
+
 from database.models import (
     Course, Lesson, RegistrationField, BotText, CompanyInfo,
     WebhookSetting, LeadScoringRule, ContentType,
     User, UserProgress, QuizAttempt, FormResponse, PlatformFileId,
+    SyncEvent,
 )
 from web.auth import get_current_user
 
@@ -442,3 +445,73 @@ async def sync_status(_=Depends(get_current_user)):
             "file_id_blocks_in_contents": file_id_blocks,
             "needs_file_upload": file_id_blocks > 0 or lessons_with_files > 0,
         }
+
+
+# ═══════════════════════════════════════════════════════════════
+# SYNC EVENT MONITORING (Phase 1)
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/events/stats")
+async def sync_event_stats(user=Depends(get_current_user)):
+    """
+    Summary of sync events captured (Phase 1 monitoring).
+
+    Returns event counts by type and status, plus recent events.
+    """
+    async with async_session_maker() as session:
+        # Count by event_type
+        type_counts = await session.execute(
+            select(
+                SyncEvent.event_type,
+                sa_func.count(SyncEvent.id),
+            ).group_by(SyncEvent.event_type)
+        )
+        by_type = {row[0]: row[1] for row in type_counts.all()}
+
+        # Count by status
+        status_counts = await session.execute(
+            select(
+                SyncEvent.status,
+                sa_func.count(SyncEvent.id),
+            ).group_by(SyncEvent.status)
+        )
+        by_status = {row[0]: row[1] for row in status_counts.all()}
+
+        # Total
+        total = sum(by_type.values())
+
+        # Unique phones (users that can be matched cross-platform)
+        phone_count = await session.execute(
+            select(sa_func.count(sa_func.distinct(SyncEvent.phone))).where(
+                SyncEvent.phone.isnot(None)
+            )
+        )
+        unique_phones = phone_count.scalar() or 0
+
+        # Last 20 events
+        recent = await session.execute(
+            select(SyncEvent)
+            .order_by(SyncEvent.id.desc())
+            .limit(20)
+        )
+        recent_events = [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "user_id": e.user_id,
+                "phone": e.phone,
+                "status": e.status,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "payload": e.payload,
+            }
+            for e in recent.scalars().all()
+        ]
+
+    return {
+        "platform": PLATFORM,
+        "total_events": total,
+        "by_type": by_type,
+        "by_status": by_status,
+        "unique_phones": unique_phones,
+        "recent_events": recent_events,
+    }

@@ -487,6 +487,23 @@ async def emit(
                    lesson={"id": 5, "title": "…", "order": 5},
                    progress={"percent": 60, "completed": 3, "total": 5})
     """
+    # ── Cross-platform sync: log event (fire-and-forget) ──
+    try:
+        from services.sync_service import log_sync_event
+        asyncio.create_task(
+            log_sync_event(
+                event_type=event_type,
+                action=action,
+                user=user,
+                course=course,
+                lesson=lesson,
+                progress=progress,
+                extra=extra_payload,
+            )
+        )
+    except Exception:
+        pass  # Never break main flow for sync logging
+
     try:
         event_key = f"{event_type}.{action}"
 
