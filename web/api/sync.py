@@ -22,6 +22,7 @@ from database import async_session_maker
 from database.models import (
     Course, Lesson, RegistrationField, BotText, CompanyInfo,
     WebhookSetting, LeadScoringRule, ContentType,
+    User, UserProgress, QuizAttempt, FormResponse, PlatformFileId,
 )
 from web.auth import get_current_user
 
@@ -210,7 +211,22 @@ async def import_all(data: SyncPayload, _=Depends(get_current_user)):
         # ── 1. Courses ──
         if data.courses:
             if data.clear_before_import:
-                await session.execute(delete(Lesson))   # FK: lessons depend on courses
+                # Clear FK references from users before deleting lessons/courses
+                from sqlalchemy import update
+                await session.execute(
+                    update(User).where(User.current_lesson_id.isnot(None))
+                    .values(current_lesson_id=None)
+                )
+                await session.execute(
+                    update(User).where(User.current_course_id.isnot(None))
+                    .values(current_course_id=None)
+                )
+                # Clear dependent tables
+                await session.execute(delete(QuizAttempt))
+                await session.execute(delete(FormResponse))
+                await session.execute(delete(UserProgress))
+                await session.execute(delete(PlatformFileId))
+                await session.execute(delete(Lesson))
                 await session.execute(delete(Course))
                 await session.flush()
 
