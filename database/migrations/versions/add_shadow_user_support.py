@@ -34,6 +34,12 @@ def upgrade() -> None:
         postgresql_where=sa.text('is_shadow = false'),
     )
 
+    # Drop the old unique index on telegram_user_id — shadow users
+    # share telegram_user_id=0, so it can't be unique anymore.
+    # Recreate as a plain (non-unique) index for query performance.
+    op.drop_index('ix_users_telegram_user_id', table_name='users', if_exists=True)
+    op.create_index('ix_users_telegram_user_id', 'users', ['telegram_user_id'])
+
 
 def downgrade() -> None:
     op.drop_index('uq_user_platform_active', table_name='users')
