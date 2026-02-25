@@ -15,7 +15,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy import select, delete
 
 from database import async_session_maker
@@ -25,7 +25,7 @@ from database.models import (
     Course, Lesson, RegistrationField, BotText, CompanyInfo,
     WebhookSetting, LeadScoringRule, ContentType,
     User, UserProgress, QuizAttempt, FormResponse, PlatformFileId,
-    SyncEvent,
+    SyncEvent, SyncUserSnapshot,
 )
 from web.auth import get_current_user
 
@@ -514,4 +514,92 @@ async def sync_event_stats(user=Depends(get_current_user)):
         "by_status": by_status,
         "unique_phones": unique_phones,
         "recent_events": recent_events,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# RECEIVE EVENTS FROM PEER (inbound sync)
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/receive")
+async def receive_sync_events(request: Request):
+    """
+    Receive a batch of user-progress events from the peer server.
+
+    Called by the peer's push mechanism (immediate push or scheduler flush).
+    Protected by X-Sync-Secret header.
+
+    Body: {"events": [{...event payload...}, ...]}
+    """
+    # Verify sync secret
+    secret = request.headers.get("X-Sync-Secret", "")
+    if not SYNC_SECRET or secret != SYNC_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid sync secret")
+
+    body = await request.json()
+    events = body.get("events", [])
+
+    if not events:
+        return {"processed": 0, "skipped": 0, "errors": 0, "message": "No events"}
+
+    from services.sync_service import process_received_events
+    result = await process_received_events(events)
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# SYNC SNAPSHOT MONITORING
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/snapshots")
+async def list_sync_snapshots(user=Depends(get_current_user)):
+    """
+    List all SyncUserSnapshots — shadow profiles from the peer platform.
+
+    Shows which users have been pre-cached and whether they've been
+    applied to a local user.
+    """
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(SyncUserSnapshot).order_by(SyncUserSnapshot.updated_at.desc()).limit(50)
+        )
+        snapshots = result.scalars().all()
+
+        # Total counts
+        total = await session.execute(
+            select(sa_func.count(SyncUserSnapshot.id))
+        )
+        total_count = total.scalar() or 0
+
+        applied = await session.execute(
+            select(sa_func.count(SyncUserSnapshot.id)).where(
+                SyncUserSnapshot.applied_to_user_id.isnot(None)
+            )
+        )
+        applied_count = applied.scalar() or 0
+
+    return {
+        "platform": PLATFORM,
+        "total_snapshots": total_count,
+        "applied_snapshots": applied_count,
+        "pending_snapshots": total_count - applied_count,
+        "snapshots": [
+            {
+                "id": s.id,
+                "phone": s.phone,
+                "source_platform": s.source_platform,
+                "first_name": s.first_name,
+                "events_applied": s.events_applied,
+                "current_course_id": s.current_course_id,
+                "current_lesson_id": s.current_lesson_id,
+                "progress_count": len(s.progress_records or []),
+                "quiz_count": len(s.quiz_attempts or []),
+                "form_count": len(s.form_responses or []),
+                "applied_to_user_id": s.applied_to_user_id,
+                "applied_at": s.applied_at.isoformat() if s.applied_at else None,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+            }
+            for s in snapshots
+        ],
     }

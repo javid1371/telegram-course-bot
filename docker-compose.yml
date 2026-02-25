@@ -75,6 +75,10 @@ services:
       # ── Cross-platform ──
       CROSS_PLATFORM_BOT_LINK: ${CROSS_PLATFORM_BOT_LINK:-}
       CROSS_PLATFORM_BOT_NAME: ${CROSS_PLATFORM_BOT_NAME:-}
+
+      # ── Bidirectional sync ──
+      SYNC_PEER_URL: ${SYNC_PEER_URL:-}
+      SYNC_SECRET: ${SYNC_SECRET:-}
     volumes:
       - ./files:/app/files
       - ./backups:/app/backups
@@ -109,6 +113,10 @@ services:
       ADMIN_WEB_USERNAME: ${ADMIN_WEB_USERNAME:-admin}
       ADMIN_WEB_PASSWORD: ${ADMIN_WEB_PASSWORD:-changeme}
       JWT_SECRET: ${JWT_SECRET:-change-this-secret}
+
+      # ── Bidirectional sync ──
+      SYNC_PEER_URL: ${SYNC_PEER_URL:-}
+      SYNC_SECRET: ${SYNC_SECRET:-}
     ports:
       - "${WEB_PORT:-8080}:8000"
     networks:

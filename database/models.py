@@ -645,3 +645,56 @@ class SyncEvent(Base):
 
     def __repr__(self):
         return f"<SyncEvent {self.id} {self.event_type} user={self.user_id} status={self.status}>"
+
+
+# ===========================
+# SYNC USER SNAPSHOT MODEL
+# ===========================
+class SyncUserSnapshot(Base):
+    """
+    Shadow profile of a user from the peer platform.
+
+    Created/updated when sync events arrive from the other server.
+    When a user registers on *this* platform and their phone matches,
+    the snapshot is applied to restore their progress instantly —
+    even if the inter-server link is currently down.
+    """
+    __tablename__ = "sync_user_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phone: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    source_platform: Mapped[str] = mapped_column(String(20), nullable=False)  # where the data came from
+
+    # Registration info (snapshot from the peer)
+    registration_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Course progress pointers
+    current_course_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_lesson_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    completed_courses: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {course_id: true}
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Lesson-level progress: [{lesson_id, started_at, completed_at}]
+    progress_records: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    # Quiz attempts: [{lesson_id, score, passed, answers}]
+    quiz_attempts: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    # Form responses: [{lesson_id, response_data}]
+    form_responses: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    # Metadata
+    lead_score: Mapped[int] = mapped_column(Integer, default=0)
+    tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    # Tracking
+    events_applied: Mapped[int] = mapped_column(Integer, default=0)  # how many events processed
+    applied_to_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # set when snapshot is consumed
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<SyncUserSnapshot phone={self.phone} from={self.source_platform} events={self.events_applied}>"

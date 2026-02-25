@@ -187,6 +187,27 @@ def setup_scheduler(bot: Bot):
         except Exception as e:
             logger.error(f"Error checking inactivity: {e}")
 
+    # ── Cross-platform sync: flush pending events to peer ──
+
+    @scheduler.scheduled_job(
+        IntervalTrigger(seconds=30),
+        id="flush_sync_events",
+        name="Flush pending sync events to peer server",
+    )
+    async def flush_sync_events_job():
+        """Push pending sync events to the peer platform."""
+        try:
+            from services.sync_service import flush_pending_events
+            result = await flush_pending_events()
+            flushed = result.get("flushed", 0)
+            failed = result.get("failed", 0)
+            if flushed > 0 or failed > 0:
+                logger.info(
+                    f"Sync flush: {flushed} pushed, {failed} failed"
+                )
+        except Exception as e:
+            logger.error(f"Error flushing sync events: {e}")
+
     return scheduler
 
 

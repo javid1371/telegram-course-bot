@@ -427,7 +427,12 @@ def _get_field_keyboard(field: dict):
 
 
 async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
-    """Auto-deliver first lesson after registration (onboarding)"""
+    """Auto-deliver first lesson after registration (onboarding).
+    
+    If a SyncUserSnapshot exists for this user's phone (from the other
+    platform), the snapshot is applied first so the user continues from
+    where they left off instead of starting at lesson 1.
+    """
     try:
         async with async_session_maker() as session:
             user_service = UserService(session)
@@ -437,31 +442,77 @@ async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
             if not user:
                 return
 
+            # --- Cross-platform snapshot restoration ---
+            snapshot_applied = False
+            try:
+                phone = None
+                if user.registration_data:
+                    phone = (
+                        user.registration_data.get("mobile")
+                        or user.registration_data.get("phone")
+                    )
+                if phone:
+                    from services.sync_service import (
+                        find_snapshot_by_phone,
+                        apply_snapshot_to_user,
+                    )
+                    snapshot = await find_snapshot_by_phone(phone)
+                    if snapshot:
+                        restored = await apply_snapshot_to_user(user.id, snapshot.id)
+                        if restored and not restored.get("error"):
+                            # Refresh user object to pick up restored fields
+                            await session.refresh(user)
+                            snapshot_applied = True
+                            logger.info(
+                                f"[Snapshot] Applied snapshot for phone={phone} "
+                                f"to user {user.id}: {restored}"
+                            )
+            except Exception as snap_err:
+                logger.warning(
+                    f"[Snapshot] Failed to apply snapshot for user {user.id}: {snap_err}"
+                )
+
+            # --- Determine course & next lesson ---
             courses = await lesson_service.get_all_courses(active_only=True)
             if not courses:
                 return
 
-            # Auto-select first course
-            course = courses[0]
-            user.current_course_id = course.id
+            if snapshot_applied and user.current_course_id:
+                # Use the restored course
+                course = next(
+                    (c for c in courses if c.id == user.current_course_id), None
+                )
+                if not course:
+                    course = courses[0]
+                    user.current_course_id = course.id
+            else:
+                # Default: auto-select first course
+                course = courses[0]
+                user.current_course_id = course.id
 
-            first_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course.id)
-            if not first_lesson:
+            next_lesson = await lesson_service.get_next_lesson_for_user(
+                user.id, course_id=course.id
+            )
+            if not next_lesson:
                 return
 
-            await lesson_service.mark_lesson_started(user.id, first_lesson.id)
-            user.current_lesson_id = first_lesson.id
+            await lesson_service.mark_lesson_started(user.id, next_lesson.id)
+            user.current_lesson_id = next_lesson.id
             await session.commit()
 
             # Emit lesson.open event for analytics / CRM
             await emit(
                 "lesson", "open", user, session,
                 course={"id": course.id, "title": course.title},
-                lesson={"id": first_lesson.id, "title": first_lesson.title, "order": first_lesson.order},
+                lesson={
+                    "id": next_lesson.id,
+                    "title": next_lesson.title,
+                    "order": next_lesson.order,
+                },
             )
 
             # Send lesson content
             from handlers.user import _send_lesson
-            await _send_lesson(message, first_lesson)
+            await _send_lesson(message, next_lesson)
     except Exception as e:
         logger.error(f"Error auto-sending first lesson: {e}")
