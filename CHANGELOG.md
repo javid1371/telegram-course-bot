@@ -11,6 +11,31 @@ All notable changes to this project will be documented in this file.
 - [ ] Multi-language support
 - [ ] Comprehensive test suite
 
+## [0.3.2] - 2026-02-25
+
+### Cross-Platform Sync — Phase 3 (Complete) ✅
+
+#### Added
+- **Alembic migration** for `sync_events` and `sync_user_snapshots` tables (merge of two heads)
+- **Admin sync monitor panel** (🔄 سینک پلتفرم) — live dashboard with:
+  - Peer server connectivity check
+  - Event counts by status (pending/synced/failed/skipped)
+  - Snapshot counts (total/applied/waiting)
+  - Manual retry button for pending events
+- **Deployment documentation** for dual-server (Telegram + Bale) setup with sync
+
+#### Changed
+- Updated `SyncEvent.status` default from `'logged'` to `'pending'` — events are now queued for push immediately
+- Removed Phase 1 monitor-only comments from `SyncEvent` model
+- Updated PROJECT_STATUS.md to reflect cross-platform sync completion
+
+#### Summary: 3-Phase Cross-Platform Sync
+| Phase | Commit | Description |
+|-------|--------|-------------|
+| Phase 1 | `87f11ed` | Event monitor — log sync events (fire-and-forget) |
+| Phase 2 | `0d130bd` | Bidirectional sync — push/receive + shadow profiles |
+| Phase 3 | this release | Migration + admin UI + deployment docs |
+
 ## [0.3.1] - 2025-07-14
 
 ### n8n Workflow v8 - Critical CRM Bug Fixes

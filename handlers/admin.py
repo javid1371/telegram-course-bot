@@ -4383,6 +4383,152 @@ async def delete_owner_exec(callback: CallbackQuery):
 
 
 # ===========================
+# CROSS-PLATFORM SYNC MONITOR
+# ===========================
+
+@router.message(F.text == ADMIN_BUTTONS["sync_monitor"])
+@admin_only
+@log_errors
+async def sync_monitor_menu(message: Message):
+    """Show cross-platform sync status dashboard"""
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from database.models import SyncEvent, SyncUserSnapshot
+    from sqlalchemy import func as sa_func
+
+    # Check if sync is configured
+    if not config.SYNC_PEER_URL:
+        await message.answer(
+            ADMIN["sync_header"] + ADMIN["sync_not_configured"],
+            reply_markup=get_admin_main_menu(),
+        )
+        return
+
+    async with async_session_maker() as session:
+        # Event counts by status
+        status_counts = {}
+        for status in ("pending", "synced", "failed", "skipped"):
+            result = await session.execute(
+                select(sa_func.count(SyncEvent.id)).where(SyncEvent.status == status)
+            )
+            status_counts[status] = result.scalar() or 0
+
+        total_events = sum(status_counts.values())
+
+        # Snapshot counts
+        snap_total = (await session.execute(
+            select(sa_func.count(SyncUserSnapshot.id))
+        )).scalar() or 0
+
+        snap_applied = (await session.execute(
+            select(sa_func.count(SyncUserSnapshot.id)).where(
+                SyncUserSnapshot.applied_to_user_id.isnot(None)
+            )
+        )).scalar() or 0
+
+        snap_waiting = snap_total - snap_applied
+
+    # Check peer connectivity
+    peer_ok = False
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as http:
+            resp = await http.get(
+                f"{config.SYNC_PEER_URL}/status",
+                headers={"X-Sync-Secret": config.SYNC_SECRET} if config.SYNC_SECRET else {},
+                timeout=aiohttp.ClientTimeout(total=5),
+            )
+            peer_ok = resp.status == 200
+    except Exception:
+        pass
+
+    # Build message
+    text = ADMIN["sync_header"]
+    text += ADMIN["sync_platform"].format(platform=config.PLATFORM.upper()) + "\n"
+    text += ADMIN["sync_peer_url"].format(url=config.SYNC_PEER_URL) + "\n"
+
+    if peer_ok:
+        text += ADMIN["sync_status_connected"] + "\n"
+    else:
+        text += ADMIN["sync_status_disconnected"] + "\n"
+
+    text += "\n📊 <b>ایونت‌های خروجی:</b>\n"
+    text += ADMIN["sync_events_total"].format(total=total_events) + "\n"
+    text += ADMIN["sync_events_pending"].format(pending=status_counts["pending"]) + "\n"
+    text += ADMIN["sync_events_synced"].format(synced=status_counts["synced"]) + "\n"
+    text += ADMIN["sync_events_failed"].format(failed=status_counts["failed"]) + "\n"
+    text += ADMIN["sync_events_skipped"].format(skipped=status_counts["skipped"]) + "\n"
+
+    text += ADMIN["sync_snapshots_title"] + "\n"
+    text += ADMIN["sync_snapshots_total"].format(total=snap_total) + "\n"
+    text += ADMIN["sync_snapshots_applied"].format(applied=snap_applied) + "\n"
+    text += ADMIN["sync_snapshots_waiting"].format(waiting=snap_waiting) + "\n"
+
+    # Buttons
+    builder = InlineKeyboardBuilder()
+    if status_counts["pending"] > 0 or status_counts["failed"] > 0:
+        builder.row(
+            InlineKeyboardButton(
+                text="🔄 ارسال مجدد ایونت‌های معلق",
+                callback_data="admin:sync:retry",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="admin:sync:refresh")
+    )
+    builder.row(
+        InlineKeyboardButton(text=GENERAL["back"], callback_data="admin:back")
+    )
+
+    await message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "admin:sync:refresh")
+@admin_only
+async def sync_refresh(callback: CallbackQuery):
+    """Refresh sync status"""
+    await callback.answer()
+    await callback.message.delete()
+    # Re-trigger the menu handler
+    await sync_monitor_menu(callback.message)
+
+
+@router.callback_query(F.data == "admin:sync:retry")
+@admin_only
+async def sync_retry_pending(callback: CallbackQuery):
+    """Manually trigger flush of pending sync events"""
+    await callback.answer("⏳ در حال ارسال...")
+
+    try:
+        from services.sync_service import flush_pending_events
+        result = await flush_pending_events()
+        pushed = result.get("pushed", 0)
+        failed = result.get("failed", 0)
+
+        if pushed > 0:
+            await callback.message.answer(
+                ADMIN["sync_retry_success"].format(count=pushed),
+                reply_markup=get_admin_main_menu(),
+            )
+        elif failed == 0:
+            await callback.message.answer(
+                ADMIN["sync_retry_no_pending"],
+                reply_markup=get_admin_main_menu(),
+            )
+        else:
+            await callback.message.answer(
+                ADMIN["sync_retry_error"].format(error=f"{failed} failed"),
+                reply_markup=get_admin_main_menu(),
+            )
+    except Exception as e:
+        logger.error(f"Sync retry error: {e}")
+        await callback.message.answer(
+            ADMIN["sync_retry_error"].format(error=str(e)),
+            reply_markup=get_admin_main_menu(),
+        )
+
+
+# ===========================
 # SETTINGS & BACK
 # ===========================
 

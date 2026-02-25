@@ -614,8 +614,9 @@ class SyncEvent(Base):
     """
     Queue of user-progress events destined for the peer platform.
 
-    Phase 1 (monitor-only): events are logged with status='logged' — nothing is pushed.
-    Phase 3+: a background worker reads 'pending' rows, pushes to peer, and marks 'synced'.
+    Events are saved with status='pending', pushed to the peer server immediately,
+    and marked 'synced' on success.  Failed pushes stay 'pending' and are retried
+    by the scheduler every 30 seconds.
     """
     __tablename__ = "sync_events"
 
@@ -631,9 +632,8 @@ class SyncEvent(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     # Delivery status
-    status: Mapped[str] = mapped_column(String(20), default="logged", nullable=False, index=True)
-    # logged  = Phase 1 monitor-only (no push attempted)
-    # pending = queued for push (Phase 3+)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    # pending = queued for push (immediate attempt + scheduler retry)
     # synced  = successfully delivered to peer
     # failed  = delivery failed (will retry)
     # skipped = no phone → can't match across platforms

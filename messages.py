@@ -205,6 +205,9 @@ ADMIN_BUTTONS = SmartDict("ADMIN_BUTTONS", {
     # کتابخانه فایل‌ها
     "media_library": "📁 کتابخانه فایل‌ها",
 
+    # سینک بین‌پلتفرمی
+    "sync_monitor": "🔄 سینک پلتفرم",
+
     # تایید حذف
     "confirm_delete": "✅ بله، حذف شود",
 })
@@ -811,6 +814,26 @@ ADMIN = SmartDict("ADMIN", {
     "sales_trigger_saved": "✅ تریگر فروش روی درس {lesson} تنظیم شد.",
     "sales_trigger_cleared": "✅ تریگر فروش غیرفعال شد. فقط تکمیل دوره فعالیت فروش می‌سازد.",
     "sales_trigger_invalid": "⚠️ لطفاً یک عدد صحیح مثبت وارد کنید (یا 0 برای غیرفعال).",
+
+    # سینک بین‌پلتفرمی
+    "sync_header": "🔄 <b>سینک بین‌پلتفرمی</b>\n\nوضعیت انتقال داده بین تلگرام و بله:\n",
+    "sync_not_configured": "⚠️ سینک پیکربندی نشده.\n\nبرای فعال‌سازی، متغیرهای SYNC_PEER_URL و SYNC_SECRET را در .env تنظیم کنید.",
+    "sync_status_connected": "✅ اتصال به سرور peer: <b>فعال</b>",
+    "sync_status_disconnected": "❌ اتصال به سرور peer: <b>قطع</b>",
+    "sync_peer_url": "🌐 آدرس peer: <code>{url}</code>",
+    "sync_platform": "📱 پلتفرم فعلی: <b>{platform}</b>",
+    "sync_events_total": "📊 کل ایونت‌ها: <b>{total}</b>",
+    "sync_events_pending": "⏳ در انتظار: <b>{pending}</b>",
+    "sync_events_synced": "✅ ارسال شده: <b>{synced}</b>",
+    "sync_events_failed": "❌ ناموفق: <b>{failed}</b>",
+    "sync_events_skipped": "⏭ رد شده (بدون تلفن): <b>{skipped}</b>",
+    "sync_snapshots_title": "\n👥 <b>اسنپ‌شات‌های دریافتی:</b>",
+    "sync_snapshots_total": "📋 کل: <b>{total}</b>",
+    "sync_snapshots_applied": "✅ اعمال شده: <b>{applied}</b>",
+    "sync_snapshots_waiting": "⏳ منتظر ثبت‌نام: <b>{waiting}</b>",
+    "sync_retry_success": "✅ {count} ایونت با موفقیت ارسال شد.",
+    "sync_retry_no_pending": "✅ ایونت معلقی وجود ندارد.",
+    "sync_retry_error": "❌ خطا در ارسال مجدد: {error}",
 })
 
 

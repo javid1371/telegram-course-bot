@@ -308,6 +308,93 @@ sudo -u postgres psql -d course_bot -c "SELECT pg_size_pretty(pg_database_size('
 4. تنظیم فیلدهای ثبت‌نام
 5. تست کامل با یک کاربر آزمایشی
 
+---
+
+## 🔄 استقرار سینک بین‌پلتفرمی (تلگرام ↔ بله)
+
+اگر می‌خواهید ربات روی هر دو پلتفرم (تلگرام و بله) اجرا شود و پیشرفت کاربران بین آن‌ها سینک شود:
+
+### معماری
+```
+سرور ۱ (بین‌الملل)              سرور ۲ (ایران)
+┌──────────────────┐         ┌──────────────────┐
+│  Telegram Bot     │ ←────→ │  Bale Bot         │
+│  PLATFORM=telegram│  sync  │  PLATFORM=bale    │
+│  :8080/api/sync   │         │  :8080/api/sync   │
+└──────────────────┘         └──────────────────┘
+```
+
+### پیش‌نیاز
+- دو سرور مجزا (یکی برای تلگرام، یکی برای بله)
+- هر سرور Docker + PostgreSQL + Redis خودش را دارد
+- پورت `8080` وب (FastAPI) بین دو سرور باز باشد
+
+### تنظیم `.env` سرور تلگرام
+```env
+PLATFORM=telegram
+BOT_TOKEN=your_telegram_bot_token
+
+# Sync — point to the Bale server's web API
+SYNC_PEER_URL=http://BALE_SERVER_IP:8080/api/sync
+SYNC_SECRET=a_shared_secret_between_servers
+
+# Show Bale bot link to Telegram users
+CROSS_PLATFORM_BOT_LINK=https://ble.ir/your_bale_bot
+CROSS_PLATFORM_BOT_NAME=بله
+```
+
+### تنظیم `.env` سرور بله
+```env
+PLATFORM=bale
+BOT_TOKEN=your_bale_bot_token
+
+# Sync — point to the Telegram server's web API
+SYNC_PEER_URL=http://TELEGRAM_SERVER_IP:8080/api/sync
+SYNC_SECRET=a_shared_secret_between_servers
+
+# Show Telegram bot link to Bale users
+CROSS_PLATFORM_BOT_LINK=https://t.me/your_telegram_bot
+CROSS_PLATFORM_BOT_NAME=تلگرام
+```
+
+### مایگریشن
+قبل از اجرا، مایگریشن جداول سینک را اعمال کنید:
+```bash
+alembic upgrade head
+```
+
+### نحوه کار سینک
+1. **ثبت ایونت**: وقتی کاربر درسی تکمیل/کوئیز پاس/فرم ثبت می‌کند → ایونت در `sync_events` ذخیره می‌شود
+2. **Push فوری**: سیستم فوراً تلاش می‌کند ایونت را به سرور peer بفرستد
+3. **Retry خودکار**: اگر push شکست بخورد → ایونت `pending` می‌ماند → scheduler هر ۳۰ ثانیه retry می‌کند
+4. **Shadow Profile**: سرور peer ایونت دریافتی را در `sync_user_snapshots` ذخیره می‌کند
+5. **بازیابی پیشرفت**: وقتی کاربر در پلتفرم دوم `/start` می‌زند → اگر شماره تلفنش با یک snapshot مطابقت داشت → پیشرفت خودکار بازیابی می‌شود
+
+### مانیتورینگ
+- از پنل ادمین ربات: دکمه **🔄 سینک پلتفرم**
+- API endpoint: `GET /api/sync/events/stats`
+- API endpoint: `GET /api/sync/snapshots`
+
+### عیب‌یابی
+```bash
+# بررسی ایونت‌های معلق
+docker exec -it <bot_container> python -c "
+import asyncio
+from database import init_db, async_session_maker
+from database.models import SyncEvent
+from sqlalchemy import select, func
+
+async def check():
+    await init_db()
+    async with async_session_maker() as s:
+        for st in ('pending', 'synced', 'failed', 'skipped'):
+            c = (await s.execute(select(func.count(SyncEvent.id)).where(SyncEvent.status == st))).scalar()
+            print(f'{st}: {c}')
+
+asyncio.run(check())
+"
+```
+
 ## 💡 نکات
 
 - همیشه قبل از بروزرسانی، backup بگیرید
