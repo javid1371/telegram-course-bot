@@ -11,7 +11,7 @@ from aiogram.filters import Command
 from aiogram.exceptions import TelegramBadRequest
 
 from database import async_session_maker
-from database.models import ContentType, FieldType, Admin, RegistrationField, Course
+from database.models import ContentType, FieldType, Admin, RegistrationField, Course, UserProgress
 from sqlalchemy import select
 from services.user_service import UserService
 from services.lesson_service import LessonService
@@ -4393,7 +4393,7 @@ async def sync_monitor_menu(message: Message):
     """Show cross-platform sync status dashboard"""
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from database.models import SyncEvent, SyncUserSnapshot
+    from database.models import SyncEvent, SyncUserSnapshot, User
     from sqlalchemy import func as sa_func
 
     # Check if sync is configured
@@ -4427,6 +4427,17 @@ async def sync_monitor_menu(message: Message):
         )).scalar() or 0
 
         snap_waiting = snap_total - snap_applied
+
+        # Shadow user counts
+        shadow_total = (await session.execute(
+            select(sa_func.count(User.id)).where(User.is_shadow == True)
+        )).scalar() or 0
+
+        shadow_with_progress = (await session.execute(
+            select(sa_func.count(sa_func.distinct(User.id))).select_from(User).join(
+                UserProgress, UserProgress.user_id == User.id
+            ).where(User.is_shadow == True)
+        )).scalar() or 0
 
     # Check peer connectivity
     peer_ok = False
@@ -4463,6 +4474,11 @@ async def sync_monitor_menu(message: Message):
     text += ADMIN["sync_snapshots_total"].format(total=snap_total) + "\n"
     text += ADMIN["sync_snapshots_applied"].format(applied=snap_applied) + "\n"
     text += ADMIN["sync_snapshots_waiting"].format(waiting=snap_waiting) + "\n"
+
+    text += "\n👤 <b>Shadow Users (کاربران سایه):</b>\n"
+    text += f"  کل: {shadow_total}\n"
+    text += f"  دارای پیشرفت: {shadow_with_progress}\n"
+    text += f"  بدون پیشرفت: {shadow_total - shadow_with_progress}\n"
 
     # Buttons
     builder = InlineKeyboardBuilder()

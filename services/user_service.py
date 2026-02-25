@@ -20,22 +20,30 @@ class UserService:
         self.session = session
 
     async def get_user_by_telegram_id(self, telegram_user_id: int) -> Optional[User]:
-        """Get user by Telegram/Bale user ID on the current platform"""
+        """Get user by Telegram/Bale user ID on the current platform (excludes shadow users)"""
         result = await self.session.execute(
             select(User).where(
                 User.telegram_user_id == telegram_user_id,
                 User.platform == config.PLATFORM,
+                User.is_shadow == False,
             )
         )
         return result.scalar_one_or_none()
 
-        async def get_user_by_phone(self, phone: str) -> Optional[User]:
-            """Find user by phone number in registration_data (cross-platform sync)"""
-            from sqlalchemy import select
-            result = await self.session.execute(
-                select(User).where(User.registration_data['phone'].astext == phone)
+    async def get_user_by_phone(self, phone: str) -> Optional[User]:
+        """Find user by phone number in registration_data (cross-platform sync)"""
+        import sqlalchemy as sa
+        result = await self.session.execute(
+            select(User).where(
+                User.platform == config.PLATFORM,
+                User.is_shadow == False,
+                sa.or_(
+                    User.registration_data['phone'].astext == phone,
+                    User.registration_data['mobile'].astext == phone,
+                ),
             )
-            return result.scalars().first()
+        )
+        return result.scalars().first()
 
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
         """Get user by internal ID"""

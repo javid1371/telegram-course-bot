@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import CommandStart, Command
 
 from database import async_session_maker
-from database.models import RegistrationField, FieldType
+from database.models import RegistrationField, FieldType, User
 from services.user_service import UserService
 from services.lesson_service import LessonService
 from services.event_emitter import emit
@@ -429,9 +429,12 @@ def _get_field_keyboard(field: dict):
 async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
     """Auto-deliver first lesson after registration (onboarding).
     
-    If a SyncUserSnapshot exists for this user's phone (from the other
-    platform), the snapshot is applied first so the user continues from
-    where they left off instead of starting at lesson 1.
+    If a shadow user exists for this user's phone (created by cross-platform
+    sync), the shadow is activated — i.e. the new user record is replaced by
+    the shadow, keeping all its UserProgress / QuizAttempt / FormResponse
+    records intact.  The user continues from where they left off.
+
+    Falls back to SyncUserSnapshot if no shadow user exists.
     """
     try:
         async with async_session_maker() as session:
@@ -442,8 +445,8 @@ async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
             if not user:
                 return
 
-            # --- Cross-platform snapshot restoration ---
-            snapshot_applied = False
+            # --- Shadow user activation (preferred) ---
+            shadow_activated = False
             try:
                 phone = None
                 if user.registration_data:
@@ -453,31 +456,86 @@ async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
                     )
                 if phone:
                     from services.sync_service import (
-                        find_snapshot_by_phone,
-                        apply_snapshot_to_user,
+                        find_shadow_user_by_phone,
+                        activate_shadow_user,
                     )
-                    snapshot = await find_snapshot_by_phone(phone)
-                    if snapshot:
-                        restored = await apply_snapshot_to_user(user.id, snapshot.id)
-                        if restored and not restored.get("error"):
-                            # Refresh user object to pick up restored fields
-                            await session.refresh(user)
-                            snapshot_applied = True
+                    shadow = await find_shadow_user_by_phone(phone)
+                    if shadow and shadow.id != user.id:
+                        # Merge: copy registration_data from the new user to shadow,
+                        # then delete the new user and activate the shadow.
+                        merged_reg = shadow.registration_data or {}
+                        merged_reg.update(user.registration_data or {})
+
+                        # Delete the just-created (non-shadow) user
+                        old_user_id = user.id
+                        await session.delete(user)
+                        await session.commit()
+
+                        # Activate shadow user
+                        activated = await activate_shadow_user(
+                            shadow_user_id=shadow.id,
+                            telegram_user_id=telegram_user_id,
+                            username=message.from_user.username,
+                        )
+                        if activated:
+                            # Update registration_data with merged data
+                            async with async_session_maker() as s2:
+                                u = await s2.get(User, shadow.id)
+                                if u:
+                                    u.registration_data = merged_reg
+                                    await s2.commit()
+
+                            # Re-fetch the activated user
+                            user = await user_service.get_user_by_telegram_id(telegram_user_id)
+                            shadow_activated = True
                             logger.info(
-                                f"[Snapshot] Applied snapshot for phone={phone} "
-                                f"to user {user.id}: {restored}"
+                                f"[Shadow] Activated shadow user {shadow.id} for "
+                                f"telegram_user_id={telegram_user_id} "
+                                f"(replaced new user {old_user_id}), "
+                                f"progress records preserved"
                             )
-            except Exception as snap_err:
+            except Exception as shadow_err:
                 logger.warning(
-                    f"[Snapshot] Failed to apply snapshot for user {user.id}: {snap_err}"
+                    f"[Shadow] Failed to activate shadow user: {shadow_err}"
                 )
+
+            # --- Fallback: Cross-platform snapshot restoration ---
+            snapshot_applied = False
+            if not shadow_activated:
+                try:
+                    phone = None
+                    if user.registration_data:
+                        phone = (
+                            user.registration_data.get("mobile")
+                            or user.registration_data.get("phone")
+                        )
+                    if phone:
+                        from services.sync_service import (
+                            find_snapshot_by_phone,
+                            apply_snapshot_to_user,
+                        )
+                        snapshot = await find_snapshot_by_phone(phone)
+                        if snapshot:
+                            restored = await apply_snapshot_to_user(user.id, snapshot.id)
+                            if restored and not restored.get("error"):
+                                # Refresh user object to pick up restored fields
+                                await session.refresh(user)
+                                snapshot_applied = True
+                                logger.info(
+                                    f"[Snapshot] Applied snapshot for phone={phone} "
+                                    f"to user {user.id}: {restored}"
+                                )
+                except Exception as snap_err:
+                    logger.warning(
+                        f"[Snapshot] Failed to apply snapshot for user {user.id}: {snap_err}"
+                    )
 
             # --- Determine course & next lesson ---
             courses = await lesson_service.get_all_courses(active_only=True)
             if not courses:
                 return
 
-            if snapshot_applied and user.current_course_id:
+            if (shadow_activated or snapshot_applied) and user.current_course_id:
                 # Use the restored course
                 course = next(
                     (c for c in courses if c.id == user.current_course_id), None

@@ -94,6 +94,7 @@ async def list_users(
                     "platform": u.platform,
                     "is_active": u.is_active,
                     "is_completed": u.is_completed,
+                    "is_shadow": u.is_shadow if hasattr(u, 'is_shadow') else False,
                     "current_course_id": u.current_course_id,
                     "current_lesson_id": u.current_lesson_id,
                     "lead_score": u.lead_score,

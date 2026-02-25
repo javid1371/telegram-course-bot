@@ -134,6 +134,10 @@ class User(Base):
     # Platform — "telegram" or "bale" (each deploy only writes its own)
     platform: Mapped[str] = mapped_column(String(20), default="telegram", nullable=False, index=True)
 
+    # Shadow user — created by cross-platform sync before user /start's on this platform.
+    # When the user actually /start's, is_shadow is flipped to False and telegram_user_id is updated.
+    is_shadow: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text("false"), index=True)
+
     # Dynamic registration data (JSONB for flexible storage)
     registration_data: Mapped[Optional[dict]] = mapped_column(JSON)
 
@@ -175,8 +179,14 @@ class User(Base):
     assigned_owner: Mapped[Optional["SalesOwner"]] = relationship("SalesOwner", back_populates="assigned_users")
 
     # Unique constraint: same messenger user ID can exist on both platforms
+    # Shadow users (telegram_user_id=0) are excluded from the constraint
     __table_args__ = (
-        UniqueConstraint('telegram_user_id', 'platform', name='uq_user_platform'),
+        sa.Index(
+            'uq_user_platform_active',
+            'telegram_user_id', 'platform',
+            unique=True,
+            postgresql_where=sa.text("is_shadow = false"),
+        ),
     )
 
     def __repr__(self):

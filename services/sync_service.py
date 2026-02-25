@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import aiohttp
+import sqlalchemy as sa
 
 import config
 from database import async_session_maker
@@ -280,7 +281,7 @@ async def flush_pending_events() -> dict:
 async def process_received_events(events: list) -> dict:
     """
     Process a batch of events received from the peer server.
-    Updates SyncUserSnapshot for each phone number.
+    Updates SyncUserSnapshot AND creates/updates shadow User + Progress records.
 
     Returns {"processed": N, "skipped": N, "errors": N}
     """
@@ -296,6 +297,7 @@ async def process_received_events(events: list) -> dict:
                 continue
 
             await _update_snapshot(phone, event_data)
+            await _upsert_shadow_user(phone, event_data)
             processed += 1
 
         except Exception as e:
@@ -397,6 +399,155 @@ async def _update_snapshot(phone: str, event_data: dict) -> None:
         await session.commit()
 
     logger.debug(f"[SyncService] Updated snapshot for phone={phone} event={event_key}")
+
+
+# ═════════════════════════════════════════════════════════════
+# SHADOW USER: CREATE/UPDATE REAL DB RECORDS FROM PEER EVENTS
+# ═════════════════════════════════════════════════════════════
+
+async def _find_shadow_user_by_phone(session, phone: str) -> Optional[User]:
+    """Find a shadow user by phone in registration_data (current platform only)."""
+    from sqlalchemy import select, cast, String as SAString
+    import config as cfg
+
+    # Search in registration_data JSONB for 'mobile' or 'phone' keys
+    result = await session.execute(
+        select(User).where(
+            User.platform == cfg.PLATFORM,
+            User.is_shadow == True,
+            sa.or_(
+                User.registration_data['mobile'].astext == phone,
+                User.registration_data['phone'].astext == phone,
+            ),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
+    """
+    Create or update a shadow User + UserProgress from a peer event.
+
+    Shadow users have:
+      - telegram_user_id = 0 (placeholder, updated on /start)
+      - is_shadow = True
+      - platform = current platform (the receiving side)
+      - Real UserProgress / QuizAttempt / FormResponse records
+
+    When the user actually /start's on this platform, the shadow user is
+    activated: is_shadow → False, telegram_user_id → real ID.
+    """
+    import config as cfg
+    from sqlalchemy import select
+
+    event_key = event_data.get("event", "")
+
+    try:
+        async with async_session_maker() as session:
+            # Find existing shadow user by phone
+            shadow = await _find_shadow_user_by_phone(session, phone)
+
+            if not shadow:
+                # Only create shadow on registration or first event
+                reg_data = event_data.get("registration_data") or {}
+                # Ensure phone is in registration_data
+                if not reg_data.get("mobile") and not reg_data.get("phone"):
+                    reg_data["mobile"] = phone
+
+                shadow = User(
+                    telegram_user_id=0,  # Placeholder — updated on /start
+                    username=None,
+                    first_name=event_data.get("first_name"),
+                    last_name=event_data.get("last_name"),
+                    platform=cfg.PLATFORM,
+                    is_shadow=True,
+                    registration_data=reg_data,
+                    current_course_id=event_data.get("current_course_id"),
+                    current_lesson_id=event_data.get("current_lesson_id"),
+                    completed_courses=event_data.get("completed_courses"),
+                    is_completed=event_data.get("is_completed", False),
+                    lead_score=event_data.get("lead_score", 0),
+                    tags=event_data.get("tags"),
+                )
+                session.add(shadow)
+                await session.flush()  # Get shadow.id
+                logger.info(
+                    f"[SyncService] Created shadow user id={shadow.id} "
+                    f"for phone={phone} on {cfg.PLATFORM}"
+                )
+            else:
+                # Update existing shadow fields
+                if event_data.get("first_name"):
+                    shadow.first_name = event_data["first_name"]
+                if event_data.get("last_name"):
+                    shadow.last_name = event_data["last_name"]
+                if event_data.get("registration_data"):
+                    rd = shadow.registration_data or {}
+                    rd.update(event_data["registration_data"])
+                    shadow.registration_data = rd
+                if event_data.get("current_course_id") is not None:
+                    shadow.current_course_id = event_data["current_course_id"]
+                if event_data.get("current_lesson_id") is not None:
+                    shadow.current_lesson_id = event_data["current_lesson_id"]
+                if event_data.get("completed_courses") is not None:
+                    shadow.completed_courses = event_data["completed_courses"]
+                if event_data.get("is_completed"):
+                    shadow.is_completed = event_data["is_completed"]
+                if event_data.get("lead_score"):
+                    shadow.lead_score = event_data["lead_score"]
+                if event_data.get("tags"):
+                    shadow.tags = event_data["tags"]
+
+            # ── Create real progress records ──
+            if event_key == "lesson.complete":
+                lesson_info = event_data.get("lesson", {})
+                lesson_id = lesson_info.get("id")
+                if lesson_id:
+                    existing = await session.execute(
+                        select(UserProgress).where(
+                            UserProgress.user_id == shadow.id,
+                            UserProgress.lesson_id == lesson_id,
+                        )
+                    )
+                    if not existing.scalar_one_or_none():
+                        session.add(UserProgress(
+                            user_id=shadow.id,
+                            lesson_id=lesson_id,
+                            completed_at=datetime.now(timezone.utc),
+                        ))
+
+            # ── Create real quiz attempt records ──
+            if event_key in ("quiz.pass", "quiz.fail"):
+                lesson_info = event_data.get("lesson", {})
+                lesson_id = lesson_info.get("id")
+                if lesson_id:
+                    session.add(QuizAttempt(
+                        user_id=shadow.id,
+                        lesson_id=lesson_id,
+                        score=event_data.get("score", 0),
+                        passed=event_data.get("passed", False),
+                        answers=event_data.get("answers"),
+                    ))
+
+            # ── Create real form response records ──
+            if event_key == "form.submit":
+                lesson_info = event_data.get("lesson", {})
+                lesson_id = lesson_info.get("id")
+                if lesson_id:
+                    session.add(FormResponse(
+                        user_id=shadow.id,
+                        lesson_id=lesson_id,
+                        response_data=event_data.get("form_responses") or {},
+                    ))
+
+            await session.commit()
+            logger.debug(
+                f"[SyncService] Shadow user {shadow.id} updated for "
+                f"phone={phone} event={event_key}"
+            )
+
+    except Exception as e:
+        logger.error(f"[SyncService] _upsert_shadow_user error: {e}")
 
 
 # ═════════════════════════════════════════════════════════════
@@ -528,3 +679,94 @@ async def apply_snapshot_to_user(user_id: int, snapshot_id: int) -> dict:
         f"{restored['form_responses']} forms"
     )
     return restored
+
+
+# ═════════════════════════════════════════════════════════════
+# SHADOW USER ACTIVATION: WHEN USER /start's ON THIS PLATFORM
+# ═════════════════════════════════════════════════════════════
+
+async def find_shadow_user_by_phone(phone: str) -> Optional[User]:
+    """Find a shadow user by phone on the current platform."""
+    import config as cfg
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(
+                User.platform == cfg.PLATFORM,
+                User.is_shadow == True,
+                sa.or_(
+                    User.registration_data['mobile'].astext == phone,
+                    User.registration_data['phone'].astext == phone,
+                ),
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+async def activate_shadow_user(
+    shadow_user_id: int,
+    telegram_user_id: int,
+    username: Optional[str] = None,
+) -> Optional[User]:
+    """
+    Activate a shadow user when they actually /start on this platform.
+
+    Updates:
+      - telegram_user_id → real messenger user ID
+      - is_shadow → False
+      - username → from the /start message
+
+    Returns the activated User, or None on error.
+    """
+    from sqlalchemy import select
+
+    try:
+        async with async_session_maker() as session:
+            user = await session.get(User, shadow_user_id)
+            if not user:
+                logger.warning(f"[SyncService] Shadow user {shadow_user_id} not found")
+                return None
+
+            if not user.is_shadow:
+                logger.warning(f"[SyncService] User {shadow_user_id} is not a shadow user")
+                return user  # Already activated
+
+            user.telegram_user_id = telegram_user_id
+            user.is_shadow = False
+            if username:
+                user.username = username
+
+            await session.commit()
+            await session.refresh(user)
+
+            logger.info(
+                f"[SyncService] Activated shadow user {shadow_user_id} → "
+                f"telegram_user_id={telegram_user_id}, progress records intact"
+            )
+
+            # Mark snapshot as consumed (if any)
+            phone = None
+            if user.registration_data:
+                phone = (
+                    user.registration_data.get("mobile")
+                    or user.registration_data.get("phone")
+                )
+            if phone:
+                result = await session.execute(
+                    select(SyncUserSnapshot).where(
+                        SyncUserSnapshot.phone == phone,
+                        SyncUserSnapshot.applied_to_user_id.is_(None),
+                    )
+                )
+                snap = result.scalar_one_or_none()
+                if snap:
+                    snap.applied_to_user_id = user.id
+                    snap.applied_at = datetime.now(timezone.utc)
+                    await session.commit()
+
+            return user
+
+    except Exception as e:
+        logger.error(f"[SyncService] activate_shadow_user error: {e}")
+        return None
