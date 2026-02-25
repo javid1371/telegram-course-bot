@@ -407,17 +407,17 @@ async def _update_snapshot(phone: str, event_data: dict) -> None:
 
 async def _find_shadow_user_by_phone(session, phone: str) -> Optional[User]:
     """Find a shadow user by phone in registration_data (current platform only)."""
-    from sqlalchemy import select, cast, String as SAString
+    from sqlalchemy import select
     import config as cfg
 
-    # Search in registration_data JSONB for 'mobile' or 'phone' keys
+    # Use json_extract_path_text — works with both json and jsonb column types
     result = await session.execute(
         select(User).where(
             User.platform == cfg.PLATFORM,
             User.is_shadow == True,
             sa.or_(
-                User.registration_data['mobile'].astext == phone,
-                User.registration_data['phone'].astext == phone,
+                sa.func.json_extract_path_text(User.registration_data, 'mobile') == phone,
+                sa.func.json_extract_path_text(User.registration_data, 'phone') == phone,
             ),
         )
     )
@@ -696,8 +696,8 @@ async def find_shadow_user_by_phone(phone: str) -> Optional[User]:
                 User.platform == cfg.PLATFORM,
                 User.is_shadow == True,
                 sa.or_(
-                    User.registration_data['mobile'].astext == phone,
-                    User.registration_data['phone'].astext == phone,
+                    sa.func.json_extract_path_text(User.registration_data, 'mobile') == phone,
+                    sa.func.json_extract_path_text(User.registration_data, 'phone') == phone,
                 ),
             )
         )

@@ -38,8 +38,8 @@ class UserService:
                 User.platform == config.PLATFORM,
                 User.is_shadow == False,
                 sa.or_(
-                    User.registration_data['phone'].astext == phone,
-                    User.registration_data['mobile'].astext == phone,
+                    sa.func.json_extract_path_text(User.registration_data, 'phone') == phone,
+                    sa.func.json_extract_path_text(User.registration_data, 'mobile') == phone,
                 ),
             )
         )
