@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = 'medialibrary001'
-down_revision = 'lead_scoring_001'
+down_revision = 'leadscore001'
 branch_labels = None
 depends_on = None
 

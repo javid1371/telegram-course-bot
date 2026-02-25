@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = 'add_lesson_number'
-down_revision = 'add_media_library'
+down_revision = 'medialibrary001'
 branch_labels = None
 depends_on = None
 
