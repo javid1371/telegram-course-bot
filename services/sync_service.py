@@ -426,13 +426,15 @@ async def _find_shadow_user_by_phone(session, phone: str) -> Optional[User]:
 
 async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
     """
-    Create or update a shadow User + UserProgress from a peer event.
+    Create or update a shadow User from a peer event.
 
     Shadow users have:
       - telegram_user_id = 0 (placeholder, updated on /start)
       - is_shadow = True
       - platform = current platform (the receiving side)
-      - Real UserProgress / QuizAttempt / FormResponse records
+      - Identity & metadata only (no FK-dependent fields like
+        current_course_id / current_lesson_id because the peer's
+        IDs don't exist locally)
 
     When the user actually /start's on this platform, the shadow user is
     activated: is_shadow → False, telegram_user_id → real ID.
@@ -454,6 +456,9 @@ async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
                 if not reg_data.get("mobile") and not reg_data.get("phone"):
                     reg_data["mobile"] = phone
 
+                # NOTE: Do NOT set current_course_id / current_lesson_id —
+                # they are foreign keys referencing local tables, and the
+                # peer's IDs are different from ours.
                 shadow = User(
                     telegram_user_id=0,  # Placeholder — updated on /start
                     username=None,
@@ -462,9 +467,6 @@ async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
                     platform=cfg.PLATFORM,
                     is_shadow=True,
                     registration_data=reg_data,
-                    current_course_id=event_data.get("current_course_id"),
-                    current_lesson_id=event_data.get("current_lesson_id"),
-                    completed_courses=event_data.get("completed_courses"),
                     is_completed=event_data.get("is_completed", False),
                     lead_score=event_data.get("lead_score", 0),
                     tags=event_data.get("tags"),
@@ -476,7 +478,7 @@ async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
                     f"for phone={phone} on {cfg.PLATFORM}"
                 )
             else:
-                # Update existing shadow fields
+                # Update existing shadow — identity & metadata only
                 if event_data.get("first_name"):
                     shadow.first_name = event_data["first_name"]
                 if event_data.get("last_name"):
@@ -485,12 +487,6 @@ async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
                     rd = shadow.registration_data or {}
                     rd.update(event_data["registration_data"])
                     shadow.registration_data = rd
-                if event_data.get("current_course_id") is not None:
-                    shadow.current_course_id = event_data["current_course_id"]
-                if event_data.get("current_lesson_id") is not None:
-                    shadow.current_lesson_id = event_data["current_lesson_id"]
-                if event_data.get("completed_courses") is not None:
-                    shadow.completed_courses = event_data["completed_courses"]
                 if event_data.get("is_completed"):
                     shadow.is_completed = event_data["is_completed"]
                 if event_data.get("lead_score"):
@@ -498,47 +494,12 @@ async def _upsert_shadow_user(phone: str, event_data: dict) -> None:
                 if event_data.get("tags"):
                     shadow.tags = event_data["tags"]
 
-            # ── Create real progress records ──
-            if event_key == "lesson.complete":
-                lesson_info = event_data.get("lesson", {})
-                lesson_id = lesson_info.get("id")
-                if lesson_id:
-                    existing = await session.execute(
-                        select(UserProgress).where(
-                            UserProgress.user_id == shadow.id,
-                            UserProgress.lesson_id == lesson_id,
-                        )
-                    )
-                    if not existing.scalar_one_or_none():
-                        session.add(UserProgress(
-                            user_id=shadow.id,
-                            lesson_id=lesson_id,
-                            completed_at=datetime.now(timezone.utc),
-                        ))
-
-            # ── Create real quiz attempt records ──
-            if event_key in ("quiz.pass", "quiz.fail"):
-                lesson_info = event_data.get("lesson", {})
-                lesson_id = lesson_info.get("id")
-                if lesson_id:
-                    session.add(QuizAttempt(
-                        user_id=shadow.id,
-                        lesson_id=lesson_id,
-                        score=event_data.get("score", 0),
-                        passed=event_data.get("passed", False),
-                        answers=event_data.get("answers"),
-                    ))
-
-            # ── Create real form response records ──
-            if event_key == "form.submit":
-                lesson_info = event_data.get("lesson", {})
-                lesson_id = lesson_info.get("id")
-                if lesson_id:
-                    session.add(FormResponse(
-                        user_id=shadow.id,
-                        lesson_id=lesson_id,
-                        response_data=event_data.get("form_responses") or {},
-                    ))
+            # NOTE: We intentionally skip creating UserProgress /
+            # QuizAttempt / FormResponse for shadow users because the
+            # lesson IDs from the peer platform are local to that DB and
+            # would violate foreign-key constraints here.
+            # Progress is tracked independently on each platform once
+            # the user activates.
 
             await session.commit()
             logger.debug(
