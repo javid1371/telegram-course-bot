@@ -45,6 +45,7 @@ USER_BUTTONS = SmartDict("USER_BUTTONS", {
     "lesson_seen": "✅ درس رو دیدم",
     "lesson_seen_delayed": "✅ دیدم، ادامه بده",
     "lesson_seen_quiz": "✅ دیدم، بریم آزمون 📝",
+    "lesson_seen_form": "✅ دیدم، بریم فرم 📋",
     "lesson_seen_next": "✅ دیدم، درس بعدی ➡️",
 
     # دکمه انصراف

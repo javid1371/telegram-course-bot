@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-02-18T01:36:55.000Z",
+  "updatedAt": "2026-02-23T07:18:29.550Z",
   "createdAt": "2026-02-16T15:18:30.048Z",
   "id": "HGKNtU5jSUmnXQpY",
   "name": "Course Bot - Didar CRM (v7)",
@@ -11,7 +11,6 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "course-bot",
-        "responseMode": "onReceived",
         "options": {}
       },
       "id": "webhook",
@@ -20,13 +19,13 @@
       "typeVersion": 1,
       "position": [
         256,
-        1080
+        1152
       ],
       "webhookId": "580e4318-6bac-4be7-a1d4-4556ca1385d8"
     },
     {
       "parameters": {
-        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'MyStr0ngS3cret_2026!',\n  OWNERS: [\n    {id: 'a52a4294-f773-48cf-8201-d4402f7b7780', name: 'عباسی', weight: 3},\n    {id: 'f4d3c7ad-3fb4-42f3-bf78-04ca86a24a1f', name: 'غلامی', weight: 2},\n  ],\n  PIPELINE_ID: '9b0e5024-4822-4833-abe6-8ca426a937ae',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'dc40fdb0-f8a5-4a40-80fe-1102a8a8b9f3',\n  ACTIVITY_TYPE_FOLLOWUP: '3b9512e1-663c-4265-827e-43fa5bcee70e',\n  STAGES: {\n    register: 'b7e97097-ff9b-4207-a2e7-07dd2ea606af',\n    lesson_1: 'ffa64a67-02e0-462b-a0c2-60c85eee6af5', lesson_2: 'bcfe1289-12bf-4ee6-88e7-2dcf0ed48469',\n    lesson_3: '4223a51c-544b-41e2-94bc-1e99016fbaba', lesson_4: '09856491-6d78-40df-b3ed-c80083e77a8f',\n    lesson_5: '0fcb3769-e1ad-45d5-8847-e51e97065d85', lesson_6: 'aee7d1c1-5f18-43e8-b1cb-050d59ce3517',\n    lesson_7: 'd9fc8133-052f-465b-9289-4211272b6e18', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: '6faab0b4-be10-478d-9655-bf41eca744a8',\n    followup_1: 'be5d2b7a-4cf6-4b5d-873f-a3a76ccf2310', followup_2: 'daa24b66-5151-4e57-b08e-032a2961c339',\n    followup_3: '3d3cf5e9-0726-43db-9e01-885c50c3b2bd',\n    won: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'Field_996_0_26', staff_count: 'Field_996_0_25',\n    job: 'J', best_call_time: 'Field_996_0_31',\n    lead_score: 'Field_996_12_30', city: 'Field_996_0_11',\n    income_class: 'Field_996_0_11'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\n// Dynamic CRM field mapping from bot (overrides hardcoded CUSTOM_FIELDS)\nconst botMapping = payload.crm_field_mapping || {};\nfor (const [key, val] of Object.entries(botMapping)) {\n  if (val && !val.startsWith('person.') && val !== 'note') {\n    CONFIG.CUSTOM_FIELDS[key] = val;\n  }\n}\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || (user.registration_data?.phone || user.registration_data?.mobile || ''),\n  phone_search: (function(p) { p = (p||'').replace(/[^0-9]/g, ''); return p.length >= 10 ? p.slice(-10) : p; })(user.phone || (user.registration_data?.phone || user.registration_data?.mobile || '')),\n  user_name: (user.first_name||'') + ' ' + (user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n"
+        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'MyStr0ngS3cret_2026!',\n  OWNERS: [\n    {id: 'a52a4294-f773-48cf-8201-d4402f7b7780', name: 'عباسی', weight: 3},\n    {id: 'f4d3c7ad-3fb4-42f3-bf78-04ca86a24a1f', name: 'غلامی', weight: 2},\n  ],\n  PIPELINE_ID: '9b0e5024-4822-4833-abe6-8ca426a937ae',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'dc40fdb0-f8a5-4a40-80fe-1102a8a8b9f3',\n  ACTIVITY_TYPE_FOLLOWUP: '3b9512e1-663c-4265-827e-43fa5bcee70e',\n  STAGES: {\n    register: 'b7e97097-ff9b-4207-a2e7-07dd2ea606af',\n    lesson_1: 'ffa64a67-02e0-462b-a0c2-60c85eee6af5', lesson_2: 'bcfe1289-12bf-4ee6-88e7-2dcf0ed48469',\n    lesson_3: '4223a51c-544b-41e2-94bc-1e99016fbaba', lesson_4: '09856491-6d78-40df-b3ed-c80083e77a8f',\n    lesson_5: '0fcb3769-e1ad-45d5-8847-e51e97065d85', lesson_6: 'aee7d1c1-5f18-43e8-b1cb-050d59ce3517',\n    lesson_7: 'd9fc8133-052f-465b-9289-4211272b6e18', lesson_8: '6faab0b4-be10-478d-9655-bf41eca744a8',\n    sales_wait: '6faab0b4-be10-478d-9655-bf41eca744a8',\n    followup_1: 'be5d2b7a-4cf6-4b5d-873f-a3a76ccf2310', followup_2: 'daa24b66-5151-4e57-b08e-032a2961c339',\n    followup_3: '3d3cf5e9-0726-43db-9e01-885c50c3b2bd',\n    won: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'Field_996_0_26', staff_count: 'Field_996_0_25',\n    job: 'J', best_call_time: 'Field_996_0_31',\n    lead_score: 'Field_996_12_30', city: 'Field_996_0_11',\n    income_class: 'Field_996_0_11'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\n// Dynamic CRM field mapping from bot (overrides hardcoded CUSTOM_FIELDS)\nconst botMapping = payload.crm_field_mapping || {};\nfor (const [key, val] of Object.entries(botMapping)) {\n  if (val && !val.startsWith('person.') && val !== 'note') {\n    CONFIG.CUSTOM_FIELDS[key] = val;\n  }\n}\nreturn [{json: {...body, CONFIG, action,\n  user_phone: user.phone || (user.registration_data?.phone || user.registration_data?.mobile || ''),\n  phone_search: (function(p) { p = (p||'').replace(/[^0-9]/g, ''); return p.length >= 10 ? p.slice(-10) : p; })(user.phone || (user.registration_data?.phone || user.registration_data?.mobile || '')),\n  user_name: (user.registration_data.first_name||'') + ' ' + (user.registration_data.last_name||''),\n  course_title: course.title || 'دوره خروج از بحران',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.lesson_number || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n"
       },
       "id": "config",
       "name": "Config",
@@ -34,7 +33,7 @@
       "typeVersion": 1,
       "position": [
         480,
-        1080
+        1152
       ]
     },
     {
@@ -237,12 +236,12 @@
       "typeVersion": 3.2,
       "position": [
         704,
-        1048
+        1040
       ]
     },
     {
       "parameters": {
-        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user?.last_name || d.user?.first_name || 'User';\nconst firstName = d.user?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || d.user?.registration_data?.mobile || '');\nconst phoneSearch = d.phone_search || '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\n// Use bot-provided lead_score_field_json if available, else build from CUSTOM_FIELDS\nlet leadScoreFieldJson = d.payload?.lead_score_field_json || '{}';\nif (leadScoreFieldJson === '{}' && C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json: {\n  phone, phoneSearch, firstName, lastName,\n  ownerId, ownerName, leadScore, leadScoreFieldJson,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '\\u062f\\u0648\\u0631\\u0647 ' + d.course_title + ' - ' + lastName,\n  CONFIG: C\n}}];\n"
+        "jsCode": "\nconst d = $input.first().json;\nconst C = d.CONFIG;\n\nconst owners = (C.OWNERS || []).filter(o => o.weight > 0);\nlet ownerId = owners.length ? owners[0].id : '';\nlet ownerName = owners.length ? owners[0].name : '';\n\nif (owners.length > 1) {\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  const selected = pool[Math.floor(Math.random() * pool.length)];\n  ownerId = selected.id;\n  ownerName = selected.name;\n}\n\nconst lastName = d.user.registration_data?.last_name || d.user?.last_name || 'User';\nconst firstName = d.user.registration_data?.first_name || '';\nconst phone = d.user_phone || (d.user?.registration_data?.phone || d.user?.registration_data?.mobile || '');\nconst phoneSearch = d.phone_search || '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\n// Use bot-provided lead_score_field_json if available, else build from CUSTOM_FIELDS\nlet leadScoreFieldJson = d.payload?.lead_score_field_json || '{}';\nif (leadScoreFieldJson === '{}' && C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json: {\n  phone, phoneSearch, firstName, lastName,\n  ownerId, ownerName, leadScore, leadScoreFieldJson,\n  pipelineId: C.PIPELINE_ID,\n  stageId: C.STAGES.register,\n  companyId: C.COMPANY_ID,\n  activityTypeId: C.ACTIVITY_TYPE_SALES,\n  courseTitle: d.course_title,\n  dealTitle: '' + d.course_title + ' ' + firstName + ' ' + lastName,\n  CONFIG: C\n}}];\n"
       },
       "id": "prep_register",
       "name": "Prep Register",
@@ -370,6 +369,9 @@
         "operation": "search",
         "Keywords": "={{$json.courseTitle}}",
         "Status": "Pending",
+        "ContactIds": [
+          "={{$json.personId}}"
+        ],
         "additionalFields": {
           "Limit": 5
         }
@@ -379,7 +381,7 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2272,
+        2368,
         96
       ],
       "credentials": {
@@ -488,7 +490,11 @@
         "OwnerIdManual": "={{$json.ownerId}}",
         "additionalFields": {
           "Note": "=ثبت نام جدید در دوره {{$json.courseTitle}}",
-          "ContactIds": "={{$json.personId}}"
+          "DueDate": "={{ $now.toISO() }}",
+          "DealId": "={{ $json.dealId }}",
+          "ContactIds": [
+            "={{$json.personId}}"
+          ]
         }
       },
       "id": "happy_call",
@@ -496,7 +502,7 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        3392,
+        3616,
         96
       ],
       "credentials": {
@@ -515,7 +521,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        3616,
+        3840,
         96
       ]
     },
@@ -529,13 +535,13 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        3840,
+        4384,
         96
       ]
     },
     {
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst triggerSales = d.payload?.trigger_sales || false;\nconst stageId = triggerSales ? C.STAGES.sales_wait : (C.STAGES['lesson_'+d.lesson_order]||'');\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\n// Use bot-provided lead_score_field_json if available\nlet leadScoreFieldJson = d.payload?.lead_score_field_json || '{}';\nif (leadScoreFieldJson === '{}' && C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\ntriggerSales, leadScore, leadScoreFieldJson,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,\nuserName:d.user_name,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst triggerSales = d.payload?.trigger_sales || false;\nconst stageId = triggerSales\n  ? C.STAGES.sales_wait\n  : ((Number(d.lesson_order||0)===0 ? C.STAGES.register : C.STAGES['lesson_'+Number(d.lesson_order||0)]) || '');\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nconst leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n\n// Use bot-provided lead_score_field_json if available\nlet leadScoreFieldJson = d.payload?.lead_score_field_json || '{}';\nif (leadScoreFieldJson === '{}' && C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n  leadScoreFieldJson = JSON.stringify({[C.CUSTOM_FIELDS.lead_score]: String(leadScore)});\n}\n\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',stageId,lessonOrder:d.lesson_order,\ncourseTitle:d.course_title,ownerId,pipelineId:C.PIPELINE_ID,\ntriggerSales, leadScore, leadScoreFieldJson,\nactivityTypeId:C.ACTIVITY_TYPE_SALES,\nuserName:d.user_name,\nnoteText:'\\u062f\\u0631\\u0633 '+d.lesson_order+' ('+d.lesson_title+') \\u062a\\u06a9\\u0645\\u06cc\\u0644 - '+d.progress_percent+'%',CONFIG:C}}];\n"
       },
       "id": "prep_lesson",
       "name": "Prep Lesson",
@@ -572,7 +578,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Prep Lesson').first().json;\nconst resp=$input.first().json;\nconst list=resp?.search_respons?.List||resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];"
+        "jsCode": "const prev = $('Prep Lesson').first().json;\nconst resp = $input.first().json;\n\nconst list =\n  resp?.search_respons?.List ||\n  resp?.Response?.List ||\n  resp?.Response?.Items ||\n  [];\n\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\nconst lastName = found?.LastName || '';\n\nif (!personId) {\n  const debug = {\n    hasSearchList: !!resp?.search_respons?.List,\n    searchListLen: resp?.search_respons?.List?.length ?? 0,\n    hasResponseList: !!resp?.Response?.List,\n    responseListLen: resp?.Response?.List?.length ?? 0,\n    hasResponseItems: !!resp?.Response?.Items,\n    responseItemsLen: resp?.Response?.Items?.length ?? 0,\n  };\n  throw new Error('Extract Person Lesson: personId not found. ' + JSON.stringify(debug));\n}\n\n// --- بررسی owner شخص ---\nconst personOwnerId = found?.OwnerId || '';\nconst C = prev.CONFIG;\nconst approvedIds = (C.OWNERS || []).map(o => o.id);\n\nlet ownerId;\nif (approvedIds.includes(personOwnerId)) {\n  ownerId = personOwnerId;\n} else {\n  const owners = (C.OWNERS || []).filter(o => o.weight > 0);\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  ownerId = pool.length ? pool[Math.floor(Math.random() * pool.length)].id : '';\n}\n\nreturn [{\n  json: {\n    ...prev,\n    personId,\n    ownerId,\n    lastName: lastName || prev.userName,\n  }\n}];"
       },
       "id": "extract_person_lesson",
       "name": "Extract Person Lesson",
@@ -588,9 +594,11 @@
         "resource": "person",
         "operation": "update",
         "Id": "={{$json.personId}}",
+        "FirstName": "={{ $('Config').item.json.user.registration_data.first_name }}",
         "LastName": "={{$json.lastName}}",
+        "MobilePhone": "={{ $('Config').item.json.user.registration_data.mobile }}",
         "OwnerMode": "manual",
-        "OwnerIdManual": "={{$json.ownerId}}",
+        "OwnerIdManual": "={{ $('Find Person Lesson').item.json.search_respons.List[0].Owner.UserId }}",
         "additionalFields": {
           "Fields": "={{$json.leadScoreFieldJson}}"
         }
@@ -649,7 +657,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Recover Person Lesson').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.search_respons?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found',\n  dealTitle:'\\u062f\\u0648\\u0631\\u0647 '+prev.courseTitle+' - '+(prev.userName||'User'),\n  companyId:prev.CONFIG?.COMPANY_ID||'00000000-0000-0000-0000-000000000000'}}];\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{dealId:deal.Id,dealTitle:deal.Title,personId:deal.PersonId||prev.personId,\nstageId:prev.stageId,ownerId:realOwner,pipelineId:prev.pipelineId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',\ntriggerSales:prev.triggerSales,userName:prev.userName,lessonOrder:prev.lessonOrder,\nactivityTypeId:prev.activityTypeId,leadScore:prev.leadScore,\nnoteText:prev.noteText,CONFIG:prev.CONFIG,skip:false}}];"
+        "jsCode": "const prev = $('Recover Person Lesson').first().json;\nconst resp = $input.first().json;\nconst deals = resp?.search_respons?.List || resp?.Response?.List || [];\n\nif (!deals.length) return [{json:{...prev, skip:true, reason:'deal not found',\n  dealTitle:'دوره ' + prev.courseTitle + ' - ' + (prev.userName || 'User'),\n  companyId: prev.CONFIG?.COMPANY_ID || '00000000-0000-0000-0000-000000000000'}}];\n\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\n\n// --- بررسی owner دیل ---\nconst dealOwnerId = deal.OwnerId || '';\nconst approvedIds = (prev.CONFIG?.OWNERS || []).map(o => o.id);\nconst realOwner = approvedIds.includes(dealOwnerId) ? dealOwnerId : prev.ownerId;\n\nreturn [{json:{\n  dealId: deal.Id,\n  dealTitle: deal.Title,\n  personId: deal.PersonId || prev.personId,\n  stageId: prev.stageId,\n  ownerId: realOwner,\n  pipelineId: prev.pipelineId,\n  companyId: deal.CompanyId || '00000000-0000-0000-0000-000000000000',\n  triggerSales: prev.triggerSales,\n  userName: prev.userName,\n  lessonOrder: prev.lessonOrder,\n  activityTypeId: prev.activityTypeId,\n  leadScore: prev.leadScore,\n  noteText: prev.noteText,\n  CONFIG: prev.CONFIG,\n  skip: false\n}}];"
       },
       "id": "extract_deal",
       "name": "Extract Deal",
@@ -682,10 +690,10 @@
     {
       "parameters": {
         "operation": "update",
-        "Id": "={{$json.dealId}}",
+        "Id": "={{ $json.dealId }}",
         "Title": "={{$json.dealTitle}}",
         "OwnerMode": "manual",
-        "OwnerIdManual": "={{$json.ownerId}}",
+        "OwnerIdManual": "={{ $('Extract Deal').item.json.ownerId }}",
         "PipelineMode": "manual",
         "PipelineId": "={{$json.pipelineId}}",
         "StageMode": "manual",
@@ -700,7 +708,7 @@
       "typeVersion": 1,
       "position": [
         2720,
-        456
+        464
       ],
       "credentials": {
         "didarApi": {
@@ -719,7 +727,7 @@
       "typeVersion": 1,
       "position": [
         2944,
-        456
+        464
       ]
     },
     {
@@ -739,7 +747,7 @@
       "typeVersion": 1,
       "position": [
         3168,
-        456
+        464
       ]
     },
     {
@@ -752,7 +760,9 @@
         "OwnerIdManual": "={{$json.ownerId}}",
         "additionalFields": {
           "Note": "={{$json.noteText}}",
-          "ContactIds": "={{$json.personId}}"
+          "ContactIds": [
+            "={{ $json.personId }}"
+          ]
         }
       },
       "id": "sales_call_lesson",
@@ -779,8 +789,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        2720,
-        792
+        2272,
+        864
       ]
     },
     {
@@ -797,8 +807,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2944,
-        792
+        2496,
+        864
       ],
       "credentials": {
         "didarApi": {
@@ -809,15 +819,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst list=resp?.search_respons?.List||resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'User';\nif(!personId) return [];\nreturn [{json:{...prev,personId,lastName}}];"
+        "jsCode": "const prev = $('Prep Form').first().json;\nconst resp = $input.first().json;\n\nconst list =\n  resp?.search_respons?.List ||\n  resp?.Response?.List ||\n  resp?.Response?.Items ||\n  [];\n\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\nconst lastName = found?.LastName || 'User';\n\nif (!personId) {\n  const debug = {\n    hasSearchList: !!resp?.search_respons?.List,\n    searchListLen: resp?.search_respons?.List?.length ?? 0,\n    hasResponseList: !!resp?.Response?.List,\n    responseListLen: resp?.Response?.List?.length ?? 0,\n    hasResponseItems: !!resp?.Response?.Items,\n    responseItemsLen: resp?.Response?.Items?.length ?? 0,\n    phone: prev?.phone ?? null,\n    phoneSearch: prev?.phoneSearch ?? null,\n  };\n  throw new Error('Extract Person Form: personId not found. ' + JSON.stringify(debug));\n}\n\n// --- بررسی owner شخص ---\nconst personOwnerId = found?.OwnerId || '';\nconst C = prev.CONFIG;\nconst approvedIds = (C.OWNERS || []).map(o => o.id);\n\nlet ownerId;\nif (approvedIds.includes(personOwnerId)) {\n  ownerId = personOwnerId;\n} else {\n  const owners = (C.OWNERS || []).filter(o => o.weight > 0);\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  ownerId = pool.length ? pool[Math.floor(Math.random() * pool.length)].id : '';\n}\n\nreturn [{\n  json: {\n    ...prev,\n    personId,\n    ownerId,\n    lastName,\n  }\n}];"
       },
       "id": "extract_person_form",
       "name": "Extract Person Form",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        3168,
-        792
+        2720,
+        864
       ]
     },
     {
@@ -825,7 +835,9 @@
         "resource": "person",
         "operation": "update",
         "Id": "={{$json.personId}}",
-        "LastName": "={{$json.lastName}}",
+        "FirstName": "={{ $('Config').item.json.user.registration_data.first_name }}",
+        "LastName": "={{ $('Config').item.json.user.registration_data.last_name }}",
+        "MobilePhone": "={{ $('Config').item.json.user.registration_data.mobile }}",
         "OwnerMode": "manual",
         "OwnerIdManual": "={{$json.ownerId}}",
         "additionalFields": {
@@ -837,8 +849,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        3392,
-        792
+        2944,
+        864
       ],
       "credentials": {
         "didarApi": {
@@ -849,7 +861,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,ownerId,CONFIG:C,\nnoteText:'\\u2705 \\u06a9\\u0648\\u06cc\\u06cc\\u0632 \\u067e\\u0627\\u0633! \\u0646\\u0645\\u0631\\u0647: '+qr.score+'/'+qr.passing_score+' \\u062f\\u0631\\u0633: '+d.lesson_title}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',ownerId,CONFIG:C,\ncourseTitle:d.course_title,userName:d.user_name,lessonTitle:d.lesson_title,\nnoteText:'\\u2705 \\u06a9\\u0648\\u06cc\\u06cc\\u0632 \\u067e\\u0627\\u0633! \\u0646\\u0645\\u0631\\u0647: '+qr.score+'/'+qr.passing_score+' \\u062f\\u0631\\u0633: '+d.lesson_title}}];\n"
       },
       "id": "prep_quiz_pass",
       "name": "Prep Quiz Pass",
@@ -857,13 +869,16 @@
       "typeVersion": 1,
       "position": [
         928,
-        1080
+        1152
       ]
     },
     {
       "parameters": {
         "resource": "note",
+        "operation": "create",
         "ResultNote": "={{$json.noteText}}",
+        "PersonId": "={{$json.personId}}",
+        "DealId": "={{$json.dealId}}",
         "OwnerMode": "manual",
         "OwnerIdManual": "={{$json.ownerId}}"
       },
@@ -872,8 +887,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        1152,
-        1200
+        1712,
+        1280
       ],
       "credentials": {
         "didarApi": {
@@ -884,7 +899,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,ownerId,CONFIG:C,\nnoteText:'\\u274c \\u06a9\\u0648\\u06cc\\u06cc\\u0632 \\u0646\\u0627\\u0645\\u0648\\u0641\\u0642! \\u0646\\u0645\\u0631\\u0647: '+qr.score+'/'+qr.passing_score+' \\u062f\\u0631\\u0633: '+d.lesson_title}}];\n"
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst qr=d.payload?.quiz_result||{};\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',ownerId,CONFIG:C,\ncourseTitle:d.course_title,userName:d.user_name,lessonTitle:d.lesson_title,\nnoteText:'\\u274c \\u06a9\\u0648\\u06cc\\u06cc\\u0632 \\u0646\\u0627\\u0645\\u0648\\u0641\\u0642! \\u0646\\u0645\\u0631\\u0647: '+qr.score+'/'+qr.passing_score+' \\u062f\\u0631\\u0633: '+d.lesson_title}}];\n"
       },
       "id": "prep_quiz_fail",
       "name": "Prep Quiz Fail",
@@ -892,7 +907,7 @@
       "typeVersion": 1,
       "position": [
         928,
-        1272
+        1344
       ]
     },
     {
@@ -905,7 +920,7 @@
       "typeVersion": 1,
       "position": [
         3168,
-        1416
+        1488
       ]
     },
     {
@@ -926,7 +941,7 @@
       "typeVersion": 1,
       "position": [
         3392,
-        1416
+        1488
       ],
       "credentials": {
         "didarApi": {
@@ -945,7 +960,7 @@
       "typeVersion": 1,
       "position": [
         1152,
-        1632
+        1776
       ]
     },
     {
@@ -963,7 +978,7 @@
       "typeVersion": 1,
       "position": [
         1376,
-        1632
+        1776
       ],
       "credentials": {
         "didarApi": {
@@ -974,7 +989,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Prep Complete').first().json;\nconst resp=$input.first().json;\nconst list=resp?.search_respons?.List||resp?.Response?.List||[];\nconst found=list.length>0?list[0]:null;\nconst personId=found?.Id||null;\nconst lastName=found?.LastName||'';\nif(!personId) return [];\nreturn [{json:{...prev,personId,lastName:lastName||prev.userName}}];"
+        "jsCode": "const prev = $('Prep Complete').first().json;\nconst resp = $input.first().json;\n\nconst list =\n  resp?.search_respons?.List ||\n  resp?.Response?.List ||\n  resp?.Response?.Items ||\n  [];\n\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\nconst lastName = found?.LastName || '';\n\nif (!personId) {\n  const debug = {\n    hasSearchList: !!resp?.search_respons?.List,\n    searchListLen: resp?.search_respons?.List?.length ?? 0,\n    hasResponseList: !!resp?.Response?.List,\n    responseListLen: resp?.Response?.List?.length ?? 0,\n    hasResponseItems: !!resp?.Response?.Items,\n    responseItemsLen: resp?.Response?.Items?.length ?? 0,\n    phone: prev?.phone ?? null,\n    phoneSearch: prev?.phoneSearch ?? null,\n  };\n  throw new Error('Extract Person Complete: personId not found. ' + JSON.stringify(debug));\n}\n\n// --- بررسی owner شخص ---\nconst personOwnerId = found?.OwnerId || '';\nconst C = prev.CONFIG;\nconst approvedIds = (C.OWNERS || []).map(o => o.id);\n\nlet ownerId;\nif (approvedIds.includes(personOwnerId)) {\n  ownerId = personOwnerId;\n} else {\n  const owners = (C.OWNERS || []).filter(o => o.weight > 0);\n  let pool = [];\n  for (const o of owners) {\n    for (let i = 0; i < o.weight; i++) pool.push(o);\n  }\n  ownerId = pool.length ? pool[Math.floor(Math.random() * pool.length)].id : '';\n}\n\nreturn [{\n  json: {\n    ...prev,\n    personId,\n    ownerId,\n    lastName: lastName || prev.userName,\n  }\n}];"
       },
       "id": "extract_person_complete",
       "name": "Extract Person Complete",
@@ -982,7 +997,7 @@
       "typeVersion": 1,
       "position": [
         1600,
-        1632
+        1776
       ]
     },
     {
@@ -1003,7 +1018,7 @@
       "typeVersion": 1,
       "position": [
         1824,
-        1632
+        1776
       ],
       "credentials": {
         "didarApi": {
@@ -1022,7 +1037,7 @@
       "typeVersion": 1,
       "position": [
         2048,
-        1632
+        1776
       ]
     },
     {
@@ -1031,6 +1046,9 @@
         "Keywords": "={{$json.courseTitle}}",
         "Status": "Pending",
         "OwnerIdSelect": "={{$json.ownerId}}",
+        "ContactIds": [
+          "={{ $json.personId }}"
+        ],
         "additionalFields": {
           "Limit": 5
         }
@@ -1041,7 +1059,7 @@
       "typeVersion": 1,
       "position": [
         2272,
-        1632
+        1776
       ],
       "credentials": {
         "didarApi": {
@@ -1052,7 +1070,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prev=$('Recover Person Complete').first().json;\nconst resp=$input.first().json;\nconst deals=resp?.search_respons?.List||resp?.Response?.List||[];\nif(!deals.length) return [{json:{...prev,skip:true,reason:'deal not found for completion',\n  dealTitle:'\\u062f\\u0648\\u0631\\u0647 '+prev.courseTitle+' - '+(prev.userName||'User'),\n  companyId:prev.CONFIG?.COMPANY_ID||'00000000-0000-0000-0000-000000000000'}}];\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\nconst realOwner = deal.OwnerId || prev.ownerId;\nreturn [{json:{...prev,ownerId:realOwner,dealId:deal.Id,dealTitle:deal.Title,\npersonId:deal.PersonId||prev.personId,\ncompanyId:deal.CompanyId||'00000000-0000-0000-0000-000000000000',skip:false}}];"
+        "jsCode": "const prev = $('Recover Person Complete').first().json;\nconst resp = $input.first().json;\nconst deals = resp?.search_respons?.List || resp?.Response?.List || [];\n\nif (!deals.length) return [{json:{...prev, skip:true, reason:'deal not found for completion',\n  dealTitle:'دوره ' + prev.courseTitle + ' - ' + (prev.userName || 'User'),\n  companyId: prev.CONFIG?.COMPANY_ID || '00000000-0000-0000-0000-000000000000'}}];\n\nconst deal = deals.find(d => d.PersonId === prev.personId) || deals[0];\n\n// --- بررسی owner دیل ---\nconst dealOwnerId = deal.OwnerId || '';\nconst approvedIds = (prev.CONFIG?.OWNERS || []).map(o => o.id);\nconst realOwner = approvedIds.includes(dealOwnerId) ? dealOwnerId : prev.ownerId;\n\nreturn [{json:{\n  ...prev,\n  ownerId: realOwner,\n  dealId: deal.Id,\n  dealTitle: deal.Title,\n  personId: deal.PersonId || prev.personId,\n  companyId: deal.CompanyId || '00000000-0000-0000-0000-000000000000',\n  skip: false\n}}];"
       },
       "id": "extract_deal_complete",
       "name": "Extract Deal Complete",
@@ -1060,7 +1078,7 @@
       "typeVersion": 1,
       "position": [
         2496,
-        1632
+        1776
       ]
     },
     {
@@ -1079,7 +1097,7 @@
       "typeVersion": 1,
       "position": [
         2720,
-        1632
+        1776
       ]
     },
     {
@@ -1104,7 +1122,7 @@
       "typeVersion": 1,
       "position": [
         2944,
-        1704
+        1680
       ],
       "credentials": {
         "didarApi": {
@@ -1123,7 +1141,7 @@
       "typeVersion": 1,
       "position": [
         3168,
-        1704
+        1680
       ]
     },
     {
@@ -1144,8 +1162,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        3392,
-        1704
+        3600,
+        1728
       ],
       "credentials": {
         "didarApi": {
@@ -1164,7 +1182,7 @@
       "typeVersion": 1,
       "position": [
         928,
-        1776
+        1920
       ]
     },
     {
@@ -1176,8 +1194,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        3616,
-        936
+        4384,
+        912
       ]
     },
     {
@@ -1190,24 +1208,24 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        3840,
-        936
+        5232,
+        944
       ]
     },
     {
       "parameters": {
         "resource": "note",
-        "operation": "create",
         "ResultNote": "={{ $('Prep Form').item.json.noteText }}",
-        "PersonId": "={{ $('Extract Person Form').item.json.personId }}",
         "OwnerMode": "manual",
-        "OwnerIdManual": "={{ $('Prep Form').item.json.ownerId }}"
+        "OwnerIdManual": "={{ $('Prep Form').item.json.ownerId }}",
+        "DealId": "={{ $json.search_respons.List[0].Id }}",
+        "PersonId": "={{ $('Extract Person Form').item.json.personId }}"
       },
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        3642,
-        992
+        3392,
+        864
       ],
       "id": "create-note-form-001",
       "name": "Create Note Form",
@@ -1222,7 +1240,7 @@
       "parameters": {
         "Title": "={{$json.dealTitle}}",
         "OwnerMode": "manual",
-        "OwnerIdManual": "={{$json.ownerId}}",
+        "OwnerIdManual": "=",
         "PipelineMode": "manual",
         "PipelineId": "={{$json.pipelineId}}",
         "StageMode": "manual",
@@ -1238,8 +1256,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2746,
-        708
+        3392,
+        672
       ],
       "credentials": {
         "didarApi": {
@@ -1268,8 +1286,8 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2970,
-        1812
+        2944,
+        1872
       ],
       "credentials": {
         "didarApi": {
@@ -1287,8 +1305,147 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        3220,
-        1812
+        3168,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "Keywords": "={{ $('Config').item.json.course_title }}",
+        "Status": "Pending",
+        "ContactIds": [
+          "={{ $('Find Person Form').item.json.search_respons.List[0].Id }}"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        3168,
+        864
+      ],
+      "id": "33406cd6-cabd-4d83-891a-76394e638be4",
+      "name": "Search deals",
+      "credentials": {
+        "didarApi": {
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\n// personId باید در هر دو شاخه تا اینجا ساخته شده باشد\nconst personId = d.personId;\nif (!personId) {\n  throw new Error('unifyPerson: personId is missing');\n}\n\n// این‌ها را اگر از قبل داری نگه می‌داریم، اگر نداری از وبهوک می‌سازیم\nconst firstName =\n  d.firstName ??\n  d.user?.first_name ??\n  d.payload?.fields_to_update?.['person.first_name'] ??\n  '';\n\nconst lastName =\n  d.lastName ??\n  d.user?.last_name ??\n  '';\n\n// تلفن اصلی\nconst phone =\n  d.phone ??\n  d.user?.phone ??\n  d.user?.registration_data?.mobile ??\n  d.payload?.fields_to_update?.['person.phone'] ??\n  '';\n\n// اگر phoneSearch داری (مثلاً 912... یا با +98) همین‌جا استانداردش کن\n// اگر هنوز استانداردسازی را جای دیگری انجام دادی، این بخش را ساده نگه دار\nconst phoneSearch = d.phoneSearch ?? phone;\n\nreturn [{\n  json: {\n    ...d,\n    personId,\n    firstName,\n    lastName,\n    phone,\n    phoneSearch,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        96
+      ],
+      "id": "c53d9016-f7e7-4342-9a0d-627d0f0ee1a4",
+      "name": "unifyPerson"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\nconst dealId = d.dealId;\nif (!dealId) {\n  throw new Error('unifyDealId: dealId is missing');\n}\n\nconst personId = d.personId;\nif (!personId) {\n  throw new Error('unifyDealId: personId is missing');\n}\n\nreturn [{\n  json: {\n    ...d,\n    dealId,\n    personId,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        96
+      ],
+      "id": "63069a66-3ec4-4bd6-9885-6983ed2e4438",
+      "name": "unifyDealId"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Base data (همیشه از Extract Deal Complete میاد و کامل‌ترین context رو داره)\nconst base = $('Extract Deal Complete').first().json;\n\n// اگر شاخه create اجرا شده باشه، اینجا dealId جدید رو برمی‌داریم\nconst createResp = $('Create Deal Complete2').first()?.json;\nconst newDealId =\n  createResp?.Response?.Id ||\n  createResp?.Response?.Deal?.Id ||\n  createResp?.Id ||\n  null;\n\n// اگر شاخه update اجرا شده باشه، معمولاً لازم نیست dealId عوض بشه\n// ولی برای اطمینان، اگر پلاگین چیزی برگردوند، می‌تونیم چک کنیم\nconst updateResp = $('Update Deal Complete').first()?.json;\nconst updatedDealId =\n  updateResp?.Response?.Id ||\n  updateResp?.Response?.Deal?.Id ||\n  updateResp?.Id ||\n  null;\n\n// انتخاب نهایی dealId\nconst dealId = newDealId || updatedDealId || base.dealId;\n\nif (!dealId) {\n  return [{\n    json: {\n      ...base,\n      skip: true,\n      reason: 'unify complete: dealId missing',\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...base,\n    dealId,\n    skip: false,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3392,
+        1776
+      ],
+      "id": "2e92358a-16f9-4c79-9b90-3ad18e7a0998",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "person",
+        "operation": "search",
+        "Keywords": "={{$json.phoneSearch}}",
+        "additionalFields": {
+          "Limit": 1
+        }
+      },
+      "id": "find-person-quiz-001",
+      "name": "Find Person Quiz",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        928,
+        1280
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev = $input.first().json;\nconst prepPass = (() => { try { return $('Prep Quiz Pass').first().json; } catch(e) { return null; } })();\nconst prepFail = (() => { try { return $('Prep Quiz Fail').first().json; } catch(e) { return null; } })();\nconst prep = prepPass || prepFail || {};\n\nconst list =\n  prev?.search_respons?.List ||\n  prev?.Response?.List ||\n  prev?.Response?.Items ||\n  [];\n\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\n\nif (!personId) {\n  return [{json:{...prep, personId: null, dealId: null, skipDeal: true}}];\n}\n\nconst personOwnerId = found?.OwnerId || '';\nconst C = prep.CONFIG;\nconst approvedIds = (C.OWNERS || []).map(o => o.id);\n\nlet ownerId;\nif (approvedIds.includes(personOwnerId)) {\n  ownerId = personOwnerId;\n} else {\n  ownerId = prep.ownerId || '';\n}\n\nreturn [{json:{...prep, personId, ownerId, skipDeal: false}}];"
+      },
+      "id": "extract-person-quiz-001",
+      "name": "Extract Person Quiz",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        1280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "Keywords": "={{$json.courseTitle}}",
+        "Status": "Pending",
+        "ContactIds": [
+          "={{$json.personId}}"
+        ],
+        "additionalFields": {}
+      },
+      "id": "search-deal-quiz-001",
+      "name": "Search Deal Quiz",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        1280
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev = $input.first().json;\nconst prep = (() => { try { return $('Extract Person Quiz').first().json; } catch(e) { return prev; } })();\nconst deals = prev?.search_respons?.List || prev?.Response?.List || [];\nconst deal = deals.length > 0 ? (deals.find(d => d.PersonId === prep.personId) || deals[0]) : null;\nconst dealId = deal?.Id || null;\nreturn [{json:{...prep, dealId, noteText: prep.noteText}}];"
+      },
+      "id": "extract-deal-quiz-001",
+      "name": "Extract Deal Quiz",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        1280
       ]
     }
   ],
@@ -1437,7 +1594,7 @@
       "main": [
         [
           {
-            "node": "Search Deal Reg",
+            "node": "unifyPerson",
             "type": "main",
             "index": 0
           }
@@ -1459,7 +1616,7 @@
       "main": [
         [
           {
-            "node": "Search Deal Reg",
+            "node": "unifyPerson",
             "type": "main",
             "index": 0
           }
@@ -1510,7 +1667,7 @@
       "main": [
         [
           {
-            "node": "Happy Call",
+            "node": "unifyDealId",
             "type": "main",
             "index": 0
           }
@@ -1532,7 +1689,7 @@
       "main": [
         [
           {
-            "node": "Happy Call",
+            "node": "unifyDealId",
             "type": "main",
             "index": 0
           }
@@ -1733,7 +1890,7 @@
       "main": [
         [
           {
-            "node": "Create Note",
+            "node": "Find Person Quiz",
             "type": "main",
             "index": 0
           }
@@ -1744,7 +1901,7 @@
       "main": [
         [
           {
-            "node": "Create Note",
+            "node": "Find Person Quiz",
             "type": "main",
             "index": 0
           }
@@ -1872,7 +2029,7 @@
       "main": [
         [
           {
-            "node": "Sales Call",
+            "node": "Code in JavaScript",
             "type": "main",
             "index": 0
           }
@@ -1905,7 +2062,7 @@
       "main": [
         [
           {
-            "node": "Create Note Form",
+            "node": "Search deals",
             "type": "main",
             "index": 0
           }
@@ -1993,7 +2150,95 @@
       "main": [
         [
           {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search deals": {
+      "main": [
+        [
+          {
+            "node": "Create Note Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "unifyPerson": {
+      "main": [
+        [
+          {
+            "node": "Search Deal Reg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "unifyDealId": {
+      "main": [
+        [
+          {
+            "node": "Happy Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
             "node": "Sales Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Person Quiz": {
+      "main": [
+        [
+          {
+            "node": "Extract Person Quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Person Quiz": {
+      "main": [
+        [
+          {
+            "node": "Search Deal Quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Deal Quiz": {
+      "main": [
+        [
+          {
+            "node": "Extract Deal Quiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Deal Quiz": {
+      "main": [
+        [
+          {
+            "node": "Create Note",
             "type": "main",
             "index": 0
           }
@@ -2005,11 +2250,116 @@
     "executionOrder": "v1"
   },
   "staticData": null,
-  "meta": null,
-  "pinData": {},
-  "versionId": "00b2e9b6-f006-4ab3-8c6f-179ac1832f49",
-  "activeVersionId": "00b2e9b6-f006-4ab3-8c6f-179ac1832f49",
-  "versionCounter": 102,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "connection": "upgrade",
+            "host": "irn8n.javidmgdm.com",
+            "x-real-ip": "193.163.201.132",
+            "x-forwarded-for": "193.163.201.132",
+            "x-forwarded-proto": "https",
+            "content-length": "1902",
+            "content-type": "application/json",
+            "x-webhook-signature": "0bb213cae8bd5f0b6d275672de809f91b047cd2422a78011b3382f251751aa00",
+            "x-idempotency-key": "79314643-dc50-4e58-a777-e8f7cab494f4",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate",
+            "user-agent": "Python/3.11 aiohttp/3.9.3"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "event_id": "79314643-dc50-4e58-a777-e8f7cab494f4",
+            "event_time": "2026-02-23T05:41:56.279010Z",
+            "source": "jmgdmdorebot@telegram",
+            "platform": "telegram",
+            "event": {
+              "type": "lesson",
+              "action": "complete",
+              "status": "success"
+            },
+            "user": {
+              "telegram_id": 518530603,
+              "platform": "telegram",
+              "username": "Mmehrizisani",
+              "first_name": "Mohammad",
+              "last_name": "Mehrizi Sani",
+              "registration_data": {
+                "first_name": "محمد",
+                "last_name": "مهریزی ثانی",
+                "mobile": "09151106213"
+              },
+              "tags": [],
+              "referral_code": "44A89EDF",
+              "referred_by": null,
+              "is_active": true,
+              "is_completed": false,
+              "lead_score": 36,
+              "phone": "09151106213",
+              "created_at": "2026-02-22T06:05:21.809442+00:00",
+              "last_activity_at": "2026-02-23T05:41:56.192066+00:00"
+            },
+            "course": {
+              "id": 2,
+              "title": "دوره خروج از بحران"
+            },
+            "lesson": {
+              "id": 6,
+              "title": "درس اول: بازگشت کنترل",
+              "order": 2,
+              "lesson_number": 1
+            },
+            "progress": {
+              "percent": 22.2,
+              "completed": 2,
+              "total": 9
+            },
+            "payload": {
+              "fields_to_update": {
+                "person.name": "محمد",
+                "person.last_name": "Mehrizi Sani",
+                "person.phone": "09151106213",
+                "person.telegram_id": 518530603,
+                "person.platform": "telegram",
+                "person.telegram_username": "Mmehrizisani",
+                "person.first_name": "Mohammad"
+              },
+              "note_to_create": "",
+              "crm_field_mapping": {
+                "name": "person.name",
+                "full_name": "person.name",
+                "last_name": "person.last_name",
+                "family": "person.last_name",
+                "phone": "person.phone",
+                "mobile": "person.phone",
+                "email": "person.email",
+                "first_name": "person.name"
+              },
+              "lead_score": 36,
+              "lead_score_field_json": "{}"
+            },
+            "security": {
+              "signature": "0bb213cae8bd5f0b6d275672de809f91b047cd2422a78011b3382f251751aa00",
+              "idempotency_key": "79314643-dc50-4e58-a777-e8f7cab494f4"
+            }
+          },
+          "webhookUrl": "https://irn8n.javidmgdm.com/webhook/course-bot",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "versionId": "6b6a2d0b-51a7-4a08-b418-430bfb443335",
+  "activeVersionId": "6b6a2d0b-51a7-4a08-b418-430bfb443335",
+  "versionCounter": 430,
   "triggerCount": 1,
   "tags": [
     {

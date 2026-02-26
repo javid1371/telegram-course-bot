@@ -278,12 +278,19 @@ class ReminderService:
             description=description,
         )
 
-        # Build keyboard — quiz-aware button text
+        # Build keyboard — form/quiz-aware button text
         has_quiz = bool(next_lesson.quiz_data and next_lesson.quiz_data.get("questions"))
+        has_form = bool(next_lesson.form_data and next_lesson.form_data.get("fields"))
+        if has_form:
+            btn_text = USER_BUTTONS["lesson_seen_form"]
+        elif has_quiz:
+            btn_text = USER_BUTTONS["lesson_seen_quiz"]
+        else:
+            btn_text = USER_BUTTONS["lesson_seen_delayed"]
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(
-                text=USER_BUTTONS["lesson_seen_quiz"] if has_quiz else USER_BUTTONS["lesson_seen_delayed"],
+                text=btn_text,
                 callback_data=f"confirm_lesson:{next_lesson.id}"
             )
         )
@@ -564,9 +571,16 @@ class ReminderService:
             # Build inline keyboard with confirm button
             builder = InlineKeyboardBuilder()
             has_quiz = bool(lesson.quiz_data and lesson.quiz_data.get("questions"))
+            has_form = bool(lesson.form_data and lesson.form_data.get("fields"))
+            if has_form:
+                btn_text = USER_BUTTONS["lesson_seen_form"]
+            elif has_quiz:
+                btn_text = USER_BUTTONS["lesson_seen_quiz"]
+            else:
+                btn_text = USER_BUTTONS["lesson_seen_delayed"]
             builder.row(
                 InlineKeyboardButton(
-                    text=USER_BUTTONS["lesson_seen_quiz"] if has_quiz else USER_BUTTONS["lesson_seen_delayed"],
+                    text=btn_text,
                     callback_data=f"confirm_lesson:{lesson.id}",
                 )
             )
