@@ -12,6 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database import async_session_maker
 from database.models import ContentType, ScheduledMessage, MessageStatus, QuizAttempt, FormResponse
+from sqlalchemy import select as sa_select
 from services.user_service import UserService
 from services.lesson_service import LessonService
 from services.event_emitter import emit
@@ -856,6 +857,19 @@ async def confirm_lesson(callback: CallbackQuery, state: FSMContext):
             "lesson", "confirm", user, session,
             lesson={"id": lesson_id, "title": current_lesson.title, "order": current_lesson.order, "lesson_number": current_lesson.lesson_number},
         )
+
+        # If lesson has a form and user hasn't submitted it yet, start form filling.
+        # The form flow will handle quiz/complete after submission.
+        if current_lesson.form_data and current_lesson.form_data.get("fields"):
+            existing_form = await session.execute(
+                sa_select(FormResponse).where(
+                    FormResponse.user_id == user.id,
+                    FormResponse.lesson_id == lesson_id,
+                )
+            )
+            if not existing_form.scalar_one_or_none():
+                await _start_form_filling(callback.message, state, current_lesson, user.id)
+                return
 
         # If lesson has a quiz, start quiz instead of completing
         if current_lesson.quiz_data and current_lesson.quiz_data.get("questions"):

@@ -327,7 +327,7 @@ class ReminderService:
                 title=next_lesson.title,
                 description=next_lesson.description or '',
             )
-            await self.bot.send_message(chat_id=chat_id, text=form_text)
+            await self.bot.send_message(chat_id=chat_id, text=form_text, reply_markup=keyboard)
         else:
             await self.bot.send_message(chat_id=chat_id, text=lesson_text, reply_markup=keyboard)
 
