@@ -290,7 +290,7 @@ async def get_sms_status(_=Depends(get_current_user)):
     """Get SMS service status and engagement config"""
     import os
     from sqlalchemy import func
-    from database.models import ScheduledMessage, User
+    from database.models import ScheduledMessage, User, MessageStatus
 
     sms_enabled = os.getenv("SMS_ENABLED", "false").lower() in ("true", "1", "yes")
     has_api_key = bool(os.getenv("KAVENEGAR_API_KEY"))
@@ -307,7 +307,7 @@ async def get_sms_status(_=Depends(get_current_user)):
         sms_sent = (await session.execute(
             select(func.count(ScheduledMessage.id)).where(
                 ScheduledMessage.message_type == 'sms_nudge',
-                ScheduledMessage.status == 'sent'
+                ScheduledMessage.status == MessageStatus.SENT
             )
         )).scalar() or 0
 
