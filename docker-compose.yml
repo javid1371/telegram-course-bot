@@ -79,6 +79,11 @@ services:
       # ── Bidirectional sync ──
       SYNC_PEER_URL: ${SYNC_PEER_URL:-}
       SYNC_SECRET: ${SYNC_SECRET:-}
+
+      # ── SMS Re-engagement (Kavenegar) ──
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
+      KAVENEGAR_SENDER: ${KAVENEGAR_SENDER:-}
     volumes:
       - ./files:/app/files
       - ./backups:/app/backups

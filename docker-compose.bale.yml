@@ -91,6 +91,11 @@ services:
       CROSS_PLATFORM_BOT_LINK: ${CROSS_PLATFORM_BOT_LINK:-}
       CROSS_PLATFORM_BOT_NAME: ${CROSS_PLATFORM_BOT_NAME:-}
 
+      # ── SMS Re-engagement (Kavenegar) ──
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
+      KAVENEGAR_SENDER: ${KAVENEGAR_SENDER:-}
+
       # ── Other ──
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     extra_hosts:
