@@ -1,7 +1,7 @@
 """add engagement features (streak, badges)
 
 Revision ID: engage001
-Revises: salesowners001
+Revises: shadowuser001
 Create Date: 2026-02-27
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = 'engage001'
-down_revision = 'salesowners001'
+down_revision = 'shadowuser001'
 branch_labels = None
 depends_on = None
 
