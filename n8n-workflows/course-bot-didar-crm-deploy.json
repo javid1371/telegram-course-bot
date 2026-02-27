@@ -1,5 +1,5 @@
 {
-  "name": "Course Bot - Didar CRM (v6)",
+  "name": "Course Bot - Didar CRM (v8-fix)",
   "nodes": [
     {
       "id": "webhook",
@@ -27,7 +27,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',\n  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',\n  OWNERS: [\n    {id: 'OWNER_GUID_1', name: 'Owner 1', weight: 3},\n    {id: 'OWNER_GUID_2', name: 'Owner 2', weight: 2},\n  ],\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',\n  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE',\n    won: 'STAGE_GUID_HERE'\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\n// Dynamic CRM field mapping from bot\nconst botMapping = payload.crm_field_mapping || {};\nfor (const [key, val] of Object.entries(botMapping)) {\n  if (val && !val.startsWith('person.') && val !== 'note') {\n    CONFIG.CUSTOM_FIELDS[key] = val;\n  }\n}\nconst phoneRaw = user.phone || (user.registration_data?.phone || user.registration_data?.mobile || '');\nconst phoneSearch = (function(p) { p = (p||'').replace(/[^0-9]/g, ''); return p.length >= 10 ? p.slice(-10) : p; })(phoneRaw);\nreturn [{json: {...body, CONFIG, action,\n  user_phone: phoneRaw,\n  phone_search: phoneSearch,\n  user_name: (user.registration_data?.first_name||user.first_name||'') + ' ' + (user.registration_data?.last_name||user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.lesson_number || lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
+        "jsCode": "\nconst CONFIG = {\n  WEBHOOK_SECRET: 'MyStr0ngS3cret_2026!',\n  DIDAR_API_KEY: '1t31qjd4bl43cxej1yybhr2uf24ael2a',\n  OWNERS: [\n    {id: 'a52a4294-f773-48cf-8201-d4402f7b7780', name: 'عباسی', weight: 3},\n    {id: 'f4d3c7ad-3fb4-42f3-bf78-04ca86a24a1f', name: 'غلامی', weight: 2},\n  ],\n  PIPELINE_ID: '9b0e5024-4822-4833-abe6-8ca426a937ae',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n  ACTIVITY_TYPE_SALES: 'dc40fdb0-f8a5-4a40-80fe-1102a8a8b9f3',\n  ACTIVITY_TYPE_FOLLOWUP: '3b9512e1-663c-4265-827e-43fa5bcee70e',\n  STAGES: {\n    register: 'b7e97097-ff9b-4207-a2e7-07dd2ea606af',\n    lesson_1: 'ffa64a67-02e0-462b-a0c2-60c85eee6af5', lesson_2: 'bcfe1289-12bf-4ee6-88e7-2dcf0ed48469',\n    lesson_3: '4223a51c-544b-41e2-94bc-1e99016fbaba', lesson_4: '09856491-6d78-40df-b3ed-c80083e77a8f',\n    lesson_5: '0fcb3769-e1ad-45d5-8847-e51e97065d85', lesson_6: 'aee7d1c1-5f18-43e8-b1cb-050d59ce3517',\n    lesson_7: 'd9fc8133-052f-465b-9289-4211272b6e18', lesson_8: '6faab0b4-be10-478d-9655-bf41eca744a8',\n    sales_wait: '6faab0b4-be10-478d-9655-bf41eca744a8',\n    followup_1: 'be5d2b7a-4cf6-4b5d-873f-a3a76ccf2310', followup_2: 'daa24b66-5151-4e57-b08e-032a2961c339',\n    followup_3: '3d3cf5e9-0726-43db-9e01-885c50c3b2bd',\n    won: ''\n  },\n  CUSTOM_FIELDS: {\n    monthly_income: 'Field_996_0_26', staff_count: 'Field_996_0_25',\n    job: 'J', best_call_time: 'Field_996_0_31',\n    lead_score: 'Field_996_12_30', city: 'Field_996_0_11'\n  }\n};\nconst body = $input.first().json.body || $input.first().json;\nconst event = body.event || {};\nconst user = body.user || {};\nconst course = body.course || {};\nconst lesson = body.lesson || {};\nconst progress = body.progress || {};\nconst payload = body.payload || {};\nconst eventType = event.type || '';\nconst eventAction = event.action || '';\nconst action = eventType + '.' + eventAction;\n// Dynamic CRM field mapping from bot\nconst botMapping = payload.crm_field_mapping || {};\nfor (const [key, val] of Object.entries(botMapping)) {\n  if (val && !val.startsWith('person.') && val !== 'note') {\n    CONFIG.CUSTOM_FIELDS[key] = val;\n  }\n}\nconst phoneRaw = user.phone || (user.registration_data?.phone || user.registration_data?.mobile || '');\nconst phoneSearch = (function(p) { p = (p||'').replace(/[^0-9]/g, ''); return p.length >= 10 ? p.slice(-10) : p; })(phoneRaw);\nreturn [{json: {...body, CONFIG, action,\n  user_phone: phoneRaw,\n  phone_search: phoneSearch,\n  user_name: (user.registration_data?.first_name||user.first_name||'') + ' ' + (user.registration_data?.last_name||user.last_name||''),\n  course_title: course.title || '',\n  lesson_title: lesson.title || '',\n  lesson_order: lesson.lesson_number || lesson.order || 0,\n  progress_percent: progress.percent || 0,\n  progress_completed: progress.completed || 0,\n  progress_total: progress.total || 0\n}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -259,8 +259,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -331,8 +331,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -455,8 +455,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -517,8 +517,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -610,8 +610,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -668,8 +668,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -761,8 +761,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -828,8 +828,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -858,8 +858,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -904,8 +904,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -942,8 +942,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1001,8 +1001,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1056,8 +1056,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1097,8 +1097,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1181,8 +1181,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1224,8 +1224,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1282,8 +1282,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1375,8 +1375,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1422,8 +1422,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1452,8 +1452,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1526,8 +1526,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {
@@ -1564,8 +1564,8 @@
       ],
       "credentials": {
         "didarApi": {
-          "id": "",
-          "name": "Didar CRM"
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
         }
       },
       "parameters": {

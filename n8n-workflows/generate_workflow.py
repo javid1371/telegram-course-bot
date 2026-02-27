@@ -629,7 +629,7 @@ const personOwnerId = found?.OwnerId || '';
 const approvedIds = (prev.CONFIG?.OWNERS || []).map(o => o.id);
 const ownerId = approvedIds.includes(personOwnerId) ? personOwnerId : prev.ownerId;
 
-return [{json:{...prev,personId,ownerId,lastName:lastName||prev.userName}}];
+return [{json:{...prev,personId,ownerId,lastName:lastName||prev.userName,skip:false}}];
 """
     add_node({
         "id": "extract_person_lesson",
@@ -638,6 +638,23 @@ return [{json:{...prev,personId,ownerId,lastName:lastName||prev.userName}}];
         "typeVersion": 1,
         "position": [1650, 250],
         "parameters": {"jsCode": extract_person_lesson_code, "mode": "runOnceForAllItems"}
+    })
+
+    # Guard: skip Update Score when person not found
+    add_node({
+        "id": "if_person_found_lesson",
+        "name": "IF Person Found Lesson",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [1750, 250],
+        "parameters": {
+            "conditions": {
+                "boolean": [{
+                    "value1": "={{$json.skip}}",
+                    "value2": False
+                }]
+            }
+        }
     })
 
     # ── Bug 8 fix: Update person lead_score field ──
@@ -850,7 +867,9 @@ return [{json:{...prev}}];
     connect("IF Skip Lesson", "Prep Respond OK", 0)             # true: skip → respond OK
     connect("IF Skip Lesson", "Find Person Lesson", 1)          # false: not skip → continue
     connect("Find Person Lesson", "Extract Person Lesson")
-    connect("Extract Person Lesson", "Update Score Lesson")
+    connect("Extract Person Lesson", "IF Person Found Lesson")
+    connect("IF Person Found Lesson", "Update Score Lesson", 0)   # true: person found
+    connect("IF Person Found Lesson", "Prep Respond OK", 1)       # false: person not found
     connect("Update Score Lesson", "Recover Person Lesson")
     connect("Recover Person Lesson", "Search Deal V2")
     connect("Search Deal V2", "Extract Deal")
@@ -1029,7 +1048,22 @@ return [{json:{...prev,dealId:deal?.Id||'',personId:prev.personId}}];
         }
     })
 
-    connect("Update Person Fields", "Search Deal Form V2")
+    # Recover data lost after Didar API call (Update Person Fields returns API response, not our data)
+    recover_form_data_code = r"""
+const prev=$('Extract Person Form').first().json;
+return [{json:{...prev}}];
+"""
+    add_node({
+        "id": "recover_form_data",
+        "name": "Recover Form Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1950, 500],
+        "parameters": {"jsCode": recover_form_data_code, "mode": "runOnceForAllItems"}
+    })
+
+    connect("Update Person Fields", "Recover Form Data")
+    connect("Recover Form Data", "Search Deal Form V2")
     connect("Search Deal Form V2", "Extract Deal Form")
     connect("Extract Deal Form", "Create Note Form")
 
@@ -1288,7 +1322,7 @@ const personOwnerId = found?.OwnerId || '';
 const approvedIds = (prev.CONFIG?.OWNERS || []).map(o => o.id);
 const ownerId = approvedIds.includes(personOwnerId) ? personOwnerId : prev.ownerId;
 
-return [{json:{...prev,personId,ownerId,lastName:lastName||prev.userName}}];
+return [{json:{...prev,personId,ownerId,lastName:lastName||prev.userName,skip:false}}];
 """
     add_node({
         "id": "extract_person_complete",
@@ -1297,6 +1331,23 @@ return [{json:{...prev,personId,ownerId,lastName:lastName||prev.userName}}];
         "typeVersion": 1,
         "position": [1550, 1150],
         "parameters": {"jsCode": extract_person_complete_code, "mode": "runOnceForAllItems"}
+    })
+
+    # Guard: skip Update Score when person not found
+    add_node({
+        "id": "if_person_found_complete",
+        "name": "IF Person Found Complete",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [1650, 1150],
+        "parameters": {
+            "conditions": {
+                "boolean": [{
+                    "value1": "={{$json.skip}}",
+                    "value2": False
+                }]
+            }
+        }
     })
 
     # ── Bug 8 fix: Update person lead_score ──
@@ -1525,7 +1576,9 @@ return [{json:{...prev,dealId:dealId||''}}];
     connect("Router", "Prep Complete", 6)
     connect("Prep Complete", "Find Person Complete")
     connect("Find Person Complete", "Extract Person Complete")
-    connect("Extract Person Complete", "Update Score Complete")
+    connect("Extract Person Complete", "IF Person Found Complete")
+    connect("IF Person Found Complete", "Update Score Complete", 0)   # true: person found
+    connect("IF Person Found Complete", "Prep Respond OK", 1)         # false: person not found
     connect("Update Score Complete", "Recover Person Complete")
     connect("Recover Person Complete", "Search Deal Complete V2")
     connect("Search Deal Complete V2", "Extract Deal Complete")
