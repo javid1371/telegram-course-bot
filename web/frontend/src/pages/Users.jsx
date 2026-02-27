@@ -105,6 +105,8 @@ export default function Users() {
                 <th className="px-4 py-3 text-right font-medium text-gray-600">وضعیت</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">پیشرفت</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">مسئول</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">🔥 استریک</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">🏅 نشان</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">امتیاز</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">تاریخ ثبت‌نام</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">عملیات</th>
@@ -152,6 +154,20 @@ export default function Users() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{u.assigned_owner_name || '—'}</td>
+                  <td className="px-4 py-3">
+                    {u.streak_days > 0 ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🔥 {u.streak_days}</span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(u.badges || []).length > 0 ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">🏅 {u.badges.length}</span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-mono">{u.lead_score}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
                     {u.created_at ? new Date(u.created_at).toLocaleDateString('fa-IR') : '—'}

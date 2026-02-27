@@ -359,4 +359,6 @@ export const settings = {
     method: 'PUT',
     body: JSON.stringify(data),
   }),
+  // SMS & Engagement
+  getSmsStatus: () => request('/settings/sms-status'),
 };

@@ -112,6 +112,35 @@ export default function Dashboard() {
         <StatCard label="درس امروز" value={data.lessons_completed_today} icon="🎯" color="purple" />
       </div>
 
+      {/* Engagement Stats */}
+      {data.engagement && (
+        <div className="bg-white rounded-xl border p-5 mb-6">
+          <h2 className="text-lg font-semibold mb-3">🔥 تعامل و انگیجمنت</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div className="text-center bg-orange-50 rounded-lg p-3 border border-orange-200">
+              <div className="text-2xl font-bold text-orange-700">{data.engagement.active_streaks?.toLocaleString('fa-IR') ?? '—'}</div>
+              <div className="text-xs text-orange-600 mt-1">استریک فعال</div>
+            </div>
+            <div className="text-center bg-purple-50 rounded-lg p-3 border border-purple-200">
+              <div className="text-2xl font-bold text-purple-700">{data.engagement.avg_streak?.toLocaleString('fa-IR') ?? '—'}</div>
+              <div className="text-xs text-purple-600 mt-1">میانگین استریک</div>
+            </div>
+            <div className="text-center bg-red-50 rounded-lg p-3 border border-red-200">
+              <div className="text-2xl font-bold text-red-700">{data.engagement.max_streak?.toLocaleString('fa-IR') ?? '—'}</div>
+              <div className="text-xs text-red-600 mt-1">🏆 بهترین رکورد</div>
+            </div>
+            <div className="text-center bg-amber-50 rounded-lg p-3 border border-amber-200">
+              <div className="text-2xl font-bold text-amber-700">{data.engagement.badge_holders?.toLocaleString('fa-IR') ?? '—'}</div>
+              <div className="text-xs text-amber-600 mt-1">🏅 دارندگان نشان</div>
+            </div>
+            <div className="text-center bg-green-50 rounded-lg p-3 border border-green-200">
+              <div className="text-2xl font-bold text-green-700">{data.engagement.sms_sent?.toLocaleString('fa-IR') ?? '۰'}</div>
+              <div className="text-xs text-green-600 mt-1">📱 SMS ارسال‌شده</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Platform breakdown */}
       {data.platforms && Object.keys(data.platforms).length > 0 && (
         <div className="bg-white rounded-xl border p-5 mb-6">

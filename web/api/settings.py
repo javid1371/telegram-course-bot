@@ -281,3 +281,84 @@ async def update_scoring_rule(rule_id: int, data: ScoringRuleUpdate, _=Depends(g
             setattr(rule, key, value)
         await session.commit()
         return {"status": "ok"}
+
+
+# ── SMS & Engagement Config ──────────────────────────────
+
+@router.get("/sms-status")
+async def get_sms_status(_=Depends(get_current_user)):
+    """Get SMS service status and engagement config"""
+    import os
+    from sqlalchemy import func
+    from database.models import ScheduledMessage, User
+
+    sms_enabled = os.getenv("SMS_ENABLED", "false").lower() in ("true", "1", "yes")
+    has_api_key = bool(os.getenv("KAVENEGAR_API_KEY"))
+    sender = os.getenv("KAVENEGAR_SENDER", "")
+
+    async with async_session_maker() as session:
+        # SMS stats
+        sms_total = (await session.execute(
+            select(func.count(ScheduledMessage.id)).where(
+                ScheduledMessage.message_type == 'sms_nudge'
+            )
+        )).scalar() or 0
+
+        sms_sent = (await session.execute(
+            select(func.count(ScheduledMessage.id)).where(
+                ScheduledMessage.message_type == 'sms_nudge',
+                ScheduledMessage.status == 'sent'
+            )
+        )).scalar() or 0
+
+        # Users with streaks
+        streak_users = (await session.execute(
+            select(func.count(User.id)).where(User.streak_days > 0)
+        )).scalar() or 0
+
+        # Users with badges
+        badge_users = (await session.execute(
+            select(func.count(User.id)).where(
+                User.badges.isnot(None),
+                func.json_array_length(User.badges) > 0
+            )
+        )).scalar() or 0
+
+        # Top streaks
+        top_streaks_q = (
+            select(User.first_name, User.last_name, User.streak_days, User.best_streak, User.badges)
+            .where(User.best_streak > 0)
+            .order_by(User.best_streak.desc())
+            .limit(10)
+        )
+        top_streaks = []
+        for row in (await session.execute(top_streaks_q)).all():
+            top_streaks.append({
+                "name": f"{row.first_name or ''} {row.last_name or ''}".strip() or "—",
+                "streak_days": row.streak_days,
+                "best_streak": row.best_streak,
+                "badges_count": len(row.badges) if row.badges else 0,
+            })
+
+    return {
+        "sms": {
+            "enabled": sms_enabled,
+            "configured": has_api_key,
+            "sender": sender[-4:] if len(sender) >= 4 else "****",
+            "total_queued": sms_total,
+            "total_sent": sms_sent,
+            "tiers": [
+                {"name": "سطح ۱", "after_hours": 72, "description": "۳ روز غیرفعالی"},
+                {"name": "سطح ۲", "after_hours": 168, "description": "۷ روز غیرفعالی"},
+                {"name": "سطح ۳", "after_hours": 336, "description": "۱۴ روز غیرفعالی"},
+            ],
+            "max_per_user": 3,
+            "min_progress": "40%",
+            "sending_hours": "۱۰ تا ۲۰ (ایران)",
+        },
+        "engagement": {
+            "streak_users": streak_users,
+            "badge_users": badge_users,
+            "top_streaks": top_streaks,
+        },
+    }

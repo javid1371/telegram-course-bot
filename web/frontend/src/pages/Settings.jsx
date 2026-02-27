@@ -7,6 +7,7 @@ const TABS = [
   { id: 'webhooks', label: '🔗 وب‌هوک‌ها' },
   { id: 'texts', label: '💬 متون ربات' },
   { id: 'scoring', label: '📊 امتیازدهی' },
+  { id: 'engagement', label: '🔥 تعامل و SMS' },
 ];
 
 /* ── Company Info Tab ────────────────────── */
@@ -580,7 +581,131 @@ function ScoringTab() {
 
 
 /* ── Main Settings Page ──────────────────── */
+/* ── Engagement & SMS Tab ──────────────── */
 
+function EngagementSmsTab() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    settings.getSmsStatus()
+      .then(setData)
+      .catch((e) => toast.error(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-center py-10 text-gray-400">در حال بارگذاری...</div>;
+  if (!data) return <div className="text-center py-10 text-red-400">خطا در دریافت اطلاعات</div>;
+
+  const sms = data.sms;
+  const engagement = data.engagement;
+
+  return (
+    <div className="space-y-6">
+      {/* SMS Status */}
+      <div>
+        <h3 className="font-bold text-gray-700 mb-3">📱 وضعیت SMS (کاوه‌نگار)</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white border rounded-lg p-4 text-center">
+            <div className={`text-lg font-bold ${sms.enabled ? 'text-green-600' : 'text-red-600'}`}>
+              {sms.enabled ? '✅ فعال' : '⛔ غیرفعال'}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">وضعیت سرویس</div>
+          </div>
+          <div className="bg-white border rounded-lg p-4 text-center">
+            <div className={`text-lg font-bold ${sms.configured ? 'text-green-600' : 'text-red-600'}`}>
+              {sms.configured ? '✅ پیکربندی شده' : '❌ بدون API Key'}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">کلید API</div>
+          </div>
+          <div className="bg-white border rounded-lg p-4 text-center">
+            <div className="text-lg font-bold text-blue-600">{sms.total_sent?.toLocaleString('fa-IR')}</div>
+            <div className="text-xs text-gray-500 mt-1">کل ارسال‌شده</div>
+          </div>
+          <div className="bg-white border rounded-lg p-4 text-center">
+            <div className="text-lg font-bold text-purple-600">****{sms.sender}</div>
+            <div className="text-xs text-gray-500 mt-1">شماره ارسال</div>
+          </div>
+        </div>
+
+        {/* SMS Tiers */}
+        <div className="bg-gray-50 rounded-lg border p-4">
+          <h4 className="text-sm font-bold text-gray-600 mb-2">سطوح ارسال SMS</h4>
+          <div className="space-y-2">
+            {sms.tiers.map((tier, i) => (
+              <div key={i} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border text-sm">
+                <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">{i + 1}</span>
+                <span className="font-medium">{tier.name}</span>
+                <span className="text-gray-500">—</span>
+                <span className="text-gray-600">{tier.description}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+            <span>📨 حداکثر: {sms.max_per_user} SMS برای هر کاربر</span>
+            <span>📊 حداقل پیشرفت: {sms.min_progress}</span>
+            <span>⏰ ساعات ارسال: {sms.sending_hours}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Engagement Stats */}
+      <div>
+        <h3 className="font-bold text-gray-700 mb-3">🔥 آمار تعامل</h3>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-orange-700">{engagement.streak_users?.toLocaleString('fa-IR')}</div>
+            <div className="text-xs text-orange-600 mt-1">کاربران با استریک فعال</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-amber-700">{engagement.badge_users?.toLocaleString('fa-IR')}</div>
+            <div className="text-xs text-amber-600 mt-1">دارندگان نشان</div>
+          </div>
+        </div>
+
+        {/* Top Streaks Leaderboard */}
+        {engagement.top_streaks?.length > 0 && (
+          <div className="bg-white border rounded-lg overflow-hidden">
+            <div className="bg-gray-50 px-4 py-2 border-b">
+              <h4 className="text-sm font-bold text-gray-600">🏆 رتبه‌بندی استریک</h4>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-right text-gray-500">#</th>
+                  <th className="px-4 py-2 text-right text-gray-500">نام</th>
+                  <th className="px-4 py-2 text-center text-gray-500">🔥 فعلی</th>
+                  <th className="px-4 py-2 text-center text-gray-500">⚡ بهترین</th>
+                  <th className="px-4 py-2 text-center text-gray-500">🏅 نشان</th>
+                </tr>
+              </thead>
+              <tbody>
+                {engagement.top_streaks.map((u, i) => (
+                  <tr key={i} className="border-t hover:bg-gray-50">
+                    <td className="px-4 py-2 font-bold text-gray-400">{i + 1}</td>
+                    <td className="px-4 py-2 font-medium">{u.name}</td>
+                    <td className="px-4 py-2 text-center">
+                      {u.streak_days > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-bold">{u.streak_days}</span>}
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">{u.best_streak}</span>
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      {u.badges_count > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">{u.badges_count}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+/* ── Main Settings Page ────────────────────── */
 export default function Settings() {
   const [tab, setTab] = useState('company');
 
@@ -611,6 +736,7 @@ export default function Settings() {
         {tab === 'webhooks' && <WebhooksTab />}
         {tab === 'texts' && <BotTextsTab />}
         {tab === 'scoring' && <ScoringTab />}
+        {tab === 'engagement' && <EngagementSmsTab />}
       </div>
     </div>
   );

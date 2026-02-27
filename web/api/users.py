@@ -101,6 +101,8 @@ async def list_users(
                     "registration_data": u.registration_data,
                     "assigned_owner_name": u.assigned_owner_name,
                     "progress_summary": progress_counts.get(u.id, {"total": 0, "completed": 0}),
+                    "streak_days": u.streak_days if hasattr(u, 'streak_days') else 0,
+                    "badges": u.badges if hasattr(u, 'badges') else [],
                     "created_at": u.created_at.isoformat() if u.created_at else None,
                     "last_activity_at": u.last_activity_at.isoformat() if u.last_activity_at else None,
                 }
@@ -364,6 +366,11 @@ async def get_user(user_id: int, _=Depends(get_current_user)):
             "double_speed_courses": user.double_speed_courses,
             "fast_track_courses": user.fast_track_courses,
             "assigned_owner_name": user.assigned_owner_name,
+            # Engagement
+            "streak_days": user.streak_days if hasattr(user, 'streak_days') else 0,
+            "best_streak": user.best_streak if hasattr(user, 'best_streak') else 0,
+            "last_streak_date": user.last_streak_date.isoformat() if hasattr(user, 'last_streak_date') and user.last_streak_date else None,
+            "badges": user.badges if hasattr(user, 'badges') else [],
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "last_activity_at": user.last_activity_at.isoformat() if user.last_activity_at else None,
             "progress": [

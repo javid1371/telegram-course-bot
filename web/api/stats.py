@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 
 from database import async_session_maker
-from database.models import User, Course, Lesson, UserProgress
+from database.models import User, Course, Lesson, UserProgress, ScheduledMessage
 from web.auth import get_current_user
 
 router = APIRouter()
@@ -71,6 +71,37 @@ async def get_stats(_=Depends(get_current_user)):
             .order_by('day')
         )).all()
 
+        # ── Engagement stats ──
+        # Average streak
+        avg_streak = (await session.execute(
+            select(func.avg(User.streak_days)).where(User.streak_days > 0)
+        )).scalar() or 0
+
+        # Users with active streaks (streak > 0)
+        active_streaks = (await session.execute(
+            select(func.count(User.id)).where(User.streak_days > 0)
+        )).scalar() or 0
+
+        # Best streak across all users
+        max_streak = (await session.execute(
+            select(func.max(User.best_streak))
+        )).scalar() or 0
+
+        # Badge distribution
+        badge_holders = (await session.execute(
+            select(func.count(User.id)).where(
+                User.badges.isnot(None),
+                func.json_array_length(User.badges) > 0
+            )
+        )).scalar() or 0
+
+        # SMS stats (from scheduled messages with type 'sms_nudge')
+        sms_sent = (await session.execute(
+            select(func.count(ScheduledMessage.id)).where(
+                ScheduledMessage.message_type == 'sms_nudge'
+            )
+        )).scalar() or 0
+
         return {
             "total_users": total_users,
             "active_users_7d": active_users,
@@ -85,6 +116,13 @@ async def get_stats(_=Depends(get_current_user)):
                 {"date": row[0].isoformat() if row[0] else None, "count": row[1]}
                 for row in daily_regs
             ],
+            "engagement": {
+                "avg_streak": round(float(avg_streak), 1),
+                "active_streaks": active_streaks,
+                "max_streak": max_streak,
+                "badge_holders": badge_holders,
+                "sms_sent": sms_sent,
+            },
         }
 
 

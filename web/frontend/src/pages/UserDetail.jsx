@@ -4,11 +4,23 @@ import { users } from '../api';
 
 const TABS = [
   { key: 'overview', label: 'نمای کلی', icon: '📋' },
+  { key: 'engagement', label: 'تعامل', icon: '🔥' },
   { key: 'progress', label: 'پیشرفت دروس', icon: '📚' },
   { key: 'quizzes', label: 'کوئیزها', icon: '❓' },
   { key: 'forms', label: 'فرم‌ها', icon: '📝' },
   { key: 'messages', label: 'پیام‌ها', icon: '💬' },
 ];
+
+const BADGE_INFO = {
+  starter: { emoji: '🌱', label: 'شروع‌کننده' },
+  motivated: { emoji: '💪', label: 'با‌انگیزه' },
+  streak_5: { emoji: '🔥', label: '۵ روز متوالی' },
+  streak_10: { emoji: '⚡', label: '۱۰ روز متوالی' },
+  halfway: { emoji: '🏔️', label: 'نیمه راه' },
+  almost: { emoji: '🎯', label: 'نزدیک خط پایان' },
+  fast_learner: { emoji: '🚀', label: 'یادگیرنده سریع' },
+  graduate: { emoji: '🎓', label: 'فارغ‌التحصیل' },
+};
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -117,6 +129,7 @@ export default function UserDetail() {
 
       {/* Tab Content */}
       {tab === 'overview' && <OverviewTab user={user} />}
+      {tab === 'engagement' && <EngagementTab user={user} />}
       {tab === 'progress' && <ProgressTab user={user} />}
       {tab === 'quizzes' && <QuizzesTab user={user} />}
       {tab === 'forms' && <FormsTab user={user} />}
@@ -134,11 +147,12 @@ function OverviewTab({ user }) {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard title="دروس دیده" value={totalLessons} icon="📖" />
         <StatCard title="دروس تکمیل" value={completedLessons} icon="✅" color="green" />
         <StatCard title="کوئیزها" value={user.quizzes?.length || 0} icon="❓" color="purple" />
-        <StatCard title="فرم‌ها" value={user.forms?.length || 0} icon="📝" color="amber" />
+        <StatCard title="🔥 استریک" value={user.streak_days || 0} icon="🔥" color="amber" />
+        <StatCard title="🏅 نشان‌ها" value={(user.badges || []).length} icon="🏅" color="amber" />
       </div>
 
       {/* Progress Bar */}
@@ -183,6 +197,87 @@ function OverviewTab({ user }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Engagement Tab ── */
+function EngagementTab({ user }) {
+  const badges = user.badges || [];
+
+  return (
+    <div className="space-y-6">
+      {/* Streak Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="bg-orange-50 rounded-xl border border-orange-200 p-5 text-center">
+          <div className="text-4xl mb-2">🔥</div>
+          <div className="text-3xl font-bold text-orange-700">{user.streak_days || 0}</div>
+          <div className="text-sm text-orange-600 mt-1">روز متوالی فعلی</div>
+        </div>
+        <div className="bg-purple-50 rounded-xl border border-purple-200 p-5 text-center">
+          <div className="text-4xl mb-2">⚡</div>
+          <div className="text-3xl font-bold text-purple-700">{user.best_streak || 0}</div>
+          <div className="text-sm text-purple-600 mt-1">بهترین رکورد</div>
+        </div>
+        <div className="bg-blue-50 rounded-xl border border-blue-200 p-5 text-center">
+          <div className="text-4xl mb-2">📅</div>
+          <div className="text-xl font-bold text-blue-700">
+            {user.last_streak_date
+              ? new Date(user.last_streak_date).toLocaleDateString('fa-IR')
+              : '—'}
+          </div>
+          <div className="text-sm text-blue-600 mt-1">آخرین فعالیت streak</div>
+        </div>
+      </div>
+
+      {/* Badges */}
+      <div className="bg-white rounded-xl border p-6">
+        <h3 className="font-bold text-gray-700 mb-4">🏅 نشان‌های کسب شده ({badges.length})</h3>
+        {badges.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {badges.map((badge) => {
+              const info = BADGE_INFO[badge] || { emoji: '🏷️', label: badge };
+              return (
+                <div key={badge} className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-4 text-center">
+                  <div className="text-3xl mb-2">{info.emoji}</div>
+                  <div className="text-sm font-bold text-amber-800">{info.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-400">
+            <div className="text-4xl mb-2">🏷️</div>
+            <p>هنوز نشانی کسب نشده</p>
+          </div>
+        )}
+      </div>
+
+      {/* All Available Badges */}
+      <div className="bg-white rounded-xl border p-6">
+        <h3 className="font-bold text-gray-700 mb-4">🎯 همه نشان‌ها</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(BADGE_INFO).map(([key, info]) => {
+            const earned = badges.includes(key);
+            return (
+              <div
+                key={key}
+                className={`rounded-xl p-4 text-center border transition ${
+                  earned
+                    ? 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200'
+                    : 'bg-gray-50 border-gray-200 opacity-40'
+                }`}
+              >
+                <div className="text-3xl mb-2">{earned ? info.emoji : '🔒'}</div>
+                <div className={`text-sm font-bold ${earned ? 'text-amber-800' : 'text-gray-400'}`}>
+                  {info.label}
+                </div>
+                {earned && <div className="text-xs text-green-600 mt-1">✅ کسب شده</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
