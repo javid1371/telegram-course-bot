@@ -428,7 +428,7 @@ def _get_field_keyboard(field: dict):
 
 async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
     """Auto-deliver first lesson after registration (onboarding).
-    
+
     If a shadow user exists for this user's phone (created by cross-platform
     sync), the shadow is activated — i.e. the new user record is replaced by
     the shadow, keeping all its UserProgress / QuizAttempt / FormResponse

@@ -889,7 +889,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\n\n// Use bot-provided crm_form_fields_json if available, else build from CUSTOM_FIELDS\nlet customFieldsJson = d.payload?.crm_form_fields_json || '';\nif (!customFieldsJson) {\n  const map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\n  job:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\n  city:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\n  let cf={};\n  for(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\n  // Bug 8 fix: include lead_score in custom fields\n  const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n  if (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n    cf[C.CUSTOM_FIELDS.lead_score] = String(leadScore);\n  }\n  customFieldsJson = JSON.stringify(cf);\n}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\n\n// Build note text from form responses\nconst formTitle = d.payload?.form_title || d.lesson_title || 'فرم';\nlet noteLines = ['\\ud83d\\udccb پاسخ فرم: ' + formTitle];\nconst allResponses = d.payload?.form_responses || {};\nfor (const [key, val] of Object.entries(allResponses)) {\n  noteLines.push('\\u2022 ' + key + ': ' + String(val));\n}\nconst noteText = noteLines.join('\\\\n');\n\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',customFieldsJson,\nownerId,leadScore:d.payload?.lead_score||0,CONFIG:C,noteText,userName:d.user_name,lessonTitle:d.lesson_title,\napiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID}}];\n",
+        "jsCode": "\nconst d=$input.first().json; const C=d.CONFIG;\nconst f=d.payload?.form_responses||{};\n\n// Use bot-provided crm_form_fields_json if available, else build from CUSTOM_FIELDS\nlet customFieldsJson = d.payload?.crm_form_fields_json || '';\nif (!customFieldsJson) {\n  const map={monthly_income:C.CUSTOM_FIELDS.monthly_income,staff_count:C.CUSTOM_FIELDS.staff_count,\n  job:C.CUSTOM_FIELDS.job,best_call_time:C.CUSTOM_FIELDS.best_call_time,\n  city:C.CUSTOM_FIELDS.city,income_class:C.CUSTOM_FIELDS.income_class};\n  let cf={};\n  for(const[k,g] of Object.entries(map)){if(f[k]&&g&&g!=='FIELD_GUID')cf[g]=String(f[k]);}\n  // Bug 8 fix: include lead_score in custom fields\n  const leadScore = d.payload?.lead_score || d.user?.lead_score || 0;\n  if (C.CUSTOM_FIELDS.lead_score && C.CUSTOM_FIELDS.lead_score !== 'FIELD_GUID') {\n    cf[C.CUSTOM_FIELDS.lead_score] = String(leadScore);\n  }\n  customFieldsJson = JSON.stringify(cf);\n}\nconst ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';\n\n// Build note text from form responses\nconst formTitle = d.payload?.form_title || d.lesson_title || 'فرم';\nlet noteLines = ['\\ud83d\\udccb پاسخ فرم: ' + formTitle];\nconst allResponses = d.payload?.form_responses || {};\nfor (const [key, val] of Object.entries(allResponses)) {\n  noteLines.push('\\u2022 ' + key + ': ' + String(val));\n}\nconst noteText = noteLines.join('\\\\n');\n\nconst firstName = d.user?.registration_data?.first_name || d.user?.first_name || '';\nconst lastName = d.user?.registration_data?.last_name || d.user?.last_name || 'User';\n\nreturn [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',customFieldsJson,\nownerId,leadScore:d.payload?.lead_score||0,CONFIG:C,noteText,userName:d.user_name,\nfirstName,lastName,lessonTitle:d.lesson_title,\napiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID,\ncompanyId:C.COMPANY_ID}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -927,7 +927,70 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst list = resp?.search_respons?.List || resp?.Response?.List || [];\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\nconst lastName = found?.LastName || 'User';\nif(!personId) return [{json:{skip:true,reason:'person not found by phone'}}];\n\n// Preserve owner from person if approved\nconst personOwnerId = found?.OwnerId || '';\nconst C = prev.CONFIG;\nconst approvedIds = (C.OWNERS || []).map(o => o.id);\nconst ownerId = approvedIds.includes(personOwnerId) ? personOwnerId : prev.ownerId;\n\nreturn [{json:{...prev,personId,ownerId,lastName}}];\n",
+        "jsCode": "\nconst prev=$('Prep Form').first().json;\nconst resp=$input.first().json;\nconst list = resp?.search_respons?.List || resp?.Response?.List || [];\nconst found = list.length > 0 ? list[0] : null;\nconst personId = found?.Id || null;\nconst lastName = found?.LastName || prev.lastName || 'User';\nif(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found by phone'}}];\n\n// Preserve owner from person if approved\nconst personOwnerId = found?.OwnerId || '';\nconst C = prev.CONFIG;\nconst approvedIds = (C.OWNERS || []).map(o => o.id);\nconst ownerId = approvedIds.includes(personOwnerId) ? personOwnerId : prev.ownerId;\n\nreturn [{json:{...prev,personId,ownerId,lastName,skip:false}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "if_person_found_form",
+      "name": "IF Person Found Form",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}",
+              "value2": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "create_person_form",
+      "name": "Create Person Form",
+      "type": "n8n-nodes-didar-crm.didarCrm",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        600
+      ],
+      "credentials": {
+        "didarApi": {
+          "id": "Hu6Sv3Cuz88ZlcNn",
+          "name": "MasireSefidDidar"
+        }
+      },
+      "parameters": {
+        "resource": "person",
+        "operation": "create",
+        "FirstName": "={{$json.firstName}}",
+        "LastName": "={{$json.lastName}}",
+        "MobilePhone": "={{$json.phone}}",
+        "OwnerMode": "manual",
+        "OwnerIdManual": "={{$json.ownerId}}",
+        "additionalFields": {
+          "CompanyId": "={{$json.companyId}}",
+          "VisibilityType": "Owner"
+        }
+      }
+    },
+    {
+      "id": "get_new_person_form_id",
+      "name": "Get New Person Form ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1950,
+        600
+      ],
+      "parameters": {
+        "jsCode": "\nconst prev=$('Extract Person Form').first().json;\nconst resp=$input.first().json;\nconst newId=resp?.Response?.Id||'';\nreturn [{json:{...prev,personId:newId,skip:false}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -937,7 +1000,7 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        1800,
+        2100,
         500
       ],
       "credentials": {
@@ -964,7 +1027,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2050,
+        2400,
         500
       ],
       "parameters": {
@@ -982,7 +1045,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        2300,
+        2650,
         500
       ],
       "parameters": {
@@ -996,7 +1059,7 @@
       "type": "n8n-nodes-didar-crm.didarCrm",
       "typeVersion": 1,
       "position": [
-        2550,
+        2900,
         500
       ],
       "credentials": {
@@ -1023,11 +1086,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        1950,
+        2250,
         500
       ],
       "parameters": {
-        "jsCode": "\nconst prev=$('Extract Person Form').first().json;\nreturn [{json:{...prev}}];\n",
+        "jsCode": "\nlet prev;\ntry { prev=$('Get New Person Form ID').first().json; }\ncatch(e) { prev=$('Extract Person Form').first().json; }\nreturn [{json:{...prev}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -2104,6 +2167,46 @@
       ]
     },
     "Extract Person Form": {
+      "main": [
+        [
+          {
+            "node": "IF Person Found Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Person Found Form": {
+      "main": [
+        [
+          {
+            "node": "Update Person Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Person Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Person Form": {
+      "main": [
+        [
+          {
+            "node": "Get New Person Form ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get New Person Form ID": {
       "main": [
         [
           {

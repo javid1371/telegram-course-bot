@@ -916,9 +916,14 @@ for (const [key, val] of Object.entries(allResponses)) {
 }
 const noteText = noteLines.join('\\n');
 
+const firstName = d.user?.registration_data?.first_name || d.user?.first_name || '';
+const lastName = d.user?.registration_data?.last_name || d.user?.last_name || 'User';
+
 return [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',customFieldsJson,
-ownerId,leadScore:d.payload?.lead_score||0,CONFIG:C,noteText,userName:d.user_name,lessonTitle:d.lesson_title,
-apiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID}}];
+ownerId,leadScore:d.payload?.lead_score||0,CONFIG:C,noteText,userName:d.user_name,
+firstName,lastName,lessonTitle:d.lesson_title,
+apiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID,
+companyId:C.COMPANY_ID}}];
 """
 
     add_node({
@@ -951,8 +956,8 @@ const resp=$input.first().json;
 const list = resp?.search_respons?.List || resp?.Response?.List || [];
 const found = list.length > 0 ? list[0] : null;
 const personId = found?.Id || null;
-const lastName = found?.LastName || 'User';
-if(!personId) return [{json:{skip:true,reason:'person not found by phone'}}];
+const lastName = found?.LastName || prev.lastName || 'User';
+if(!personId) return [{json:{...prev,personId:null,skip:true,reason:'person not found by phone'}}];
 
 // Preserve owner from person if approved
 const personOwnerId = found?.OwnerId || '';
@@ -960,7 +965,7 @@ const C = prev.CONFIG;
 const approvedIds = (C.OWNERS || []).map(o => o.id);
 const ownerId = approvedIds.includes(personOwnerId) ? personOwnerId : prev.ownerId;
 
-return [{json:{...prev,personId,ownerId,lastName}}];
+return [{json:{...prev,personId,ownerId,lastName,skip:false}}];
 """
 
     add_node({
@@ -972,12 +977,67 @@ return [{json:{...prev,personId,ownerId,lastName}}];
         "parameters": {"jsCode": extract_person_form_code, "mode": "runOnceForAllItems"}
     })
 
+    # Guard: if person not found, create new person first
+    add_node({
+        "id": "if_person_found_form",
+        "name": "IF Person Found Form",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [1650, 500],
+        "parameters": {
+            "conditions": {
+                "boolean": [{
+                    "value1": "={{$json.skip}}",
+                    "value2": False
+                }]
+            }
+        }
+    })
+
+    # Create person when not found in Form branch
+    add_node({
+        "id": "create_person_form",
+        "name": "Create Person Form",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1800, 600],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "create",
+            "FirstName": "={{$json.firstName}}",
+            "LastName": "={{$json.lastName}}",
+            "MobilePhone": "={{$json.phone}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "additionalFields": {
+                "CompanyId": "={{$json.companyId}}",
+                "VisibilityType": "Owner"
+            }
+        }
+    })
+
+    get_new_person_form_code = r"""
+const prev=$('Extract Person Form').first().json;
+const resp=$input.first().json;
+const newId=resp?.Response?.Id||'';
+return [{json:{...prev,personId:newId,skip:false}}];
+"""
+    add_node({
+        "id": "get_new_person_form_id",
+        "name": "Get New Person Form ID",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1950, 600],
+        "parameters": {"jsCode": get_new_person_form_code, "mode": "runOnceForAllItems"}
+    })
+
     add_node({
         "id": "update_person_fields",
         "name": "Update Person Fields",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [1800, 500],
+        "position": [2100, 500],
         "credentials": didar_cred,
         "parameters": {
             "resource": "person",
@@ -993,7 +1053,11 @@ return [{json:{...prev,personId,ownerId,lastName}}];
     connect("Router", "Prep Form", 2)
     connect("Prep Form", "Find Person Form")
     connect("Find Person Form", "Extract Person Form")
-    connect("Extract Person Form", "Update Person Fields")
+    connect("Extract Person Form", "IF Person Found Form")
+    connect("IF Person Found Form", "Update Person Fields", 0)    # true: person found
+    connect("IF Person Found Form", "Create Person Form", 1)      # false: create new person
+    connect("Create Person Form", "Get New Person Form ID")
+    connect("Get New Person Form ID", "Update Person Fields")
 
     # Form deal search and note creation
     add_node({
@@ -1001,7 +1065,7 @@ return [{json:{...prev,personId,ownerId,lastName}}];
         "name": "Search Deal Form V2",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
-        "position": [2050, 500],
+        "position": [2400, 500],
         "parameters": {
             "method": "POST",
             "url": "=https://app.didar.me/api/deal/search_v2?apikey={{ $json.apiKey }}",
@@ -1024,7 +1088,7 @@ return [{json:{...prev,dealId:deal?.Id||'',personId:prev.personId}}];
         "name": "Extract Deal Form",
         "type": "n8n-nodes-base.code",
         "typeVersion": 1,
-        "position": [2300, 500],
+        "position": [2650, 500],
         "parameters": {"jsCode": extract_deal_form_code, "mode": "runOnceForAllItems"}
     })
 
@@ -1033,7 +1097,7 @@ return [{json:{...prev,dealId:deal?.Id||'',personId:prev.personId}}];
         "name": "Create Note Form",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [2550, 500],
+        "position": [2900, 500],
         "credentials": didar_cred,
         "parameters": {
             "resource": "note",
@@ -1049,8 +1113,11 @@ return [{json:{...prev,dealId:deal?.Id||'',personId:prev.personId}}];
     })
 
     # Recover data lost after Didar API call (Update Person Fields returns API response, not our data)
+    # Try to get data from Get New Person Form ID (created person path) or Extract Person Form (found person path)
     recover_form_data_code = r"""
-const prev=$('Extract Person Form').first().json;
+let prev;
+try { prev=$('Get New Person Form ID').first().json; }
+catch(e) { prev=$('Extract Person Form').first().json; }
 return [{json:{...prev}}];
 """
     add_node({
@@ -1058,7 +1125,7 @@ return [{json:{...prev}}];
         "name": "Recover Form Data",
         "type": "n8n-nodes-base.code",
         "typeVersion": 1,
-        "position": [1950, 500],
+        "position": [2250, 500],
         "parameters": {"jsCode": recover_form_data_code, "mode": "runOnceForAllItems"}
     })
 
