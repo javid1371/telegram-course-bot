@@ -339,6 +339,16 @@ All other branches end with:
 
 ## Changelog
 
+### CRM Audit Workflow (NEW)
+- **New standalone workflow**: `crm-audit-workflow.json` — compares bot data with Didar CRM
+- Fetches all bot users via `/api/audit/users` endpoint, all Didar Persons, and all Didar Deals
+- Compares: Person exists, Deal exists, Stage matches lesson progress, Deal status (Pending/Won), Lead score
+- Generates a detailed Persian/English report with discrepancy breakdown
+- Detects orphan deals (deals in pipeline without matching bot users)
+- Manual trigger — run on demand anytime to verify sync health
+- 11 nodes (1 trigger + 4 code + 3 HTTP + 1 merge + 2 code)
+- Generator: `generate_audit_workflow.py`
+
 ### v3 (Current)
 - **Weighted owner assignment**: `OWNERS` array with weights for smart round-robin lead distribution
 - **Person deduplication**: Find Person (getByPhone) + IF exists → reuse, else create new
