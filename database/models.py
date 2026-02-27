@@ -163,6 +163,12 @@ class User(Base):
     referred_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
     source_campaign: Mapped[Optional[str]] = mapped_column(String(100))
 
+    # Engagement — streak & badges
+    streak_days: Mapped[int] = mapped_column(Integer, default=0)
+    best_streak: Mapped[int] = mapped_column(Integer, default=0)
+    last_streak_date: Mapped[Optional[datetime]] = mapped_column(sa.Date, nullable=True)
+    badges: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
     # Assigned sales owner (set from webhook response)
     assigned_owner_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sales_owners.id", ondelete="SET NULL"))
     assigned_owner_name: Mapped[Optional[str]] = mapped_column(String(255))

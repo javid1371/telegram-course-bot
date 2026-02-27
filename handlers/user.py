@@ -15,6 +15,7 @@ from database.models import ContentType, ScheduledMessage, MessageStatus, QuizAt
 from sqlalchemy import select as sa_select
 from services.user_service import UserService
 from services.lesson_service import LessonService
+from services.engagement_service import EngagementService
 from services.event_emitter import emit
 from utils.keyboards import get_main_menu_keyboard, get_lesson_keyboard, get_confirm_keyboard
 from utils.decorators import registered_only, log_errors, rate_limit
@@ -1390,6 +1391,45 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     # Get progress (course-specific)
     progress = await lesson_service.get_user_progress(user.id, course_id=course_id)
 
+    # ── Engagement: streak, badges, progress card ──
+    engagement = EngagementService(session)
+    streak_info = await engagement.update_streak(user)
+    await session.flush()
+
+    # Calculate lesson time for fast_learner badge
+    _lesson_time = None
+    try:
+        from database.models import UserProgress as UP
+        _up = await session.execute(
+            sa_select(UP).where(UP.user_id == user.id, UP.lesson_id == lesson_id)
+        )
+        _up_row = _up.scalar_one_or_none()
+        if _up_row and _up_row.started_at and _up_row.completed_at:
+            _lesson_time = int((_up_row.completed_at - _up_row.started_at).total_seconds())
+    except Exception:
+        pass
+
+    new_badges = await engagement.check_and_award_badges(
+        user, progress, streak_info["streak"], lesson_time_seconds=_lesson_time
+    )
+    await session.flush()
+
+    # Build the rich completion card
+    _lesson_num = current_lesson.lesson_number or current_lesson.order if current_lesson else 0
+    try:
+        card_text = await engagement.build_lesson_complete_card(
+            user=user,
+            lesson_num=_lesson_num,
+            progress=progress,
+            streak_info=streak_info,
+            new_badges=new_badges,
+            course_id=course_id,
+            delay_minutes=delay_minutes,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to build engagement card: {e}")
+        card_text = None
+
     if progress["remaining"] == 0:
         # Mark course as completed
         completed_courses = user.completed_courses or {}
@@ -1416,11 +1456,16 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
                     text=f"📚 {nc.title}",
                     callback_data=f"select_course:{nc.id}",
                 ))
+            # Send engagement card + course completed message
+            if card_text:
+                await message.answer(card_text)
             await message.answer(
                 USER["course_completed"] + USER["course_completed_next"],
                 reply_markup=builder.as_markup(),
             )
         else:
+            if card_text:
+                await message.answer(card_text)
             await message.answer(USER["course_completed_all_done"])
 
         # Send webhook — course.complete
@@ -1452,6 +1497,10 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             ds_courses[str(course_id)] = ds_data
             user.double_speed_courses = ds_courses
             await session.commit()
+
+            # Send engagement card before bonus lesson
+            if card_text:
+                await message.answer(card_text)
 
             # Get and deliver the bonus lesson immediately
             bonus_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
@@ -1506,10 +1555,25 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             session.add(scheduled)
             await session.commit()
 
-            remaining_text = format_duration(delay_minutes * 60)
-            await message.answer(
-                USER["lesson_next_auto_time"].format(remaining=remaining_text)
-            )
+            # Send engagement card + micro-commitment
+            if card_text:
+                from aiogram.types import InlineKeyboardButton
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    InlineKeyboardButton(text=USER["micro_commit_now"], callback_data=f"mc:now:{course_id}"),
+                    InlineKeyboardButton(text=USER["micro_commit_evening"], callback_data=f"mc:evening:{course_id}"),
+                    InlineKeyboardButton(text=USER["micro_commit_tomorrow"], callback_data=f"mc:tomorrow:{course_id}"),
+                )
+                await message.answer(
+                    card_text + USER["micro_commit_prompt"],
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                remaining_text = format_duration(delay_minutes * 60)
+                await message.answer(
+                    USER["lesson_next_auto_time"].format(remaining=remaining_text)
+                )
 
         elif delay_minutes > 0:
             # Normal delay (no 2x)
@@ -1523,12 +1587,30 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
             session.add(scheduled)
             await session.commit()
 
-            remaining_text = format_duration(delay_minutes * 60)
-            await message.answer(
-                USER["lesson_next_auto_time"].format(remaining=remaining_text)
-            )
+            # Send engagement card + micro-commitment
+            if card_text:
+                from aiogram.types import InlineKeyboardButton
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    InlineKeyboardButton(text=USER["micro_commit_now"], callback_data=f"mc:now:{course_id}"),
+                    InlineKeyboardButton(text=USER["micro_commit_evening"], callback_data=f"mc:evening:{course_id}"),
+                    InlineKeyboardButton(text=USER["micro_commit_tomorrow"], callback_data=f"mc:tomorrow:{course_id}"),
+                )
+                await message.answer(
+                    card_text + USER["micro_commit_prompt"],
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                remaining_text = format_duration(delay_minutes * 60)
+                await message.answer(
+                    USER["lesson_next_auto_time"].format(remaining=remaining_text)
+                )
         else:
-            # Instant — auto-deliver next lesson (no congratulation message)
+            # Instant — show card then auto-deliver next lesson
+            if card_text:
+                await message.answer(card_text)
+
             next_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
             if next_lesson and next_lesson.content_type == ContentType.FORM and next_lesson.form_data:
                 # Form lessons need FSM — show inline button
@@ -1602,13 +1684,95 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
 
 
 # ===========================
+# MICRO-COMMITMENT
+# ===========================
+
+@router.callback_query(F.data.startswith("mc:"))
+@log_errors
+async def micro_commit_callback(callback: CallbackQuery):
+    """Handle micro-commitment choice: now / evening / tomorrow"""
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer()
+        return
+
+    choice = parts[1]  # now / evening / tomorrow
+    course_id = int(parts[2]) if parts[2] else None
+    await callback.answer(USER["micro_commit_scheduled"])
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            return
+
+        now = datetime.now(timezone.utc)
+
+        if choice == "now":
+            # Cancel existing scheduled message and deliver now
+            pending_result = await session.execute(
+                sa_select(ScheduledMessage).where(
+                    ScheduledMessage.user_id == user.id,
+                    ScheduledMessage.message_type == "next_lesson",
+                    ScheduledMessage.status == MessageStatus.PENDING,
+                )
+            )
+            for sm in pending_result.scalars().all():
+                sm.status = MessageStatus.SENT  # Mark as handled
+            await session.commit()
+
+            # Trigger lesson delivery
+            lesson_service = LessonService(session)
+            next_lesson = await lesson_service.get_next_lesson_for_user(user.id, course_id=course_id)
+            if next_lesson:
+                await lesson_service.mark_lesson_started(user.id, next_lesson.id)
+                user.current_lesson_id = next_lesson.id
+                await session.commit()
+                await emit(
+                    "lesson", "open", user, session,
+                    course={"id": course_id, "title": ""},
+                    lesson={"id": next_lesson.id, "title": next_lesson.title, "order": next_lesson.order, "lesson_number": next_lesson.lesson_number},
+                )
+                await _send_lesson(callback.message, next_lesson)
+            return
+
+        # evening / tomorrow → schedule a reminder at the chosen time
+        if choice == "evening":
+            # Schedule for 20:00 local time today (approx UTC+3:30 for Iran = ~16:30 UTC)
+            target = now.replace(hour=16, minute=30, second=0, microsecond=0)
+            if target <= now:
+                target += timedelta(days=1)
+        elif choice == "tomorrow":
+            # Schedule for 09:00 local time tomorrow (~05:30 UTC)
+            target = (now + timedelta(days=1)).replace(hour=5, minute=30, second=0, microsecond=0)
+        else:
+            return
+
+        # Add a reminder message
+        reminder = ScheduledMessage(
+            user_id=user.id,
+            message=USER["micro_commit_reminder"],
+            message_type="micro_commit_reminder",
+            send_at=target,
+        )
+        session.add(reminder)
+        await session.commit()
+
+    # Edit the original message to remove buttons
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
+# ===========================
 # PROGRESS
 # ===========================
 
 @router.message(F.text == USER_BUTTONS["my_progress"])
 @log_errors
 async def show_progress(message: Message):
-    """Show user's progress across all courses"""
+    """Show user's progress across all courses — enhanced with streak & badges"""
     async with async_session_maker() as session:
         user_service = UserService(session)
         lesson_service = LessonService(session)
@@ -1624,8 +1788,8 @@ async def show_progress(message: Message):
         if not courses:
             # Fallback to overall progress
             progress = await lesson_service.get_user_progress(user.id)
-            filled = int(progress["progress_percent"] / 10)
-            bar = "🟢" * filled + "⚪️" * (10 - filled)
+            engagement = EngagementService(session)
+            bar = engagement.build_progress_bar(progress["progress_percent"])
             text = (
                 USER["progress_header"]
                 + f"{bar}\n"
@@ -1637,33 +1801,33 @@ async def show_progress(message: Message):
             await message.answer(text)
             return
 
-        text = USER["progress_header"]
-
         total_all = 0
         completed_all = 0
+        courses_progress = []
 
         for course in courses:
             progress = await lesson_service.get_user_progress(user.id, course_id=course.id)
             is_done = completed_courses.get(str(course.id), False)
-
-            filled = int(progress["progress_percent"] / 10)
-            bar = "🟢" * filled + "⚪️" * (10 - filled)
-
-            status = USER["progress_course_status"] if is_done else f"{progress['progress_percent']}%"
-            text += (
-                f"📚 <b>{course.title}</b> — {status}\n"
-                f"{bar}\n"
-                f"✅ {progress['completed']}/{progress['total']} درس\n\n"
-            )
-
+            courses_progress.append({
+                "title": course.title,
+                "percent": progress["progress_percent"],
+                "completed": progress["completed"],
+                "total": progress["total"],
+                "is_done": is_done,
+            })
             total_all += progress["total"]
             completed_all += progress["completed"]
 
         overall_pct = round(completed_all / total_all * 100) if total_all > 0 else 0
-        text += USER["progress_summary"].format(completed=completed_all, total=total_all, percent=overall_pct)
 
-        if user.is_completed:
-            text += "\n\n" + USER["progress_all_done"]
+        engagement = EngagementService(session)
+        text = engagement.build_progress_page(
+            user=user,
+            courses_progress=courses_progress,
+            total_completed=completed_all,
+            total_all=total_all,
+            overall_pct=overall_pct,
+        )
 
         await message.answer(text)
 

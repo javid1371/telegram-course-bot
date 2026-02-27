@@ -187,6 +187,27 @@ def setup_scheduler(bot: Bot):
         except Exception as e:
             logger.error(f"Error checking inactivity: {e}")
 
+    # ── Smart Re-engagement: last-chance reminders ──
+
+    @scheduler.scheduled_job(
+        CronTrigger(hour=15, minute=0),  # 3 PM UTC ≈ 18:30 Iran
+        id="last_chance_reminders",
+        name="Send last-chance re-engagement reminders",
+    )
+    async def last_chance_reminders_job():
+        """Send last-chance reminders to users who exhausted regular nudges"""
+        try:
+            async with async_session_maker() as session:
+                service = ReminderService(session, bot)
+                result = await service.send_last_chance_reminders()
+                if result["sent"] > 0:
+                    logger.info(
+                        f"Last-chance reminders: {result['sent']} sent, "
+                        f"{result['skipped']} skipped, {result['failed']} failed"
+                    )
+        except Exception as e:
+            logger.error(f"Error sending last-chance reminders: {e}")
+
     # ── Cross-platform sync: flush pending events to peer ──
 
     @scheduler.scheduled_job(

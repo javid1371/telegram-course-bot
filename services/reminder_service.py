@@ -827,3 +827,110 @@ class ReminderService:
             f"Morning teasers: {sent} sent, {skipped} skipped, {failed} failed"
         )
         return {"sent": sent, "failed": failed, "skipped": skipped}
+
+    # ═══════════════════════════════════════════
+    # SMART RE-ENGAGEMENT (Last Chance)
+    # ═══════════════════════════════════════════
+
+    async def send_last_chance_reminders(self) -> dict:
+        """Send 'last chance' reminders to users who:
+        - Have exhausted all regular nudge tiers (>= 72h inactive)
+        - Are >= 40% through the course (invested enough to recover)
+        - Haven't received a last_chance in the last 5 days
+        """
+        sent = 0
+        failed = 0
+        skipped = 0
+
+        # Find users inactive for 4-14 days (past nudge tiers but not abandoned)
+        cutoff_start = datetime.utcnow() - timedelta(days=14)
+        cutoff_end = datetime.utcnow() - timedelta(days=4)
+
+        result = await self.session.execute(
+            select(User).where(
+                User.is_active == True,
+                User.is_completed == False,
+                User.last_activity_at.isnot(None),
+                User.last_activity_at >= cutoff_start,
+                User.last_activity_at <= cutoff_end,
+            )
+        )
+        users = list(result.scalars().all())
+
+        if not users:
+            return {"sent": 0, "failed": 0, "skipped": 0}
+
+        lesson_service = LessonService(self.session)
+        now = datetime.utcnow()
+
+        for user in users:
+            # Check throttle: no last_chance in last 5 days
+            five_days_ago = now - timedelta(days=5)
+            existing = await self.session.execute(
+                select(func.count(ScheduledMessage.id)).where(
+                    ScheduledMessage.user_id == user.id,
+                    ScheduledMessage.message_type == "last_chance",
+                    ScheduledMessage.status == MessageStatus.SENT,
+                    ScheduledMessage.sent_at > five_days_ago,
+                )
+            )
+            if (existing.scalar() or 0) > 0:
+                skipped += 1
+                continue
+
+            # Max 2 last_chance ever
+            total_lc = await self.session.execute(
+                select(func.count(ScheduledMessage.id)).where(
+                    ScheduledMessage.user_id == user.id,
+                    ScheduledMessage.message_type == "last_chance",
+                    ScheduledMessage.status == MessageStatus.SENT,
+                )
+            )
+            if (total_lc.scalar() or 0) >= 2:
+                skipped += 1
+                continue
+
+            # Must be at least 40% through course
+            course_id = user.current_course_id
+            progress = await lesson_service.get_user_progress(user.id, course_id=course_id)
+            percent = progress.get("progress_percent", 0)
+            remaining = progress.get("remaining", 999)
+
+            if percent < 40:
+                skipped += 1
+                continue
+
+            name = user.first_name or REMINDERS["default_name"]
+
+            # Choose template based on closeness
+            if remaining <= 5:
+                msg = REMINDERS["last_chance_close"].format(name=name, remaining=remaining)
+            else:
+                msg = REMINDERS["last_chance_general"].format(name=name, percent=percent)
+
+            try:
+                from utils.keyboards import get_main_menu_keyboard
+                await self.bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=msg,
+                    reply_markup=get_main_menu_keyboard(),
+                )
+
+                log_entry = ScheduledMessage(
+                    user_id=user.id,
+                    message=f"last_chance - {msg[:80]}",
+                    message_type="last_chance",
+                    send_at=now,
+                    status=MessageStatus.SENT,
+                    sent_at=now,
+                )
+                self.session.add(log_entry)
+                sent += 1
+                logger.info(f"Last-chance reminder sent to user {user.telegram_user_id} ({percent}% done)")
+            except Exception as e:
+                failed += 1
+                logger.warning(f"Failed last-chance to {user.telegram_user_id}: {e}")
+
+        await self.session.commit()
+        logger.info(f"Last-chance reminders: {sent} sent, {skipped} skipped, {failed} failed")
+        return {"sent": sent, "failed": failed, "skipped": skipped}

@@ -325,6 +325,44 @@ USER = SmartDict("USER", {
     "progress_summary": "📈 <b>مجموع:</b> {completed}/{total} درس ({percent}%)",
     "progress_all_done": "🎉 تبریک! شما تمام دوره‌ها را تکمیل کرده‌اید!",
 
+    # ── Engagement: streak / badge / progress card ──
+    "streak_line": "🔥 <b>{streak} روز متوالی فعال!</b>",
+    "streak_best": " (بهترین: {best} روز)",
+    "streak_broken": "💪 بیا دوباره شروع کنیم!",
+
+    "badge_header": "\n🏆 <b>دستاوردها:</b>\n",
+    "badge_earned": "✅ {label}",
+    "badge_locked": "⬜ {label}",
+
+    "lesson_complete_card": (
+        "✅ <b>درس {lesson_num} تکمیل شد!</b>\n\n"
+        "{streak_line}\n"
+        "{progress_bar}\n"
+        "📈 {percent}% | درس {completed} از {total}\n"
+        "{remaining_text}"
+        "{badge_text}"
+        "{peer_text}"
+        "{preview_text}"
+    ),
+    "remaining_lessons": "\n📌 فقط <b>{remaining} درس</b> دیگه تا پایان! 💪",
+    "remaining_one": "\n📌 فقط <b>۱ درس</b> دیگه مونده تا فارغ‌التحصیلی! 🎓",
+    "peer_comparison": "\n🌟 شما جزو <b>{top_percent}% برتر</b> هستید که تا اینجا اومدن!",
+    "next_lesson_preview": "\n\n📖 درس بعدی: <b>{next_title}</b>",
+    "next_lesson_preview_timed": "\n⏰ {delivery_info}",
+
+    # Micro-commitment
+    "micro_commit_prompt": (
+        "\n\n📅 <b>درس بعدی رو کِی ببینی؟</b>"
+    ),
+    "micro_commit_now": "الان ▶️",
+    "micro_commit_evening": "امشب 🌙",
+    "micro_commit_tomorrow": "فردا صبح ☀️",
+    "micro_commit_scheduled": "⏰ عالیه! یادآوری برات تنظیم شد.",
+    "micro_commit_reminder": "⏰ وقتشه درس بعدی رو ببینی! از منو «📚 ادامه دوره» رو بزن. 🚀",
+
+    # New badge unlocked
+    "badge_unlocked": "\n\n🏅 <b>بج جدید:</b> {badge_label}",
+
     # درباره دوره
     "about_single": "📚 <b>درباره دوره</b>\n\nتعداد درس‌ها: {total}\n\nبرای شروع یا ادامه دوره از منوی اصلی استفاده کنید.",
     "about_multi_header": "📚 <b>دوره‌های موجود</b>\n\n",
@@ -955,6 +993,20 @@ REMINDERS = SmartDict("REMINDERS", {
         "۳ روزه درس «{lesson_title}» مشاهده نشده!\n"
         "این آخرین یادآور برای این درسه.\n"
         "بزن روی دکمه زیر و ادامه بده! ⬇️"
+    ),
+
+    # ── یادآور آخرین شانس (smart re-engagement) ──
+    "last_chance_close": (
+        "💚 {name} عزیز!\n\n"
+        "خیلی نزدیکی! فقط <b>{remaining} درس</b> دیگه مونده تا دوره رو تکمیل کنی.\n"
+        "حیفه اینجا ولش کنی! 🎯\n\n"
+        "📚 ادامه دوره"
+    ),
+    "last_chance_general": (
+        "🌟 {name} عزیز!\n\n"
+        "{percent}% دوره رو تکمیل کردی — این دستاورد بزرگیه!\n"
+        "بقیه‌شم باهات هستیم. ❤️\n\n"
+        "📚 ادامه دوره"
     ),
 
     # ── یادآورهای شروع دوره (start_nudge) ──
