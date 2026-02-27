@@ -8,6 +8,7 @@ from services.analytics_service import AnalyticsService
 from services.export_service import ExportService
 from services.reminder_service import ReminderService
 from services.engagement_service import EngagementService
+from services.sms_service import SMSService
 
 __all__ = [
     'UserService',
@@ -18,4 +19,5 @@ __all__ = [
     'ExportService',
     'ReminderService',
     'EngagementService',
+    'SMSService',
 ]

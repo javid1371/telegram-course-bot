@@ -208,6 +208,28 @@ def setup_scheduler(bot: Bot):
         except Exception as e:
             logger.error(f"Error sending last-chance reminders: {e}")
 
+    # ── SMS re-engagement (Kavenegar) ──
+
+    @scheduler.scheduled_job(
+        CronTrigger(hour=7, minute=30),  # 7:30 UTC ≈ 11:00 Iran
+        id="sms_nudge_reminders",
+        name="Send SMS re-engagement reminders (Kavenegar)",
+    )
+    async def sms_nudge_reminders_job():
+        """Send SMS nudges to users who exhausted Telegram reminders"""
+        try:
+            from services.sms_service import SMSService
+            async with async_session_maker() as session:
+                sms_service = SMSService(session)
+                result = await sms_service.send_sms_nudge_reminders()
+                if result["sent"] > 0:
+                    logger.info(
+                        f"SMS nudges: {result['sent']} sent, "
+                        f"{result['skipped']} skipped, {result['failed']} failed"
+                    )
+        except Exception as e:
+            logger.error(f"Error sending SMS nudges: {e}")
+
     # ── Cross-platform sync: flush pending events to peer ──
 
     @scheduler.scheduled_job(

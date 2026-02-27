@@ -125,6 +125,11 @@ SYNC_SECRET = os.getenv("SYNC_SECRET", "")
 CROSS_PLATFORM_BOT_LINK = os.getenv("CROSS_PLATFORM_BOT_LINK", "")
 CROSS_PLATFORM_BOT_NAME = os.getenv("CROSS_PLATFORM_BOT_NAME", "")
 
+# ── SMS (Kavenegar) ──────────────────────────────────────────────
+SMS_ENABLED = os.getenv("SMS_ENABLED", "False").lower() == "true"
+KAVENEGAR_API_KEY = os.getenv("KAVENEGAR_API_KEY", "")
+KAVENEGAR_SENDER = os.getenv("KAVENEGAR_SENDER", "")  # optional dedicated line
+
 # Messages - centralized in messages.py, kept here for backward compatibility
 from messages import REGISTRATION, USER, ADMIN as ADMIN_MESSAGES
 MESSAGES = {

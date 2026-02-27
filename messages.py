@@ -1009,6 +1009,24 @@ REMINDERS = SmartDict("REMINDERS", {
         "📚 ادامه دوره"
     ),
 
+    # ── SMS re-engagement (Kavenegar) ──
+    "sms_nudge_1": (
+        "{name} جان، {percent}% دوره رو تکمیل کردی! "
+        "فقط {remaining} درس مونده. حیفه نصفه بمونه\n"
+        "ادامه: {bot_link}"
+    ),
+    "sms_nudge_2": (
+        "{name}، ما هنوز باهاتیم! "
+        "هر وقت آماده بودی، دوره همینجا منتظرته.\n"
+        "{bot_link}"
+    ),
+    "sms_nudge_3": (
+        "{name}، آخرین پیام ما: "
+        "دوره‌ات {percent}% تکمیل شده. ما دیگه مزاحم نمیشیم، "
+        "ولی هر وقت خواستی برگردی خوشحال میشیم.\n"
+        "{bot_link}"
+    ),
+
     # ── یادآورهای شروع دوره (start_nudge) ──
     "start_nudge_24h": (
         "👋 {name} عزیز!\n\n"
