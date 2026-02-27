@@ -102,6 +102,25 @@ async def get_stats(_=Depends(get_current_user)):
             )
         )).scalar() or 0
 
+        # Top streaks leaderboard (top 10)
+        top_streaks_q = (
+            select(
+                User.first_name, User.last_name,
+                User.streak_days, User.best_streak, User.badges
+            )
+            .where(User.best_streak > 0)
+            .order_by(User.best_streak.desc(), User.streak_days.desc())
+            .limit(10)
+        )
+        top_streaks = []
+        for row in (await session.execute(top_streaks_q)).all():
+            top_streaks.append({
+                "name": f"{row.first_name or ''} {row.last_name or ''}".strip() or "—",
+                "streak_days": row.streak_days or 0,
+                "best_streak": row.best_streak or 0,
+                "badges_count": len(row.badges) if row.badges else 0,
+            })
+
         return {
             "total_users": total_users,
             "active_users_7d": active_users,
@@ -122,6 +141,7 @@ async def get_stats(_=Depends(get_current_user)):
                 "max_streak": max_streak,
                 "badge_holders": badge_holders,
                 "sms_sent": sms_sent,
+                "top_streaks": top_streaks,
             },
         }
 
