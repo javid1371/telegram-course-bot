@@ -39,7 +39,7 @@ def _extract_phone(registration_data: Optional[dict]) -> Optional[str]:
 async def audit_users(_=Depends(get_current_user)):
     """
     Return all bot users with essential data for CRM audit comparison.
-    
+
     For each user returns:
     - id, telegram_user_id, platform
     - phone (extracted from registration_data)

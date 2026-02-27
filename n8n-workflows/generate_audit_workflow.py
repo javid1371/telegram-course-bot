@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Generate n8n workflow for CRM Audit — compares bot data with Didar CRM.
 
+Reads shared config from config.json (same file used by generate_workflow.py).
+
 Steps:
 1. Login to bot panel → JWT token
 2. Fetch all bot users via /api/audit/users
@@ -10,9 +12,17 @@ Steps:
 6. Output report (respond to webhook or manual trigger output)
 """
 import json
+import os
 
 
-def build_workflow():
+def load_config():
+    """Load shared config from config.json."""
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    with open(config_path, "r") as f:
+        return json.load(f)
+
+
+def build_workflow(platform="telegram"):
     nodes = []
     connections = {}
 
@@ -44,55 +54,57 @@ def build_workflow():
     })
 
     # ═══════════════════════════════════════════════════
-    # CONFIG NODE
+    # CONFIG NODE — values injected from config.json
     # ═══════════════════════════════════════════════════
 
-    config_code = r"""
-const CONFIG = {
-  // ── Didar CRM ──
-  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',
-  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',
-  COMPANY_ID: '00000000-0000-0000-0000-000000000000',
+    cfg = load_config()
+    d = cfg["didar"]
+    panel = cfg["bot_panel"].get(platform, cfg["bot_panel"]["telegram"])
 
-  // Stages — same GUIDs as main workflow
-  STAGES: {
-    register: 'STAGE_GUID_HERE',
-    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',
-    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',
-    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',
-    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',
-    sales_wait: 'STAGE_GUID_HERE',
-    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',
-    followup_3: 'STAGE_GUID_HERE',
-    won: 'STAGE_GUID_HERE'
-  },
+    # Build stages JS object
+    stages_js = ",\n    ".join(
+        f"{k}: '{v}'" for k, v in d["stages"].items()
+    )
+    # Build custom_fields JS object (only lead_score needed for audit)
+    cf_js = ",\n    ".join(
+        f"{k}: '{v}'" for k, v in d["custom_fields"].items()
+    )
 
-  CUSTOM_FIELDS: {
-    lead_score: 'FIELD_GUID'
-  },
+    config_code = f"""
+const CONFIG = {{
+  DIDAR_API_KEY: '{d["api_key"]}',
+  PIPELINE_ID: '{d["pipeline_id"]}',
+  COMPANY_ID: '{d["company_id"]}',
 
-  // ── Bot Panel Access ──
-  BOT_PANEL_URL: 'http://YOUR_SERVER_IP:8080',
-  BOT_ADMIN_USER: 'admin',
-  BOT_ADMIN_PASS: 'YOUR_ADMIN_PASS',
-};
+  STAGES: {{
+    {stages_js}
+  }},
+
+  CUSTOM_FIELDS: {{
+    {cf_js}
+  }},
+
+  BOT_PANEL_URL: '{panel["url"]}',
+  BOT_ADMIN_USER: '{panel["username"]}',
+  BOT_ADMIN_PASS: '{panel["password"]}',
+}};
 
 // Build reverse stage lookup: GUID → stage name
-const stageToName = {};
-for (const [name, guid] of Object.entries(CONFIG.STAGES)) {
+const stageToName = {{}};
+for (const [name, guid] of Object.entries(CONFIG.STAGES)) {{
   stageToName[guid] = name;
-}
+}}
 CONFIG._stageToName = stageToName;
 
 // Build lesson_number → stage GUID mapping
-const lessonToStage = {};
-for (const [name, guid] of Object.entries(CONFIG.STAGES)) {
-  const m = name.match(/^lesson_(\d+)$/);
+const lessonToStage = {{}};
+for (const [name, guid] of Object.entries(CONFIG.STAGES)) {{
+  const m = name.match(/^lesson_(\\d+)$/);
   if (m) lessonToStage[parseInt(m[1])] = guid;
-}
+}}
 CONFIG._lessonToStage = lessonToStage;
 
-return [{json: {CONFIG}}];
+return [{{json: {{CONFIG}}}}];
 """
 
     add_node({
@@ -637,7 +649,7 @@ return [{json: {
     # ═══════════════════════════════════════════════════
 
     workflow = {
-        "name": "CRM Audit — Bot vs Didar Sync Check",
+        "name": f"CRM Audit — Bot vs Didar ({platform.title()})",
         "nodes": nodes,
         "connections": connections,
         "active": False,
@@ -645,7 +657,8 @@ return [{json: {
         "tags": [
             {"name": "course-bot"},
             {"name": "audit"},
-            {"name": "didar-crm"}
+            {"name": "didar-crm"},
+            {"name": platform}
         ]
     }
 
@@ -653,9 +666,13 @@ return [{json: {
 
 
 if __name__ == "__main__":
-    import os
-    wf = build_workflow()
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crm-audit-workflow.json")
-    with open(out_path, "w") as f:
-        json.dump(wf, f, indent=2, ensure_ascii=False)
-    print(f"Generated audit workflow with {len(wf['nodes'])} nodes → {out_path}")
+    import sys
+    platforms = sys.argv[1:] if len(sys.argv) > 1 else ["telegram"]
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    for plat in platforms:
+        wf = build_workflow(platform=plat)
+        out_path = os.path.join(base_dir, f"crm-audit-{plat}.json")
+        with open(out_path, "w") as f:
+            json.dump(wf, f, indent=2, ensure_ascii=False)
+        print(f"[{plat}] Generated audit workflow with {len(wf['nodes'])} nodes → {out_path}")

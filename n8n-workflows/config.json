@@ -1,0 +1,57 @@
+{
+  "_comment": "Shared config for all n8n workflow generators. Fill in real values here once — all workflows use them.",
+
+  "didar": {
+    "api_key": "YOUR_DIDAR_API_KEY_HERE",
+    "pipeline_id": "YOUR_PIPELINE_GUID_HERE",
+    "company_id": "00000000-0000-0000-0000-000000000000",
+    "activity_type_sales": "YOUR_SALES_ACTIVITY_TYPE_GUID",
+    "activity_type_followup": "YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID",
+    "stages": {
+      "register": "STAGE_GUID_HERE",
+      "lesson_1": "STAGE_GUID_HERE",
+      "lesson_2": "STAGE_GUID_HERE",
+      "lesson_3": "STAGE_GUID_HERE",
+      "lesson_4": "STAGE_GUID_HERE",
+      "lesson_5": "STAGE_GUID_HERE",
+      "lesson_6": "STAGE_GUID_HERE",
+      "lesson_7": "STAGE_GUID_HERE",
+      "lesson_8": "STAGE_GUID_HERE",
+      "sales_wait": "STAGE_GUID_HERE",
+      "followup_1": "STAGE_GUID_HERE",
+      "followup_2": "STAGE_GUID_HERE",
+      "followup_3": "STAGE_GUID_HERE",
+      "won": "STAGE_GUID_HERE"
+    },
+    "custom_fields": {
+      "monthly_income": "FIELD_GUID",
+      "staff_count": "FIELD_GUID",
+      "job": "FIELD_GUID",
+      "best_call_time": "FIELD_GUID",
+      "lead_score": "FIELD_GUID",
+      "city": "FIELD_GUID",
+      "income_class": "FIELD_GUID"
+    },
+    "owners": [
+      {"id": "OWNER_GUID_1", "name": "Owner 1", "weight": 3},
+      {"id": "OWNER_GUID_2", "name": "Owner 2", "weight": 2}
+    ]
+  },
+
+  "webhook": {
+    "secret": "YOUR_WEBHOOK_SECRET_HERE"
+  },
+
+  "bot_panel": {
+    "telegram": {
+      "url": "http://193.163.201.132:8080",
+      "username": "admin",
+      "password": "CourseBot@2024Admin"
+    },
+    "bale": {
+      "url": "http://195.177.255.133:8080",
+      "username": "admin",
+      "password": "BaleAdmin@2024Panel"
+    }
+  }
+}

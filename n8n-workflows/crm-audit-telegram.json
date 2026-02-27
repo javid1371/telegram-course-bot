@@ -1,0 +1,322 @@
+{
+  "name": "CRM Audit — Bot vs Didar (Telegram)",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        500,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\nconst CONFIG = {\n  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE',\n    lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE',\n    lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE',\n    lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE',\n    lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE',\n    followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE',\n    won: 'STAGE_GUID_HERE'\n  },\n\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID',\n    staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID',\n    best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID',\n    city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  },\n\n  BOT_PANEL_URL: 'http://193.163.201.132:8080',\n  BOT_ADMIN_USER: 'admin',\n  BOT_ADMIN_PASS: 'CourseBot@2024Admin',\n};\n\n// Build reverse stage lookup: GUID → stage name\nconst stageToName = {};\nfor (const [name, guid] of Object.entries(CONFIG.STAGES)) {\n  stageToName[guid] = name;\n}\nCONFIG._stageToName = stageToName;\n\n// Build lesson_number → stage GUID mapping\nconst lessonToStage = {};\nfor (const [name, guid] of Object.entries(CONFIG.STAGES)) {\n  const m = name.match(/^lesson_(\\d+)$/);\n  if (m) lessonToStage[parseInt(m[1])] = guid;\n}\nCONFIG._lessonToStage = lessonToStage;\n\nreturn [{json: {CONFIG}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "login",
+      "name": "Login Bot Panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        500
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.CONFIG.BOT_PANEL_URL + '/api/auth/login' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({username: $json.CONFIG.BOT_ADMIN_USER, password: $json.CONFIG.BOT_ADMIN_PASS}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "extract_token",
+      "name": "Extract Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\nconst config = $('Config').first().json.CONFIG;\nconst resp = $input.first().json;\nconst token = resp.access_token || '';\nif (!token) throw new Error('Login failed — no access_token in response');\nreturn [{json: {CONFIG: config, token}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "fetch_bot_users",
+      "name": "Fetch Bot Users",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        500
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.CONFIG.BOT_PANEL_URL + '/api/audit/users' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "extract_bot_users",
+      "name": "Extract Bot Users",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\nconst config = $('Config').first().json.CONFIG;\nconst token = $('Extract Token').first().json.token;\nconst resp = $input.first().json;\nconst botUsers = resp.items || [];\nreturn [{json: {CONFIG: config, token, botUsers, totalBotUsers: botUsers.length}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "fetch_persons",
+      "name": "Fetch Didar Persons",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1750,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://app.didar.me/api/person/getall?apikey=' + $json.CONFIG.DIDAR_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({From: 0, Limit: 5000}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "fetch_deals",
+      "name": "Fetch Didar Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1750,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://app.didar.me/api/deal/search_v2?apikey=' + $json.CONFIG.DIDAR_API_KEY }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({Criteria: {PipelineId: $json.CONFIG.PIPELINE_ID}, From: 0, Limit: 5000}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "compare",
+      "name": "Compare & Audit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2100,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\n// Gather inputs\nconst data = $('Extract Bot Users').first().json;\nconst CONFIG = data.CONFIG;\nconst botUsers = data.botUsers || [];\n\nconst personsResp = $('Fetch Didar Persons').first().json;\nconst dealsResp = $('Fetch Didar Deals').first().json;\n\nconst persons = personsResp?.Response?.List || personsResp?.search_respons?.List || [];\nconst deals = dealsResp?.Response?.List || dealsResp?.search_respons?.List || [];\n\n// ── Build lookup maps ──\n\n// Normalise phone: remove leading 0, keep last 10 digits\nfunction normalisePhone(raw) {\n  if (!raw) return '';\n  const digits = String(raw).replace(/\\D/g, '');\n  if (digits.length >= 10) return digits.slice(-10);\n  return digits;\n}\n\n// Person lookup by normalised phone\nconst personByPhone = {};\nfor (const p of persons) {\n  const phones = [p.MobilePhone, p.Phone, p.HomePhone].filter(Boolean);\n  for (const ph of phones) {\n    const norm = normalisePhone(ph);\n    if (norm) personByPhone[norm] = p;\n  }\n}\n\n// Deal lookup by PersonId (keep first pending deal per person)\nconst dealByPersonId = {};\nfor (const d of deals) {\n  const pid = d.PersonId || d.ContactId;\n  if (!pid) continue;\n  // Prefer Pending deals; if multiple, keep first\n  if (!dealByPersonId[pid] || d.Status === 'Pending') {\n    dealByPersonId[pid] = d;\n  }\n}\n\n// Stage name from GUID lookup\nconst stageToName = CONFIG._stageToName || {};\nconst lessonToStage = CONFIG._lessonToStage || {};\n\n// ── Build expected stage for each user ──\nfunction expectedStage(user) {\n  if (user.is_completed) return {name: 'won', guid: CONFIG.STAGES.won};\n  const ln = user.current_lesson_number;\n  if (ln && lessonToStage[ln]) {\n    return {name: 'lesson_' + ln, guid: lessonToStage[ln]};\n  }\n  return {name: 'register', guid: CONFIG.STAGES.register};\n}\n\n// ── Compare each bot user ──\nconst report = {\n  summary: {\n    total_bot_users: botUsers.length,\n    users_with_phone: 0,\n    users_without_phone: 0,\n    total_crm_persons: persons.length,\n    total_crm_deals: deals.length,\n    person_found: 0,\n    person_missing: 0,\n    deal_found: 0,\n    deal_missing: 0,\n    stage_match: 0,\n    stage_mismatch: 0,\n    status_match: 0,\n    status_mismatch: 0,\n    lead_score_match: 0,\n    lead_score_mismatch: 0,\n    fully_synced: 0,\n  },\n  discrepancies: [],\n  missing_persons: [],\n  missing_deals: [],\n  stage_mismatches: [],\n  status_mismatches: [],\n  lead_score_mismatches: [],\n  orphan_deals: [],\n};\n\nconst matchedPersonIds = new Set();\n\nfor (const user of botUsers) {\n  const phone = normalisePhone(user.phone);\n  if (!phone) {\n    report.summary.users_without_phone++;\n    continue;\n  }\n  report.summary.users_with_phone++;\n\n  const person = personByPhone[phone];\n  const issues = [];\n\n  if (!person) {\n    report.summary.person_missing++;\n    report.missing_persons.push({\n      bot_user_id: user.id,\n      name: (user.first_name || '') + ' ' + (user.last_name || ''),\n      phone: user.phone,\n      lesson: user.current_lesson_number,\n      completed: user.is_completed,\n    });\n    continue; // No person → skip deal check\n  }\n\n  report.summary.person_found++;\n  matchedPersonIds.add(person.Id);\n\n  // Check deal\n  const deal = dealByPersonId[person.Id];\n  if (!deal) {\n    report.summary.deal_missing++;\n    report.missing_deals.push({\n      bot_user_id: user.id,\n      name: (user.first_name || '') + ' ' + (user.last_name || ''),\n      phone: user.phone,\n      crm_person_id: person.Id,\n      lesson: user.current_lesson_number,\n      completed: user.is_completed,\n    });\n    issues.push('deal_missing');\n  } else {\n    report.summary.deal_found++;\n\n    // Check stage\n    const exp = expectedStage(user);\n    const actualStageGuid = deal.PipelineStageId || '';\n    const actualStageName = stageToName[actualStageGuid] || actualStageGuid;\n\n    if (actualStageGuid === exp.guid) {\n      report.summary.stage_match++;\n    } else {\n      report.summary.stage_mismatch++;\n      report.stage_mismatches.push({\n        bot_user_id: user.id,\n        name: (user.first_name || '') + ' ' + (user.last_name || ''),\n        phone: user.phone,\n        expected_stage: exp.name,\n        actual_stage: actualStageName,\n        deal_id: deal.Id,\n        lesson: user.current_lesson_number,\n        completed: user.is_completed,\n      });\n      issues.push('stage_mismatch');\n    }\n\n    // Check deal status\n    const expectedStatus = user.is_completed ? 'Won' : 'Pending';\n    const actualStatus = deal.Status || 'Unknown';\n    if (actualStatus === expectedStatus) {\n      report.summary.status_match++;\n    } else {\n      report.summary.status_mismatch++;\n      report.status_mismatches.push({\n        bot_user_id: user.id,\n        name: (user.first_name || '') + ' ' + (user.last_name || ''),\n        phone: user.phone,\n        expected_status: expectedStatus,\n        actual_status: actualStatus,\n        deal_id: deal.Id,\n      });\n      issues.push('status_mismatch');\n    }\n  }\n\n  // Check lead_score (on Person custom fields)\n  const crmLeadScoreField = CONFIG.CUSTOM_FIELDS?.lead_score;\n  if (crmLeadScoreField && crmLeadScoreField !== 'FIELD_GUID' && person.Fields) {\n    const crmScore = parseInt(person.Fields[crmLeadScoreField] || '0', 10);\n    const botScore = user.lead_score || 0;\n    if (crmScore === botScore) {\n      report.summary.lead_score_match++;\n    } else {\n      report.summary.lead_score_mismatch++;\n      report.lead_score_mismatches.push({\n        bot_user_id: user.id,\n        name: (user.first_name || '') + ' ' + (user.last_name || ''),\n        phone: user.phone,\n        bot_lead_score: botScore,\n        crm_lead_score: crmScore,\n        crm_person_id: person.Id,\n      });\n      issues.push('lead_score_mismatch');\n    }\n  }\n\n  if (issues.length === 0) {\n    report.summary.fully_synced++;\n  }\n}\n\n// Find orphan deals (in pipeline but no matching bot user)\nconst botPhones = new Set(botUsers.map(u => normalisePhone(u.phone)).filter(Boolean));\nfor (const deal of deals) {\n  const pid = deal.PersonId || deal.ContactId;\n  if (pid && !matchedPersonIds.has(pid)) {\n    // Check if person's phone matches any bot user\n    const person = persons.find(p => p.Id === pid);\n    const personPhones = person ? [person.MobilePhone, person.Phone].filter(Boolean).map(normalisePhone) : [];\n    const hasMatch = personPhones.some(ph => botPhones.has(ph));\n    if (!hasMatch) {\n      report.orphan_deals.push({\n        deal_id: deal.Id,\n        deal_title: deal.Title || '',\n        person_id: pid,\n        person_name: person ? ((person.FirstName || '') + ' ' + (person.LastName || '')) : 'Unknown',\n        stage: stageToName[deal.PipelineStageId] || deal.PipelineStageId,\n        status: deal.Status,\n      });\n    }\n  }\n}\n\nreturn [{json: report}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "format_report",
+      "name": "Format Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2350,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nconst s = r.summary;\n\nconst lines = [];\nlines.push('═══════════════════════════════════');\nlines.push('  📊 گزارش آدیت ربات ↔ CRM دیدار');\nlines.push('  CRM Sync Audit Report');\nlines.push('═══════════════════════════════════');\nlines.push('');\nlines.push('📋 خلاصه / Summary');\nlines.push('───────────────────────────────────');\nlines.push(`  کاربران ربات (کل)        : ${s.total_bot_users}`);\nlines.push(`  دارای شماره تلفن          : ${s.users_with_phone}`);\nlines.push(`  بدون شماره تلفن           : ${s.users_without_phone}`);\nlines.push(`  پرسن‌های CRM              : ${s.total_crm_persons}`);\nlines.push(`  دیل‌های CRM               : ${s.total_crm_deals}`);\nlines.push('');\nlines.push('🔍 نتایج مقایسه / Comparison Results');\nlines.push('───────────────────────────────────');\nlines.push(`  ✅ پرسن پیدا شد           : ${s.person_found}`);\nlines.push(`  ❌ پرسن ناموجود           : ${s.person_missing}`);\nlines.push(`  ✅ دیل پیدا شد            : ${s.deal_found}`);\nlines.push(`  ❌ دیل ناموجود            : ${s.deal_missing}`);\nlines.push(`  ✅ استیج صحیح             : ${s.stage_match}`);\nlines.push(`  ❌ استیج اشتباه           : ${s.stage_mismatch}`);\nlines.push(`  ✅ وضعیت صحیح             : ${s.status_match}`);\nlines.push(`  ❌ وضعیت اشتباه           : ${s.status_mismatch}`);\nlines.push(`  ✅ امتیاز لید صحیح        : ${s.lead_score_match}`);\nlines.push(`  ❌ امتیاز لید اشتباه      : ${s.lead_score_mismatch}`);\nlines.push('');\n\nconst syncRate = s.users_with_phone > 0\n  ? ((s.fully_synced / s.users_with_phone) * 100).toFixed(1)\n  : '0.0';\nlines.push(`  🎯 کاملاً سینک شده: ${s.fully_synced} / ${s.users_with_phone} (${syncRate}%)`);\nlines.push('');\n\n// ── Details sections ──\nif (r.missing_persons.length > 0) {\n  lines.push('');\n  lines.push('🚫 پرسن ناموجود در CRM / Missing Persons');\n  lines.push('───────────────────────────────────');\n  for (const p of r.missing_persons.slice(0, 50)) {\n    lines.push(`  • ${p.name} | 📱 ${p.phone} | درس ${p.lesson || '-'} | ${p.completed ? 'تکمیل' : 'فعال'}`);\n  }\n  if (r.missing_persons.length > 50) {\n    lines.push(`  ... و ${r.missing_persons.length - 50} مورد دیگر`);\n  }\n}\n\nif (r.missing_deals.length > 0) {\n  lines.push('');\n  lines.push('🚫 دیل ناموجود در CRM / Missing Deals');\n  lines.push('───────────────────────────────────');\n  for (const d of r.missing_deals.slice(0, 50)) {\n    lines.push(`  • ${d.name} | 📱 ${d.phone} | درس ${d.lesson || '-'} | ${d.completed ? 'تکمیل' : 'فعال'}`);\n  }\n  if (r.missing_deals.length > 50) {\n    lines.push(`  ... و ${r.missing_deals.length - 50} مورد دیگر`);\n  }\n}\n\nif (r.stage_mismatches.length > 0) {\n  lines.push('');\n  lines.push('⚠️ عدم تطابق استیج / Stage Mismatches');\n  lines.push('───────────────────────────────────');\n  for (const m of r.stage_mismatches.slice(0, 50)) {\n    lines.push(`  • ${m.name} | 📱 ${m.phone} | مورد انتظار: ${m.expected_stage} | واقعی: ${m.actual_stage}`);\n  }\n  if (r.stage_mismatches.length > 50) {\n    lines.push(`  ... و ${r.stage_mismatches.length - 50} مورد دیگر`);\n  }\n}\n\nif (r.status_mismatches.length > 0) {\n  lines.push('');\n  lines.push('⚠️ عدم تطابق وضعیت دیل / Status Mismatches');\n  lines.push('───────────────────────────────────');\n  for (const m of r.status_mismatches.slice(0, 50)) {\n    lines.push(`  • ${m.name} | 📱 ${m.phone} | مورد انتظار: ${m.expected_status} | واقعی: ${m.actual_status}`);\n  }\n  if (r.status_mismatches.length > 50) {\n    lines.push(`  ... و ${r.status_mismatches.length - 50} مورد دیگر`);\n  }\n}\n\nif (r.lead_score_mismatches.length > 0) {\n  lines.push('');\n  lines.push('⚠️ عدم تطابق امتیاز لید / Lead Score Mismatches');\n  lines.push('───────────────────────────────────');\n  for (const m of r.lead_score_mismatches.slice(0, 50)) {\n    lines.push(`  • ${m.name} | 📱 ${m.phone} | ربات: ${m.bot_lead_score} | CRM: ${m.crm_lead_score}`);\n  }\n  if (r.lead_score_mismatches.length > 50) {\n    lines.push(`  ... و ${r.lead_score_mismatches.length - 50} مورد دیگر`);\n  }\n}\n\nif (r.orphan_deals.length > 0) {\n  lines.push('');\n  lines.push('👻 دیل‌های یتیم (بدون کاربر ربات) / Orphan Deals');\n  lines.push('───────────────────────────────────');\n  for (const d of r.orphan_deals.slice(0, 30)) {\n    lines.push(`  • ${d.person_name} | ${d.deal_title} | استیج: ${d.stage} | ${d.status}`);\n  }\n  if (r.orphan_deals.length > 30) {\n    lines.push(`  ... و ${r.orphan_deals.length - 30} مورد دیگر`);\n  }\n}\n\nlines.push('');\nlines.push('═══════════════════════════════════');\nlines.push(`  تاریخ اجرا: ${new Date().toLocaleString('fa-IR', {timeZone: 'Asia/Tehran'})}`);\nlines.push('═══════════════════════════════════');\n\nconst reportText = lines.join('\\n');\n\nreturn [{json: {\n  report_text: reportText,\n  report_data: r,\n  generated_at: new Date().toISOString(),\n}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "merge",
+      "name": "Wait for Both",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        2000,
+        500
+      ],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Login Bot Panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login Bot Panel": {
+      "main": [
+        [
+          {
+            "node": "Extract Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Token": {
+      "main": [
+        [
+          {
+            "node": "Fetch Bot Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Bot Users": {
+      "main": [
+        [
+          {
+            "node": "Extract Bot Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Bot Users": {
+      "main": [
+        [
+          {
+            "node": "Fetch Didar Persons",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Didar Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Didar Persons": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Didar Deals": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait for Both": {
+      "main": [
+        [
+          {
+            "node": "Compare & Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare & Audit": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "course-bot"
+    },
+    {
+      "name": "audit"
+    },
+    {
+      "name": "didar-crm"
+    },
+    {
+      "name": "telegram"
+    }
+  ]
+}

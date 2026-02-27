@@ -6,8 +6,18 @@
   Bug 8:  Write lead_score to CRM custom field on Person
   Bug 10: Happy Call linked to deal via DealIds
   Bug 12: Unmatched events get Respond OK instead of timeout
+
+Reads shared config from config.json.
 """
 import json
+import os
+
+
+def load_config():
+    """Load shared config from config.json."""
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    with open(config_path, "r") as f:
+        return json.load(f)
 
 
 def build_workflow():
@@ -50,36 +60,43 @@ def build_workflow():
 
     # ── Bug 4 fix: added 'won' stage ──
     # ── Bug 8 fix: lead_score field in CUSTOM_FIELDS ──
-    config_code = r"""
-const CONFIG = {
-  WEBHOOK_SECRET: 'YOUR_WEBHOOK_SECRET_HERE',
-  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',
+
+    cfg = load_config()
+    d = cfg["didar"]
+
+    # Build owners JS array
+    owners_js = ",\n    ".join(
+        f"{{id: '{o['id']}', name: '{o['name']}', weight: {o['weight']}}}"
+        for o in d["owners"]
+    )
+    # Build stages JS object
+    stages_js = ",\n    ".join(
+        f"{k}: '{v}'" for k, v in d["stages"].items()
+    )
+    # Build custom_fields JS object
+    cf_js = ",\n    ".join(
+        f"{k}: '{v}'" for k, v in d["custom_fields"].items()
+    )
+
+    config_code = f"""
+const CONFIG = {{
+  WEBHOOK_SECRET: '{cfg["webhook"]["secret"]}',
+  DIDAR_API_KEY: '{d["api_key"]}',
   OWNERS: [
-    {id: 'OWNER_GUID_1', name: 'Owner 1', weight: 3},
-    {id: 'OWNER_GUID_2', name: 'Owner 2', weight: 2},
+    {owners_js},
   ],
-  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',
-  COMPANY_ID: '00000000-0000-0000-0000-000000000000',
-  ACTIVITY_TYPE_SALES: 'YOUR_SALES_ACTIVITY_TYPE_GUID',
-  ACTIVITY_TYPE_FOLLOWUP: 'YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID',
-  STAGES: {
-    register: 'STAGE_GUID_HERE',
-    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',
-    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',
-    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',
-    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',
-    sales_wait: 'STAGE_GUID_HERE',
-    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',
-    followup_3: 'STAGE_GUID_HERE',
-    won: 'STAGE_GUID_HERE'
-  },
-  CUSTOM_FIELDS: {
-    monthly_income: 'FIELD_GUID', staff_count: 'FIELD_GUID',
-    job: 'FIELD_GUID', best_call_time: 'FIELD_GUID',
-    lead_score: 'FIELD_GUID', city: 'FIELD_GUID',
-    income_class: 'FIELD_GUID'
-  }
-};
+  PIPELINE_ID: '{d["pipeline_id"]}',
+  COMPANY_ID: '{d["company_id"]}',
+  ACTIVITY_TYPE_SALES: '{d["activity_type_sales"]}',
+  ACTIVITY_TYPE_FOLLOWUP: '{d["activity_type_followup"]}',
+  STAGES: {{
+    {stages_js}
+  }},
+  CUSTOM_FIELDS: {{
+    {cf_js}
+  }}
+}};
+""" + r"""
 const body = $input.first().json.body || $input.first().json;
 const event = body.event || {};
 const user = body.user || {};

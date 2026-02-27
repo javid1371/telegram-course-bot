@@ -1,5 +1,5 @@
 {
-  "name": "CRM Audit — Bot vs Didar Sync Check",
+  "name": "CRM Audit — Bot vs Didar (Bale)",
   "nodes": [
     {
       "id": "trigger",
@@ -22,7 +22,7 @@
         500
       ],
       "parameters": {
-        "jsCode": "\nconst CONFIG = {\n  // ── Didar CRM ──\n  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n\n  // Stages — same GUIDs as main workflow\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE', lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE', lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE', lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE', lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE', followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE',\n    won: 'STAGE_GUID_HERE'\n  },\n\n  CUSTOM_FIELDS: {\n    lead_score: 'FIELD_GUID'\n  },\n\n  // ── Bot Panel Access ──\n  BOT_PANEL_URL: 'http://YOUR_SERVER_IP:8080',\n  BOT_ADMIN_USER: 'admin',\n  BOT_ADMIN_PASS: 'YOUR_ADMIN_PASS',\n};\n\n// Build reverse stage lookup: GUID → stage name\nconst stageToName = {};\nfor (const [name, guid] of Object.entries(CONFIG.STAGES)) {\n  stageToName[guid] = name;\n}\nCONFIG._stageToName = stageToName;\n\n// Build lesson_number → stage GUID mapping\nconst lessonToStage = {};\nfor (const [name, guid] of Object.entries(CONFIG.STAGES)) {\n  const m = name.match(/^lesson_(\\d+)$/);\n  if (m) lessonToStage[parseInt(m[1])] = guid;\n}\nCONFIG._lessonToStage = lessonToStage;\n\nreturn [{json: {CONFIG}}];\n",
+        "jsCode": "\nconst CONFIG = {\n  DIDAR_API_KEY: 'YOUR_DIDAR_API_KEY_HERE',\n  PIPELINE_ID: 'YOUR_PIPELINE_GUID_HERE',\n  COMPANY_ID: '00000000-0000-0000-0000-000000000000',\n\n  STAGES: {\n    register: 'STAGE_GUID_HERE',\n    lesson_1: 'STAGE_GUID_HERE',\n    lesson_2: 'STAGE_GUID_HERE',\n    lesson_3: 'STAGE_GUID_HERE',\n    lesson_4: 'STAGE_GUID_HERE',\n    lesson_5: 'STAGE_GUID_HERE',\n    lesson_6: 'STAGE_GUID_HERE',\n    lesson_7: 'STAGE_GUID_HERE',\n    lesson_8: 'STAGE_GUID_HERE',\n    sales_wait: 'STAGE_GUID_HERE',\n    followup_1: 'STAGE_GUID_HERE',\n    followup_2: 'STAGE_GUID_HERE',\n    followup_3: 'STAGE_GUID_HERE',\n    won: 'STAGE_GUID_HERE'\n  },\n\n  CUSTOM_FIELDS: {\n    monthly_income: 'FIELD_GUID',\n    staff_count: 'FIELD_GUID',\n    job: 'FIELD_GUID',\n    best_call_time: 'FIELD_GUID',\n    lead_score: 'FIELD_GUID',\n    city: 'FIELD_GUID',\n    income_class: 'FIELD_GUID'\n  },\n\n  BOT_PANEL_URL: 'http://195.177.255.133:8080',\n  BOT_ADMIN_USER: 'admin',\n  BOT_ADMIN_PASS: 'BaleAdmin@2024Panel',\n};\n\n// Build reverse stage lookup: GUID → stage name\nconst stageToName = {};\nfor (const [name, guid] of Object.entries(CONFIG.STAGES)) {\n  stageToName[guid] = name;\n}\nCONFIG._stageToName = stageToName;\n\n// Build lesson_number → stage GUID mapping\nconst lessonToStage = {};\nfor (const [name, guid] of Object.entries(CONFIG.STAGES)) {\n  const m = name.match(/^lesson_(\\d+)$/);\n  if (m) lessonToStage[parseInt(m[1])] = guid;\n}\nCONFIG._lessonToStage = lessonToStage;\n\nreturn [{json: {CONFIG}}];\n",
         "mode": "runOnceForAllItems"
       }
     },
@@ -314,6 +314,9 @@
     },
     {
       "name": "didar-crm"
+    },
+    {
+      "name": "bale"
     }
   ]
 }
