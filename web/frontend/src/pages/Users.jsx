@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { users } from '../api';
+import { users, exports } from '../api';
 
 export default function Users() {
   const [data, setData] = useState({ items: [], total: 0, page: 1, pages: 0 });
@@ -51,7 +51,28 @@ export default function Users() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800">👥 مدیریت کاربران</h1>
-        <span className="text-sm text-gray-500">{data.total} کاربر</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              const url = exports.users(statusFilter || undefined);
+              const token = localStorage.getItem('token');
+              fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => r.blob())
+                .then(blob => {
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = 'users_export.xlsx';
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                })
+                .catch(() => alert('خطا در دانلود'));
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition-colors"
+          >
+            📥 خروجی اکسل
+          </button>
+          <span className="text-sm text-gray-500">{data.total} کاربر</span>
+        </div>
       </div>
 
       {/* Search + Filters */}

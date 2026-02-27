@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { users } from '../api';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { users, messaging, userActions } from '../api';
 
 const TABS = [
   { key: 'overview', label: 'نمای کلی', icon: '📋' },
@@ -9,6 +9,7 @@ const TABS = [
   { key: 'quizzes', label: 'کوئیزها', icon: '❓' },
   { key: 'forms', label: 'فرم‌ها', icon: '📝' },
   { key: 'messages', label: 'پیام‌ها', icon: '💬' },
+  { key: 'actions', label: 'عملیات', icon: '⚙️' },
 ];
 
 const BADGE_INFO = {
@@ -48,17 +49,20 @@ function timeDiff(start, end) {
 
 export default function UserDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
 
-  useEffect(() => {
+  const loadUser = () => {
     setLoading(true);
     users.get(id)
       .then(setUser)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [id]);
+  };
+
+  useEffect(() => { loadUser(); }, [id]);
 
   if (loading) {
     return <div className="text-center py-20 text-gray-500">در حال بارگذاری...</div>;
@@ -134,6 +138,7 @@ export default function UserDetail() {
       {tab === 'quizzes' && <QuizzesTab user={user} />}
       {tab === 'forms' && <FormsTab user={user} />}
       {tab === 'messages' && <MessagesTab user={user} />}
+      {tab === 'actions' && <ActionsTab user={user} userId={id} onReload={loadUser} onDelete={() => navigate('/users')} />}
     </div>
   );
 }
@@ -590,6 +595,212 @@ function EmptyState({ text }) {
     <div className="text-center py-16 bg-white rounded-xl border">
       <div className="text-4xl mb-3">📭</div>
       <p className="text-gray-400">{text}</p>
+    </div>
+  );
+}
+
+/* ── Actions Tab ── */
+function ActionsTab({ user, userId, onReload, onDelete }) {
+  const [dmMessage, setDmMessage] = useState('');
+  const [dmSending, setDmSending] = useState(false);
+  const [dmResult, setDmResult] = useState(null);
+
+  const [tagInput, setTagInput] = useState((user.tags || []).join(', '));
+  const [tagSaving, setTagSaving] = useState(false);
+  const [tagResult, setTagResult] = useState(null);
+
+  const [actionLoading, setActionLoading] = useState(null);
+  const [actionResult, setActionResult] = useState(null);
+
+  // Send DM
+  const handleSendDM = async (e) => {
+    e.preventDefault();
+    if (!dmMessage.trim()) return;
+    setDmSending(true);
+    setDmResult(null);
+    try {
+      const res = await messaging.sendDirect(userId, dmMessage);
+      setDmResult({ success: true, detail: res.detail });
+      setDmMessage('');
+    } catch (err) {
+      setDmResult({ error: err.message || 'خطا' });
+    }
+    setDmSending(false);
+  };
+
+  // Save tags
+  const handleSaveTags = async () => {
+    setTagSaving(true);
+    setTagResult(null);
+    try {
+      const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean);
+      await userActions.updateTags(userId, tags);
+      setTagResult({ success: true });
+      onReload();
+    } catch (err) {
+      setTagResult({ error: err.message || 'خطا' });
+    }
+    setTagSaving(false);
+  };
+
+  // Block/Unblock
+  const handleBlock = async () => {
+    const blocked = user.is_active; // if active → block, if inactive → unblock
+    const label = blocked ? 'مسدود' : 'فعال';
+    if (!confirm(`آیا از ${label} کردن این کاربر اطمینان دارید؟`)) return;
+    setActionLoading('block');
+    try {
+      const res = await userActions.block(userId, blocked);
+      setActionResult({ success: true, detail: res.detail });
+      onReload();
+    } catch (err) {
+      setActionResult({ error: err.message });
+    }
+    setActionLoading(null);
+  };
+
+  // Reset progress
+  const handleReset = async () => {
+    if (!confirm('آیا از ریست کردن پیشرفت این کاربر اطمینان دارید؟ این عمل قابل بازگشت نیست!')) return;
+    setActionLoading('reset');
+    try {
+      const res = await userActions.resetProgress(userId);
+      setActionResult({ success: true, detail: res.detail });
+      onReload();
+    } catch (err) {
+      setActionResult({ error: err.message });
+    }
+    setActionLoading(null);
+  };
+
+  // Delete user
+  const handleDelete = async () => {
+    if (!confirm('آیا از حذف کامل این کاربر اطمینان دارید؟ این عمل قابل بازگشت نیست!')) return;
+    if (!confirm('آخرین تأیید: همه اطلاعات کاربر برای همیشه پاک خواهد شد.')) return;
+    setActionLoading('delete');
+    try {
+      await userActions.deleteUser(userId);
+      onDelete();
+    } catch (err) {
+      setActionResult({ error: err.message });
+    }
+    setActionLoading(null);
+  };
+
+  return (
+    <div className="space-y-6" dir="rtl">
+      {/* Send Message */}
+      <div className="bg-white rounded-xl border p-6">
+        <h3 className="text-lg font-semibold mb-4">✉️ ارسال پیام شخصی</h3>
+        <form onSubmit={handleSendDM} className="space-y-3">
+          <textarea
+            value={dmMessage}
+            onChange={e => setDmMessage(e.target.value)}
+            rows={3}
+            placeholder="متن پیام..."
+            className="w-full border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600 resize-y"
+            required
+          />
+          <button
+            type="submit"
+            disabled={dmSending || !dmMessage.trim()}
+            className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            {dmSending ? '⏳ ارسال...' : '📤 ارسال پیام'}
+          </button>
+          {dmResult && (
+            <div className={`text-sm rounded-lg p-2 ${dmResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+              {dmResult.error ? `❌ ${dmResult.error}` : `✅ ${dmResult.detail}`}
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* Tags */}
+      <div className="bg-white rounded-xl border p-6">
+        <h3 className="text-lg font-semibold mb-4">🏷️ مدیریت تگ‌ها</h3>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            placeholder="تگ‌ها جدا با کاما: vip, premium"
+            className="flex-1 border rounded-lg px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+          />
+          <button
+            onClick={handleSaveTags}
+            disabled={tagSaving}
+            className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {tagSaving ? '⏳' : '💾 ذخیره'}
+          </button>
+        </div>
+        {tagResult && (
+          <div className={`text-sm rounded-lg p-2 mt-2 ${tagResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {tagResult.error ? `❌ ${tagResult.error}` : '✅ تگ‌ها ذخیره شد'}
+          </div>
+        )}
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-white rounded-xl border border-red-200 p-6">
+        <h3 className="text-lg font-semibold text-red-600 mb-4">⚠️ عملیات حساس</h3>
+
+        {actionResult && (
+          <div className={`text-sm rounded-lg p-2 mb-4 ${actionResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {actionResult.error ? `❌ ${actionResult.error}` : `✅ ${actionResult.detail}`}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {/* Block/Unblock */}
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div>
+              <div className="font-medium">{user.is_active ? '🚫 مسدود کردن' : '✅ فعال کردن'}</div>
+              <div className="text-xs text-gray-500">{user.is_active ? 'کاربر نمی‌تواند از بات استفاده کند' : 'کاربر مجدداً فعال می‌شود'}</div>
+            </div>
+            <button
+              onClick={handleBlock}
+              disabled={actionLoading === 'block'}
+              className={`px-4 py-2 rounded-lg text-white text-sm ${
+                user.is_active ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'
+              } disabled:opacity-50`}
+            >
+              {actionLoading === 'block' ? '⏳' : user.is_active ? 'مسدود' : 'فعال'}
+            </button>
+          </div>
+
+          {/* Reset Progress */}
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div>
+              <div className="font-medium">🔄 ریست پیشرفت</div>
+              <div className="text-xs text-gray-500">تمام پیشرفت، کوئیزها و فرم‌ها پاک می‌شود</div>
+            </div>
+            <button
+              onClick={handleReset}
+              disabled={actionLoading === 'reset'}
+              className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 disabled:opacity-50"
+            >
+              {actionLoading === 'reset' ? '⏳' : 'ریست'}
+            </button>
+          </div>
+
+          {/* Delete */}
+          <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+            <div>
+              <div className="font-medium text-red-700">🗑️ حذف کاربر</div>
+              <div className="text-xs text-red-500">تمام اطلاعات کاربر برای همیشه حذف می‌شود</div>
+            </div>
+            <button
+              onClick={handleDelete}
+              disabled={actionLoading === 'delete'}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
+            >
+              {actionLoading === 'delete' ? '⏳' : 'حذف'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -362,3 +362,47 @@ export const settings = {
   // SMS & Engagement
   getSmsStatus: () => request('/settings/sms-status'),
 };
+
+// ── Messaging ─────────────────────────
+export const messaging = {
+  broadcast: (data) => request('/messaging/broadcast', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  broadcastHistory: (page = 1, perPage = 10) =>
+    request(`/messaging/broadcast/history?page=${page}&per_page=${perPage}`),
+  broadcastPreview: (target = 'all', tags = '') =>
+    request(`/messaging/broadcast/preview?target=${target}&tags=${tags}`),
+  sendDirect: (userId, message) => request(`/messaging/send/${userId}`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  }),
+};
+
+// ── User Actions ──────────────────────
+export const userActions = {
+  updateTags: (userId, tags) => request(`/users/${userId}/tags`, {
+    method: 'PUT',
+    body: JSON.stringify({ tags }),
+  }),
+  block: (userId, blocked) => request(`/users/${userId}/block`, {
+    method: 'PUT',
+    body: JSON.stringify({ blocked }),
+  }),
+  resetProgress: (userId) => request(`/users/${userId}/reset`, {
+    method: 'POST',
+  }),
+  deleteUser: (userId) => request(`/users/${userId}`, {
+    method: 'DELETE',
+  }),
+};
+
+// ── Exports ───────────────────────────
+export const exports = {
+  users: (status) => {
+    const qs = status ? `?status=${status}` : '';
+    return `/api/messaging/export/users${qs}`;
+  },
+  progress: () => '/api/messaging/export/progress',
+  analytics: () => '/api/messaging/export/analytics',
+};

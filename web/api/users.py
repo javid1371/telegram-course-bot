@@ -1,8 +1,9 @@
 """
 User Management API Routes — Enhanced with full activity detail
 """
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func, desc, case, String
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +15,15 @@ from database.models import (
 from web.auth import get_current_user
 
 router = APIRouter()
+
+
+# ── Pydantic Schemas ──
+
+class TagsUpdate(BaseModel):
+    tags: List[str]
+
+class BlockUpdate(BaseModel):
+    blocked: bool
 
 
 @router.get("")
@@ -426,3 +436,109 @@ async def get_user(user_id: int, _=Depends(get_current_user)):
                 for m in messages
             ],
         }
+
+
+# ── User Action Endpoints ──
+
+@router.put("/{user_id}/tags")
+async def update_user_tags(
+    user_id: int,
+    data: TagsUpdate,
+    _=Depends(get_current_user),
+):
+    """Update user tags."""
+    async with async_session_maker() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
+        user.tags = data.tags
+        await session.commit()
+        return {"success": True, "tags": user.tags}
+
+
+@router.put("/{user_id}/block")
+async def block_unblock_user(
+    user_id: int,
+    data: BlockUpdate,
+    _=Depends(get_current_user),
+):
+    """Block or unblock a user."""
+    async with async_session_maker() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
+        user.is_active = not data.blocked
+        await session.commit()
+        return {
+            "success": True,
+            "is_active": user.is_active,
+            "detail": "کاربر مسدود شد" if data.blocked else "کاربر فعال شد",
+        }
+
+
+@router.post("/{user_id}/reset")
+async def reset_user_progress(
+    user_id: int,
+    _=Depends(get_current_user),
+):
+    """Reset user progress — deletes all progress, quiz attempts, and form responses."""
+    async with async_session_maker() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
+
+        # Delete progress records
+        prog_q = select(UserProgress).where(UserProgress.user_id == user_id)
+        progress = (await session.execute(prog_q)).scalars().all()
+        for p in progress:
+            await session.delete(p)
+
+        # Delete quiz attempts
+        quiz_q = select(QuizAttempt).where(QuizAttempt.user_id == user_id)
+        quizzes = (await session.execute(quiz_q)).scalars().all()
+        for q in quizzes:
+            await session.delete(q)
+
+        # Delete form responses
+        form_q = select(FormResponse).where(FormResponse.user_id == user_id)
+        forms = (await session.execute(form_q)).scalars().all()
+        for f in forms:
+            await session.delete(f)
+
+        # Reset user state
+        user.current_lesson_id = None
+        user.is_completed = False
+        user.is_active = True
+        user.lead_score = 0
+        user.streak_days = 0
+        user.best_streak = 0
+        user.badges = []
+        user.completed_courses = []
+        user.double_speed_courses = []
+        user.fast_track_courses = []
+
+        await session.commit()
+        return {"success": True, "detail": "پیشرفت کاربر ریست شد"}
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    _=Depends(get_current_user),
+):
+    """Delete a user and all related data."""
+    async with async_session_maker() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
+
+        # Delete all related records
+        for model in [UserProgress, QuizAttempt, FormResponse, ScheduledMessage]:
+            q = select(model).where(model.user_id == user_id)
+            records = (await session.execute(q)).scalars().all()
+            for r in records:
+                await session.delete(r)
+
+        await session.delete(user)
+        await session.commit()
+        return {"success": True, "detail": "کاربر حذف شد"}
