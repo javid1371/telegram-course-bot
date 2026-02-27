@@ -326,6 +326,20 @@ return [{json: {...prev, personId: newId, personExists: false}}];
         "parameters": {"jsCode": get_new_person_code, "mode": "runOnceForAllItems"}
     })
 
+    # Unify Person: merge personId from IF Person Exists branches
+    unify_person_code = r"""const item = $input.first().json;
+if (!item.personId) throw new Error('No personId found after person search/create');
+return [{json: {...item}}];
+"""
+    add_node({
+        "id": "unify_person",
+        "name": "Unify Person",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [2400, 100],
+        "parameters": {"jsCode": unify_person_code, "mode": "runOnceForAllItems"}
+    })
+
     add_node({
         "id": "search_deal_reg",
         "name": "Search Deal Reg V2",
@@ -343,9 +357,7 @@ return [{json: {...prev, personId: newId, personExists: false}}];
     })
 
     process_deal_code = r"""
-let prev;
-try { prev = $('Use Existing Person').first().json; }
-catch(e) { prev = $('Get New Person ID').first().json; }
+const prev = $('Unify Person').first().json;
 
 const resp = $input.first().json;
 const deals = resp?.Response?.List || resp?.search_respons?.List || [];
@@ -437,6 +449,20 @@ return [{json: {...prev, dealId: newDealId}}];
         "parameters": {"jsCode": after_deal_code, "mode": "runOnceForAllItems"}
     })
 
+    # Unify Deal ID: merge dealId from IF Deal Exists branches
+    unify_deal_id_code = r"""const item = $input.first().json;
+if (!item.dealId) throw new Error('No dealId found after deal search/create');
+return [{json: {...item}}];
+"""
+    add_node({
+        "id": "unify_deal_id",
+        "name": "Unify Deal ID",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [3700, 100],
+        "parameters": {"jsCode": unify_deal_id_code, "mode": "runOnceForAllItems"}
+    })
+
     # ── Bug 10 fix: Happy Call linked to deal via DealIds ──
     add_node({
         "id": "happy_call",
@@ -464,9 +490,7 @@ return [{json: {...prev, dealId: newDealId}}];
 
     prep_response_code = r"""
 const d = $input.first().json;
-let prev;
-try { prev = $('Process Deal Reg').first().json; }
-catch(e) { prev = $('Skip Deal Create').first().json || $('After Create Deal').first().json; }
+const prev = $('Unify Deal ID').first().json;
 const ownerId = prev?.ownerId || d?.ownerId || '';
 const ownerName = prev?.ownerName || d?.ownerName || '';
 return [{json: {status: 'ok', owner: {id: ownerId, name: ownerName}}}];
@@ -499,16 +523,18 @@ return [{json: {status: 'ok', owner: {id: ownerId, name: ownerName}}}];
     connect("Process Person", "IF Person Exists")
     connect("IF Person Exists", "Use Existing Person", 0)
     connect("IF Person Exists", "Create Person", 1)
-    connect("Use Existing Person", "Search Deal Reg V2")
+    connect("Use Existing Person", "Unify Person")
     connect("Create Person", "Get New Person ID")
-    connect("Get New Person ID", "Search Deal Reg V2")
+    connect("Get New Person ID", "Unify Person")
+    connect("Unify Person", "Search Deal Reg V2")
     connect("Search Deal Reg V2", "Process Deal Reg")
     connect("Process Deal Reg", "IF Deal Exists")
     connect("IF Deal Exists", "Skip Deal Create", 0)
     connect("IF Deal Exists", "Create Deal", 1)
-    connect("Skip Deal Create", "Happy Call")
+    connect("Skip Deal Create", "Unify Deal ID")
     connect("Create Deal", "After Create Deal")
-    connect("After Create Deal", "Happy Call")
+    connect("After Create Deal", "Unify Deal ID")
+    connect("Unify Deal ID", "Happy Call")
     connect("Happy Call", "Prep Response")
     connect("Prep Response", "Respond Register")
 
@@ -793,6 +819,32 @@ return [{json:{...prev}}];
         }
     })
 
+    # Create deal when not found in lesson branch
+    add_node({
+        "id": "create_deal_lesson",
+        "name": "Create Deal Lesson",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [3200, 672],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "deal",
+            "operation": "create",
+            "Title": "={{$json.dealTitle}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "PipelineMode": "manual",
+            "PipelineId": "={{$json.pipelineId}}",
+            "StageMode": "manual",
+            "PipelineStageId": "={{$json.stageId}}",
+            "PersonId": "={{$json.personId}}",
+            "CompanyId": "={{$json.companyId}}",
+            "Status": "Pending",
+            "LabelIds": [],
+            "additionalFields": {}
+        }
+    })
+
     connect("Router", "Prep Lesson", 1)
     connect("Prep Lesson", "IF Skip Lesson")
     connect("IF Skip Lesson", "Prep Respond OK", 0)             # true: skip → respond OK
@@ -804,7 +856,8 @@ return [{json:{...prev}}];
     connect("Search Deal V2", "Extract Deal")
     connect("Extract Deal", "IF Deal Found")
     connect("IF Deal Found", "Update Deal Stage", 0)       # true: skip==false → deal found
-    connect("IF Deal Found", "Prep Respond OK", 1)          # false: skip==true → no deal
+    connect("IF Deal Found", "Create Deal Lesson", 1)       # false: no deal → create deal
+    connect("Create Deal Lesson", "Prep Respond OK")
     connect("Update Deal Stage", "Recover Lesson Data")
     connect("Recover Lesson Data", "IF Trigger Sales")
     connect("IF Trigger Sales", "Sales Call Lesson", 0)      # true: trigger sales
@@ -845,7 +898,8 @@ for (const [key, val] of Object.entries(allResponses)) {
 const noteText = noteLines.join('\\n');
 
 return [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',customFieldsJson,
-ownerId,leadScore:d.payload?.lead_score||0,CONFIG:C,noteText,userName:d.user_name,lessonTitle:d.lesson_title}}];
+ownerId,leadScore:d.payload?.lead_score||0,CONFIG:C,noteText,userName:d.user_name,lessonTitle:d.lesson_title,
+apiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID}}];
 """
 
     add_node({
@@ -922,8 +976,65 @@ return [{json:{...prev,personId,ownerId,lastName}}];
     connect("Find Person Form", "Extract Person Form")
     connect("Extract Person Form", "Update Person Fields")
 
+    # Form deal search and note creation
+    add_node({
+        "id": "search_deal_form",
+        "name": "Search Deal Form V2",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [2050, 500],
+        "parameters": {
+            "method": "POST",
+            "url": "=https://app.didar.me/api/deal/search_v2?apikey={{ $json.apiKey }}",
+            "sendBody": True,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({Criteria: {ContactIds: [$json.personId], PipelineId: $json.pipelineId}, From: 0, Limit: 50}) }}",
+            "options": {}
+        }
+    })
+
+    extract_deal_form_code = r"""
+const prev=$('Extract Person Form').first().json;
+const resp=$input.first().json;
+const deals=resp?.Response?.List||resp?.search_respons?.List||[];
+const deal=deals.find(d => d.PersonId===prev.personId||d.ContactId===prev.personId)||deals[0]||null;
+return [{json:{...prev,dealId:deal?.Id||'',personId:prev.personId}}];
+"""
+    add_node({
+        "id": "extract_deal_form",
+        "name": "Extract Deal Form",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [2300, 500],
+        "parameters": {"jsCode": extract_deal_form_code, "mode": "runOnceForAllItems"}
+    })
+
+    add_node({
+        "id": "create_note_form",
+        "name": "Create Note Form",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [2550, 500],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "note",
+            "operation": "create",
+            "ResultNote": "={{$json.noteText}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "additionalFields": {
+                "DealId": "={{$json.dealId || ''}}",
+                "PersonId": "={{$json.personId || ''}}"
+            }
+        }
+    })
+
+    connect("Update Person Fields", "Search Deal Form V2")
+    connect("Search Deal Form V2", "Extract Deal Form")
+    connect("Extract Deal Form", "Create Note Form")
+
     # ═══════════════════════════════════════════════════
-    # QUIZ PASS / FAIL / SPEED → shared Create Note
+    # QUIZ PASS / FAIL — with deal search pipeline
     # ═══════════════════════════════════════════════════
 
     prep_quiz_pass_code = r"""
@@ -931,6 +1042,7 @@ const d=$input.first().json; const C=d.CONFIG;
 const qr=d.payload?.quiz_result||{};
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
 return [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',ownerId,CONFIG:C,
+apiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID,
 courseTitle:d.course_title,userName:d.user_name,lessonTitle:d.lesson_title,
 noteText:'\u2705 \u06a9\u0648\u06cc\u06cc\u0632 \u067e\u0627\u0633! \u0646\u0645\u0631\u0647: '+qr.score+'/'+qr.passing_score+' \u062f\u0631\u0633: '+d.lesson_title}}];
 """
@@ -949,14 +1061,18 @@ noteText:'\u2705 \u06a9\u0648\u06cc\u06cc\u0632 \u067e\u0627\u0633! \u0646\u0645
         "name": "Create Note",
         "type": "n8n-nodes-didar-crm.didarCrm",
         "typeVersion": 1,
-        "position": [1300, 755],
+        "position": [2800, 755],
         "credentials": didar_cred,
         "parameters": {
             "resource": "note",
             "operation": "create",
             "ResultNote": "={{$json.noteText}}",
             "OwnerMode": "manual",
-            "OwnerIdManual": "={{$json.ownerId}}"
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "additionalFields": {
+                "DealId": "={{$json.dealId || ''}}",
+                "PersonId": "={{$json.personId || ''}}"
+            }
         }
     })
 
@@ -965,6 +1081,7 @@ const d=$input.first().json; const C=d.CONFIG;
 const qr=d.payload?.quiz_result||{};
 const ownerId = C.OWNERS && C.OWNERS.length ? C.OWNERS[0].id : '';
 return [{json:{phone:d.user_phone,phoneSearch:d.phone_search||'',ownerId,CONFIG:C,
+apiKey:C.DIDAR_API_KEY||'',pipelineId:C.PIPELINE_ID,
 courseTitle:d.course_title,userName:d.user_name,lessonTitle:d.lesson_title,
 noteText:'\u274c \u06a9\u0648\u06cc\u06cc\u0632 \u0646\u0627\u0645\u0648\u0641\u0642! \u0646\u0645\u0631\u0647: '+qr.score+'/'+qr.passing_score+' \u062f\u0631\u0633: '+d.lesson_title}}];
 """
@@ -978,10 +1095,86 @@ noteText:'\u274c \u06a9\u0648\u06cc\u06cc\u0632 \u0646\u0627\u0645\u0648\u0641\u
         "parameters": {"jsCode": prep_quiz_fail_code, "mode": "runOnceForAllItems"}
     })
 
+    # Quiz person + deal search pipeline
+    add_node({
+        "id": "find_person_quiz",
+        "name": "Find Person Quiz",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1300, 755],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "search",
+            "Keywords": "={{$json.phoneSearch}}",
+            "additionalFields": {"Limit": 1}
+        }
+    })
+
+    extract_person_quiz_code = r"""
+let prev;
+try { prev=$('Prep Quiz Pass').first().json; }
+catch(e) { prev=$('Prep Quiz Fail').first().json; }
+const resp=$input.first().json;
+const list=resp?.search_respons?.List||resp?.Response?.List||[];
+const found=list.length>0?list[0]:null;
+const personId=found?.Id||null;
+if(!personId) return [{json:{...prev,personId:null,dealId:null}}];
+const personOwnerId=found?.OwnerId||'';
+const C=prev.CONFIG;
+const approvedIds=(C.OWNERS||[]).map(o=>o.id);
+const ownerId=approvedIds.includes(personOwnerId)?personOwnerId:prev.ownerId;
+return [{json:{...prev,personId,ownerId}}];
+"""
+    add_node({
+        "id": "extract_person_quiz",
+        "name": "Extract Person Quiz",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1550, 755],
+        "parameters": {"jsCode": extract_person_quiz_code, "mode": "runOnceForAllItems"}
+    })
+
+    add_node({
+        "id": "search_deal_quiz",
+        "name": "Search Deal Quiz V2",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [1800, 755],
+        "parameters": {
+            "method": "POST",
+            "url": "=https://app.didar.me/api/deal/search_v2?apikey={{ $json.apiKey }}",
+            "sendBody": True,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({Criteria: {ContactIds: [$json.personId], PipelineId: $json.pipelineId}, From: 0, Limit: 50}) }}",
+            "options": {}
+        }
+    })
+
+    extract_deal_quiz_code = r"""
+const prev=$('Extract Person Quiz').first().json;
+const resp=$input.first().json;
+const deals=resp?.Response?.List||resp?.search_respons?.List||[];
+const deal=deals.find(d=>d.PersonId===prev.personId||d.ContactId===prev.personId)||deals[0]||null;
+return [{json:{...prev,dealId:deal?.Id||''}}];
+"""
+    add_node({
+        "id": "extract_deal_quiz",
+        "name": "Extract Deal Quiz",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [2050, 755],
+        "parameters": {"jsCode": extract_deal_quiz_code, "mode": "runOnceForAllItems"}
+    })
+
     connect("Router", "Prep Quiz Pass", 3)
     connect("Router", "Prep Quiz Fail", 4)
-    connect("Prep Quiz Pass", "Create Note")
-    connect("Prep Quiz Fail", "Create Note")
+    connect("Prep Quiz Pass", "Find Person Quiz")
+    connect("Prep Quiz Fail", "Find Person Quiz")
+    connect("Find Person Quiz", "Extract Person Quiz")
+    connect("Extract Person Quiz", "Search Deal Quiz V2")
+    connect("Search Deal Quiz V2", "Extract Deal Quiz")
+    connect("Extract Deal Quiz", "Create Note")
 
     # ═══════════════════════════════════════════════════
     # INACTIVITY BRANCH (output 5)
@@ -1264,6 +1457,71 @@ return [{json:{...prev}}];
         }
     })
 
+    # Create deal when not found in complete branch
+    add_node({
+        "id": "create_deal_complete2",
+        "name": "Create Deal Complete2",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [2800, 1300],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "deal",
+            "operation": "create",
+            "Title": "={{$json.dealTitle}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "PipelineMode": "manual",
+            "PipelineId": "={{$json.pipelineId}}",
+            "StageMode": "manual",
+            "PipelineStageId": "={{$json.stageId}}",
+            "PersonId": "={{$json.personId}}",
+            "CompanyId": "={{$json.companyId}}",
+            "Status": "Won",
+            "LabelIds": [],
+            "additionalFields": {}
+        }
+    })
+
+    after_create_deal_complete_code = r"""
+const prev=$('Extract Deal Complete').first().json;
+const resp=$input.first().json;
+const newDealId=resp?.Response?.Id||'';
+return [{json:{...prev,dealId:newDealId,skip:false}}];
+"""
+    add_node({
+        "id": "after_create_deal_complete",
+        "name": "After Create Deal Complete",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [3050, 1300],
+        "parameters": {"jsCode": after_create_deal_complete_code, "mode": "runOnceForAllItems"}
+    })
+
+    unify_deal_complete_code = r"""
+let prev, dealId;
+try {
+  prev=$('Recover Complete Data').first().json;
+  dealId=prev.dealId;
+} catch(e) {}
+if (!dealId) {
+  try {
+    prev=$('After Create Deal Complete').first().json;
+    dealId=prev.dealId;
+  } catch(e) {}
+}
+if (!prev) prev={};
+return [{json:{...prev,dealId:dealId||''}}];
+"""
+    add_node({
+        "id": "unify_deal_complete",
+        "name": "Unify Deal Complete",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [3300, 1200],
+        "parameters": {"jsCode": unify_deal_complete_code, "mode": "runOnceForAllItems"}
+    })
+
     connect("Router", "Prep Complete", 6)
     connect("Prep Complete", "Find Person Complete")
     connect("Find Person Complete", "Extract Person Complete")
@@ -1272,10 +1530,13 @@ return [{json:{...prev}}];
     connect("Recover Person Complete", "Search Deal Complete V2")
     connect("Search Deal Complete V2", "Extract Deal Complete")
     connect("Extract Deal Complete", "IF Deal Found Complete")
-    connect("IF Deal Found Complete", "Update Deal Complete", 0)    # true: skip==false
-    connect("IF Deal Found Complete", "Prep Respond OK", 1)         # false: skip==true
+    connect("IF Deal Found Complete", "Update Deal Complete", 0)    # true: deal found → update
+    connect("IF Deal Found Complete", "Create Deal Complete2", 1)   # false: no deal → create
     connect("Update Deal Complete", "Recover Complete Data")
-    connect("Recover Complete Data", "Sales Call")
+    connect("Recover Complete Data", "Unify Deal Complete")
+    connect("Create Deal Complete2", "After Create Deal Complete")
+    connect("After Create Deal Complete", "Unify Deal Complete")
+    connect("Unify Deal Complete", "Sales Call")
 
     # ═══════════════════════════════════════════════════
     # SPEED CHANGE BRANCH (output 7)
@@ -1297,8 +1558,67 @@ noteText:'\u26a1 \u062a\u063a\u06cc\u06cc\u0631 \u0633\u0631\u0639\u062a: '+(d.p
         "parameters": {"jsCode": prep_speed_code, "mode": "runOnceForAllItems"}
     })
 
+    # Speed person search pipeline
+    add_node({
+        "id": "find_person_speed",
+        "name": "Find Person Speed",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1300, 1350],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "person",
+            "operation": "search",
+            "Keywords": "={{$json.phoneSearch}}",
+            "additionalFields": {"Limit": 1}
+        }
+    })
+
+    extract_person_speed_code = r"""
+const prev=$('Prep Speed').first().json;
+const resp=$input.first().json;
+const list=resp?.search_respons?.List||resp?.Response?.List||[];
+const found=list.length>0?list[0]:null;
+const personId=found?.Id||null;
+if(!personId) return [{json:{...prev,personId:null}}];
+const personOwnerId=found?.OwnerId||'';
+const C=prev.CONFIG;
+const approvedIds=(C.OWNERS||[]).map(o=>o.id);
+const ownerId=approvedIds.includes(personOwnerId)?personOwnerId:prev.ownerId;
+return [{json:{...prev,personId,ownerId}}];
+"""
+    add_node({
+        "id": "extract_person_speed",
+        "name": "Extract Person Speed",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [1550, 1350],
+        "parameters": {"jsCode": extract_person_speed_code, "mode": "runOnceForAllItems"}
+    })
+
+    add_node({
+        "id": "create_note_speed",
+        "name": "Create Note Speed",
+        "type": "n8n-nodes-didar-crm.didarCrm",
+        "typeVersion": 1,
+        "position": [1800, 1350],
+        "credentials": didar_cred,
+        "parameters": {
+            "resource": "note",
+            "operation": "create",
+            "ResultNote": "={{$json.noteText}}",
+            "OwnerMode": "manual",
+            "OwnerIdManual": "={{$json.ownerId}}",
+            "additionalFields": {
+                "PersonId": "={{$json.personId || ''}}"
+            }
+        }
+    })
+
     connect("Router", "Prep Speed", 7)
-    connect("Prep Speed", "Create Note")
+    connect("Prep Speed", "Find Person Speed")
+    connect("Find Person Speed", "Extract Person Speed")
+    connect("Extract Person Speed", "Create Note Speed")
 
     # ═══════════════════════════════════════════════════
     # RESPOND OK — shared by all non-register branches
@@ -1332,9 +1652,10 @@ return [{json: {status: 'ok'}}];
     # Connect all non-register branch endings to Respond OK
     connect("Sales Call Lesson", "Prep Respond OK")         # lesson trigger_sales=true
     connect("IF Trigger Sales", "Prep Respond OK", 1)        # lesson trigger_sales=false
-    connect("Update Person Fields", "Prep Respond OK")
-    connect("Create Note", "Prep Respond OK")
+    connect("Create Note Form", "Prep Respond OK")           # form completed
+    connect("Create Note", "Prep Respond OK")                # quiz note
     connect("Create Followup", "Prep Respond OK")
+    connect("Create Note Speed", "Prep Respond OK")          # speed note
     connect("Sales Call", "Prep Respond OK")
     connect("Prep Respond OK", "Respond OK")
 
