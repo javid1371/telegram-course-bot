@@ -2,44 +2,44 @@
   "_comment": "Shared config for all n8n workflow generators. Fill in real values here once — all workflows use them.",
 
   "didar": {
-    "api_key": "YOUR_DIDAR_API_KEY_HERE",
-    "pipeline_id": "YOUR_PIPELINE_GUID_HERE",
+    "api_key": "1t31qjd4bl43cxej1yybhr2uf24ael2a",
+    "pipeline_id": "9b0e5024-4822-4833-abe6-8ca426a937ae",
     "company_id": "00000000-0000-0000-0000-000000000000",
-    "activity_type_sales": "YOUR_SALES_ACTIVITY_TYPE_GUID",
-    "activity_type_followup": "YOUR_FOLLOWUP_ACTIVITY_TYPE_GUID",
+    "activity_type_sales": "dc40fdb0-f8a5-4a40-80fe-1102a8a8b9f3",
+    "activity_type_followup": "3b9512e1-663c-4265-827e-43fa5bcee70e",
     "stages": {
-      "register": "STAGE_GUID_HERE",
-      "lesson_1": "STAGE_GUID_HERE",
-      "lesson_2": "STAGE_GUID_HERE",
-      "lesson_3": "STAGE_GUID_HERE",
-      "lesson_4": "STAGE_GUID_HERE",
-      "lesson_5": "STAGE_GUID_HERE",
-      "lesson_6": "STAGE_GUID_HERE",
-      "lesson_7": "STAGE_GUID_HERE",
-      "lesson_8": "STAGE_GUID_HERE",
-      "sales_wait": "STAGE_GUID_HERE",
-      "followup_1": "STAGE_GUID_HERE",
-      "followup_2": "STAGE_GUID_HERE",
-      "followup_3": "STAGE_GUID_HERE",
-      "won": "STAGE_GUID_HERE"
+      "register": "b7e97097-ff9b-4207-a2e7-07dd2ea606af",
+      "lesson_1": "ffa64a67-02e0-462b-a0c2-60c85eee6af5",
+      "lesson_2": "bcfe1289-12bf-4ee6-88e7-2dcf0ed48469",
+      "lesson_3": "4223a51c-544b-41e2-94bc-1e99016fbaba",
+      "lesson_4": "09856491-6d78-40df-b3ed-c80083e77a8f",
+      "lesson_5": "0fcb3769-e1ad-45d5-8847-e51e97065d85",
+      "lesson_6": "aee7d1c1-5f18-43e8-b1cb-050d59ce3517",
+      "lesson_7": "d9fc8133-052f-465b-9289-4211272b6e18",
+      "lesson_8": "6faab0b4-be10-478d-9655-bf41eca744a8",
+      "sales_wait": "6faab0b4-be10-478d-9655-bf41eca744a8",
+      "followup_1": "be5d2b7a-4cf6-4b5d-873f-a3a76ccf2310",
+      "followup_2": "daa24b66-5151-4e57-b08e-032a2961c339",
+      "followup_3": "3d3cf5e9-0726-43db-9e01-885c50c3b2bd",
+      "won": ""
     },
     "custom_fields": {
-      "monthly_income": "FIELD_GUID",
-      "staff_count": "FIELD_GUID",
-      "job": "FIELD_GUID",
-      "best_call_time": "FIELD_GUID",
-      "lead_score": "FIELD_GUID",
-      "city": "FIELD_GUID",
-      "income_class": "FIELD_GUID"
+      "monthly_income": "Field_996_0_26",
+      "staff_count": "Field_996_0_25",
+      "job": "J",
+      "best_call_time": "Field_996_0_31",
+      "lead_score": "Field_996_12_30",
+      "city": "Field_996_0_11",
+      "income_class": ""
     },
     "owners": [
-      {"id": "OWNER_GUID_1", "name": "Owner 1", "weight": 3},
-      {"id": "OWNER_GUID_2", "name": "Owner 2", "weight": 2}
+      {"id": "a52a4294-f773-48cf-8201-d4402f7b7780", "name": "عباسی", "weight": 3},
+      {"id": "f4d3c7ad-3fb4-42f3-bf78-04ca86a24a1f", "name": "غلامی", "weight": 2}
     ]
   },
 
   "webhook": {
-    "secret": "YOUR_WEBHOOK_SECRET_HERE"
+    "secret": "cbot_s3cr3t_hmac_2026"
   },
 
   "bot_panel": {
