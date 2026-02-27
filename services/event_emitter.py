@@ -28,7 +28,7 @@ import hmac
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aiohttp
@@ -753,8 +753,8 @@ async def check_inactive_users(session: AsyncSession):
     Called by scheduler.  Deduplicates using ScheduledMessage table so
     each user only gets the event once per 7 days.
     """
-    cutoff = datetime.utcnow() - timedelta(hours=48)
-    dedup_window = datetime.utcnow() - timedelta(days=7)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    dedup_window = datetime.now(timezone.utc) - timedelta(days=7)
 
     result = await session.execute(
         select(User).where(
@@ -781,7 +781,7 @@ async def check_inactive_users(session: AsyncSession):
             continue
 
         days_inactive = (
-            (datetime.utcnow() - user.last_activity_at).days
+            (datetime.now(timezone.utc) - user.last_activity_at).days
             if user.last_activity_at
             else 0
         )
@@ -791,7 +791,7 @@ async def check_inactive_users(session: AsyncSession):
         )
 
         # Record emission for dedup
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         session.add(ScheduledMessage(
             user_id=user.id,
             message=f"inactivity.timeout emitted (inactive {days_inactive}d)",

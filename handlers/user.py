@@ -1394,7 +1394,6 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     # ── Engagement: streak, badges, progress card ──
     engagement = EngagementService(session)
     streak_info = await engagement.update_streak(user)
-    await session.flush()
 
     # Calculate lesson time for fast_learner badge
     _lesson_time = None
@@ -1412,7 +1411,9 @@ async def _complete_lesson_flow(message: Message, user, lesson_id: int, session)
     new_badges = await engagement.check_and_award_badges(
         user, progress, streak_info["streak"], lesson_time_seconds=_lesson_time
     )
-    await session.flush()
+    # Commit engagement changes (streak + badges) immediately
+    # so they persist even if subsequent logic doesn't commit
+    await session.commit()
 
     # Build the rich completion card
     _lesson_num = current_lesson.lesson_number or current_lesson.order if current_lesson else 0
