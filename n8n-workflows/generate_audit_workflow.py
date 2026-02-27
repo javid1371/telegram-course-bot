@@ -6,10 +6,9 @@ Reads shared config from config.json (same file used by generate_workflow.py).
 Steps:
 1. Login to bot panel → JWT token
 2. Fetch all bot users via /api/audit/users
-3. Fetch all Didar Persons (paginated)
-4. Fetch all Didar Deals in pipeline (paginated)
-5. Compare & generate discrepancy report
-6. Output report (respond to webhook or manual trigger output)
+3. Fetch all Didar Deals in pipeline (includes embedded Person data)
+4. Compare & generate discrepancy report
+5. Output formatted report (manual trigger output)
 """
 import json
 import os
@@ -196,27 +195,8 @@ return [{json: {CONFIG: config, token, botUsers, totalBotUsers: botUsers.length}
     })
 
     # ═══════════════════════════════════════════════════
-    # STEP 3: FETCH ALL DIDAR PERSONS
-    # ═══════════════════════════════════════════════════
-
-    add_node({
-        "id": "fetch_persons",
-        "name": "Fetch Didar Persons",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
-        "position": [1750, 400],
-        "parameters": {
-            "method": "POST",
-            "url": "={{ 'https://app.didar.me/api/person/getall?apikey=' + $json.CONFIG.DIDAR_API_KEY }}",
-            "sendBody": True,
-            "specifyBody": "json",
-            "jsonBody": "={{ JSON.stringify({From: 0, Limit: 5000}) }}",
-            "options": {"timeout": 60000}
-        }
-    })
-
-    # ═══════════════════════════════════════════════════
-    # STEP 4: FETCH ALL DIDAR DEALS IN PIPELINE
+    # STEP 3: FETCH ALL DIDAR DEALS IN PIPELINE
+    # (Deals include embedded Person data with phone/fields)
     # ═══════════════════════════════════════════════════
 
     add_node({
@@ -224,7 +204,7 @@ return [{json: {CONFIG: config, token, botUsers, totalBotUsers: botUsers.length}
         "name": "Fetch Didar Deals",
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
-        "position": [1750, 600],
+        "position": [1750, 500],
         "parameters": {
             "method": "POST",
             "url": "={{ 'https://app.didar.me/api/deal/search_v2?apikey=' + $json.CONFIG.DIDAR_API_KEY }}",
@@ -236,7 +216,8 @@ return [{json: {CONFIG: config, token, botUsers, totalBotUsers: botUsers.length}
     })
 
     # ═══════════════════════════════════════════════════
-    # STEP 5: COMPARE & AUDIT
+    # STEP 4: COMPARE & AUDIT
+    # (Uses deal.Person embedded data — no separate person fetch)
     # ═══════════════════════════════════════════════════
 
     compare_code = r"""
@@ -245,10 +226,7 @@ const data = $('Extract Bot Users').first().json;
 const CONFIG = data.CONFIG;
 const botUsers = data.botUsers || [];
 
-const personsResp = $('Fetch Didar Persons').first().json;
 const dealsResp = $('Fetch Didar Deals').first().json;
-
-const persons = personsResp?.Response?.List || personsResp?.search_respons?.List || [];
 const deals = dealsResp?.Response?.List || dealsResp?.search_respons?.List || [];
 
 // ── Build lookup maps ──
@@ -261,24 +239,23 @@ function normalisePhone(raw) {
   return digits;
 }
 
-// Person lookup by normalised phone
+// Build deal lookup by person phone (using embedded Person data)
+const dealByPhone = {};
 const personByPhone = {};
-for (const p of persons) {
-  const phones = [p.MobilePhone, p.Phone, p.HomePhone].filter(Boolean);
+for (const d of deals) {
+  const person = d.Person || d.Contact || {};
+  const phones = [person.MobilePhone, person.WorkPhone, person.Phone, person.HomePhone].filter(Boolean);
   for (const ph of phones) {
     const norm = normalisePhone(ph);
-    if (norm) personByPhone[norm] = p;
-  }
-}
-
-// Deal lookup by PersonId (keep first pending deal per person)
-const dealByPersonId = {};
-for (const d of deals) {
-  const pid = d.PersonId || d.ContactId;
-  if (!pid) continue;
-  // Prefer Pending deals; if multiple, keep first
-  if (!dealByPersonId[pid] || d.Status === 'Pending') {
-    dealByPersonId[pid] = d;
+    if (norm) {
+      // Prefer Pending deals; if multiple, keep first pending
+      if (!dealByPhone[norm] || d.Status === 'Pending') {
+        dealByPhone[norm] = d;
+      }
+      if (!personByPhone[norm]) {
+        personByPhone[norm] = person;
+      }
+    }
   }
 }
 
@@ -302,10 +279,7 @@ const report = {
     total_bot_users: botUsers.length,
     users_with_phone: 0,
     users_without_phone: 0,
-    total_crm_persons: persons.length,
     total_crm_deals: deals.length,
-    person_found: 0,
-    person_missing: 0,
     deal_found: 0,
     deal_missing: 0,
     stage_match: 0,
@@ -316,8 +290,6 @@ const report = {
     lead_score_mismatch: 0,
     fully_synced: 0,
   },
-  discrepancies: [],
-  missing_persons: [],
   missing_deals: [],
   stage_mismatches: [],
   status_mismatches: [],
@@ -325,7 +297,7 @@ const report = {
   orphan_deals: [],
 };
 
-const matchedPersonIds = new Set();
+const matchedPhones = new Set();
 
 for (const user of botUsers) {
   const phone = normalisePhone(user.phone);
@@ -335,84 +307,68 @@ for (const user of botUsers) {
   }
   report.summary.users_with_phone++;
 
+  const deal = dealByPhone[phone];
   const person = personByPhone[phone];
   const issues = [];
 
-  if (!person) {
-    report.summary.person_missing++;
-    report.missing_persons.push({
-      bot_user_id: user.id,
-      name: (user.first_name || '') + ' ' + (user.last_name || ''),
-      phone: user.phone,
-      lesson: user.current_lesson_number,
-      completed: user.is_completed,
-    });
-    continue; // No person → skip deal check
-  }
-
-  report.summary.person_found++;
-  matchedPersonIds.add(person.Id);
-
-  // Check deal
-  const deal = dealByPersonId[person.Id];
   if (!deal) {
     report.summary.deal_missing++;
     report.missing_deals.push({
       bot_user_id: user.id,
       name: (user.first_name || '') + ' ' + (user.last_name || ''),
       phone: user.phone,
-      crm_person_id: person.Id,
       lesson: user.current_lesson_number,
       completed: user.is_completed,
     });
-    issues.push('deal_missing');
-  } else {
-    report.summary.deal_found++;
-
-    // Check stage
-    const exp = expectedStage(user);
-    const actualStageGuid = deal.PipelineStageId || '';
-    const actualStageName = stageToName[actualStageGuid] || actualStageGuid;
-
-    if (actualStageGuid === exp.guid) {
-      report.summary.stage_match++;
-    } else {
-      report.summary.stage_mismatch++;
-      report.stage_mismatches.push({
-        bot_user_id: user.id,
-        name: (user.first_name || '') + ' ' + (user.last_name || ''),
-        phone: user.phone,
-        expected_stage: exp.name,
-        actual_stage: actualStageName,
-        deal_id: deal.Id,
-        lesson: user.current_lesson_number,
-        completed: user.is_completed,
-      });
-      issues.push('stage_mismatch');
-    }
-
-    // Check deal status
-    const expectedStatus = user.is_completed ? 'Won' : 'Pending';
-    const actualStatus = deal.Status || 'Unknown';
-    if (actualStatus === expectedStatus) {
-      report.summary.status_match++;
-    } else {
-      report.summary.status_mismatch++;
-      report.status_mismatches.push({
-        bot_user_id: user.id,
-        name: (user.first_name || '') + ' ' + (user.last_name || ''),
-        phone: user.phone,
-        expected_status: expectedStatus,
-        actual_status: actualStatus,
-        deal_id: deal.Id,
-      });
-      issues.push('status_mismatch');
-    }
+    continue;
   }
 
-  // Check lead_score (on Person custom fields)
+  matchedPhones.add(phone);
+  report.summary.deal_found++;
+
+  // Check stage
+  const exp = expectedStage(user);
+  const actualStageGuid = deal.PipelineStageId || '';
+  const actualStageName = stageToName[actualStageGuid] || actualStageGuid;
+
+  if (actualStageGuid === exp.guid) {
+    report.summary.stage_match++;
+  } else {
+    report.summary.stage_mismatch++;
+    report.stage_mismatches.push({
+      bot_user_id: user.id,
+      name: (user.first_name || '') + ' ' + (user.last_name || ''),
+      phone: user.phone,
+      expected_stage: exp.name,
+      actual_stage: actualStageName,
+      deal_id: deal.Id,
+      lesson: user.current_lesson_number,
+      completed: user.is_completed,
+    });
+    issues.push('stage_mismatch');
+  }
+
+  // Check deal status
+  const expectedStatus = user.is_completed ? 'Won' : 'Pending';
+  const actualStatus = deal.Status || 'Unknown';
+  if (actualStatus === expectedStatus) {
+    report.summary.status_match++;
+  } else {
+    report.summary.status_mismatch++;
+    report.status_mismatches.push({
+      bot_user_id: user.id,
+      name: (user.first_name || '') + ' ' + (user.last_name || ''),
+      phone: user.phone,
+      expected_status: expectedStatus,
+      actual_status: actualStatus,
+      deal_id: deal.Id,
+    });
+    issues.push('status_mismatch');
+  }
+
+  // Check lead_score (on embedded Person custom fields)
   const crmLeadScoreField = CONFIG.CUSTOM_FIELDS?.lead_score;
-  if (crmLeadScoreField && crmLeadScoreField !== 'FIELD_GUID' && person.Fields) {
+  if (crmLeadScoreField && crmLeadScoreField !== 'FIELD_GUID' && person?.Fields) {
     const crmScore = parseInt(person.Fields[crmLeadScoreField] || '0', 10);
     const botScore = user.lead_score || 0;
     if (crmScore === botScore) {
@@ -439,22 +395,18 @@ for (const user of botUsers) {
 // Find orphan deals (in pipeline but no matching bot user)
 const botPhones = new Set(botUsers.map(u => normalisePhone(u.phone)).filter(Boolean));
 for (const deal of deals) {
-  const pid = deal.PersonId || deal.ContactId;
-  if (pid && !matchedPersonIds.has(pid)) {
-    // Check if person's phone matches any bot user
-    const person = persons.find(p => p.Id === pid);
-    const personPhones = person ? [person.MobilePhone, person.Phone].filter(Boolean).map(normalisePhone) : [];
-    const hasMatch = personPhones.some(ph => botPhones.has(ph));
-    if (!hasMatch) {
-      report.orphan_deals.push({
-        deal_id: deal.Id,
-        deal_title: deal.Title || '',
-        person_id: pid,
-        person_name: person ? ((person.FirstName || '') + ' ' + (person.LastName || '')) : 'Unknown',
-        stage: stageToName[deal.PipelineStageId] || deal.PipelineStageId,
-        status: deal.Status,
-      });
-    }
+  const person = deal.Person || deal.Contact || {};
+  const phones = [person.MobilePhone, person.WorkPhone].filter(Boolean).map(normalisePhone);
+  const hasMatch = phones.some(ph => botPhones.has(ph));
+  if (!hasMatch) {
+    report.orphan_deals.push({
+      deal_id: deal.Id,
+      deal_title: deal.Title || '',
+      person_name: person.DisplayName || 'Unknown',
+      phone: person.MobilePhone || '',
+      stage: stageToName[deal.PipelineStageId] || deal.PipelineStageId,
+      status: deal.Status,
+    });
   }
 }
 
@@ -471,7 +423,7 @@ return [{json: report}];
     })
 
     # ═══════════════════════════════════════════════════
-    # STEP 6: FORMAT REPORT (Persian + English)
+    # STEP 5: FORMAT REPORT (Persian + English)
     # ═══════════════════════════════════════════════════
 
     format_code = r"""
@@ -489,13 +441,10 @@ lines.push('──────────────────────�
 lines.push(`  کاربران ربات (کل)        : ${s.total_bot_users}`);
 lines.push(`  دارای شماره تلفن          : ${s.users_with_phone}`);
 lines.push(`  بدون شماره تلفن           : ${s.users_without_phone}`);
-lines.push(`  پرسن‌های CRM              : ${s.total_crm_persons}`);
 lines.push(`  دیل‌های CRM               : ${s.total_crm_deals}`);
 lines.push('');
 lines.push('🔍 نتایج مقایسه / Comparison Results');
 lines.push('───────────────────────────────────');
-lines.push(`  ✅ پرسن پیدا شد           : ${s.person_found}`);
-lines.push(`  ❌ پرسن ناموجود           : ${s.person_missing}`);
 lines.push(`  ✅ دیل پیدا شد            : ${s.deal_found}`);
 lines.push(`  ❌ دیل ناموجود            : ${s.deal_missing}`);
 lines.push(`  ✅ استیج صحیح             : ${s.stage_match}`);
@@ -513,18 +462,6 @@ lines.push(`  🎯 کاملاً سینک شده: ${s.fully_synced} / ${s.users_w
 lines.push('');
 
 // ── Details sections ──
-if (r.missing_persons.length > 0) {
-  lines.push('');
-  lines.push('🚫 پرسن ناموجود در CRM / Missing Persons');
-  lines.push('───────────────────────────────────');
-  for (const p of r.missing_persons.slice(0, 50)) {
-    lines.push(`  • ${p.name} | 📱 ${p.phone} | درس ${p.lesson || '-'} | ${p.completed ? 'تکمیل' : 'فعال'}`);
-  }
-  if (r.missing_persons.length > 50) {
-    lines.push(`  ... و ${r.missing_persons.length - 50} مورد دیگر`);
-  }
-}
-
 if (r.missing_deals.length > 0) {
   lines.push('');
   lines.push('🚫 دیل ناموجود در CRM / Missing Deals');
@@ -618,30 +555,9 @@ return [{json: {
     connect("Extract Token", "Fetch Bot Users")
     connect("Fetch Bot Users", "Extract Bot Users")
 
-    # Both Didar fetches run in parallel from Extract Bot Users
-    connect("Extract Bot Users", "Fetch Didar Persons")
+    # Deals fetch runs from Extract Bot Users, then straight to Compare
     connect("Extract Bot Users", "Fetch Didar Deals")
-
-    # Merge node to wait for both Didar fetches before comparison
-    add_node({
-        "id": "merge",
-        "name": "Wait for Both",
-        "type": "n8n-nodes-base.merge",
-        "typeVersion": 2.1,
-        "position": [2000, 500],
-        "parameters": {
-            "mode": "combine",
-            "combinationMode": "mergeByPosition",
-            "options": {}
-        }
-    })
-
-    # Override connections: both Didar results → Merge → Compare
-    # Remove old direct connections to Compare
-    # Connect Didar results to Merge
-    connections["Fetch Didar Persons"] = {"main": [[{"node": "Wait for Both", "type": "main", "index": 0}]]}
-    connections["Fetch Didar Deals"] = {"main": [[{"node": "Wait for Both", "type": "main", "index": 1}]]}
-    connect("Wait for Both", "Compare & Audit")
+    connect("Fetch Didar Deals", "Compare & Audit")
     connect("Compare & Audit", "Format Report")
 
     # ═══════════════════════════════════════════════════
