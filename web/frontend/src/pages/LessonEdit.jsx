@@ -171,7 +171,10 @@ export default function LessonEdit() {
   };
 
   const selectMediaFile = async (file) => {
-    const item = { type: file.file_type, file_id: file.file_id };
+    // Use the picker's requested type (e.g. "audio") instead of stored file_type
+    // because on Bale, audio files may be stored as "document"
+    const effectiveType = mediaPickerType || file.file_type;
+    const item = { type: effectiveType, file_id: file.file_id };
     try {
       if (mediaPickerMode === 'replace' && replaceIndex >= 0) {
         await lessons.replaceContent(id, replaceIndex, item);

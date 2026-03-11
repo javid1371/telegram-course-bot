@@ -5209,6 +5209,12 @@ async def media_library_receive_file(message: Message, state: FSMContext):
         file_name = message.document.file_name or f"doc_{message.document.file_unique_id}"
         file_size = message.document.file_size
         mime_type = message.document.mime_type
+        # On Bale, audio/voice files arrive as document — detect by mime_type
+        if mime_type:
+            if mime_type.startswith("audio/"):
+                file_type = "audio"
+            elif mime_type.startswith("video/"):
+                file_type = "video"
     elif message.photo:
         photo = message.photo[-1]  # largest
         file_id = photo.file_id

@@ -4,7 +4,7 @@ Media Library API — CRUD for media files uploaded via bot.
 import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, or_
 
 from database import async_session_maker
 from database.models import MediaFile
@@ -37,7 +37,17 @@ async def list_media(
         query = select(MediaFile).where(MediaFile.platform == PLATFORM)
 
         if file_type:
-            query = query.where(MediaFile.file_type == file_type)
+            # On Bale, audio/voice files may be stored as "document" with audio/* mime_type
+            # Include those when filtering for audio or voice
+            if file_type in ("audio", "voice"):
+                query = query.where(
+                    or_(
+                        MediaFile.file_type == file_type,
+                        MediaFile.mime_type.ilike("audio/%"),
+                    )
+                )
+            else:
+                query = query.where(MediaFile.file_type == file_type)
         if search:
             query = query.where(MediaFile.name.ilike(f"%{search}%"))
 
