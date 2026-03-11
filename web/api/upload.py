@@ -79,9 +79,15 @@ async def upload_file(
     # Read file content once
     file_data = await file.read()
 
+    # Bale does not support sendAudio (MP3) — force audio/voice to document
+    effective_type = content_type
+    if PLATFORM == "bale" and content_type in ("audio", "voice"):
+        logger.info(f"Bale platform: converting {content_type} → document for {file.filename}")
+        effective_type = "document"
+
     # Try original type first, fallback to document
-    attempts = [content_type]
-    if content_type != "document":
+    attempts = [effective_type]
+    if effective_type != "document":
         attempts.append("document")
 
     last_error = ""
@@ -135,6 +141,8 @@ async def upload_file(
             if attempt_type != content_type:
                 logger.info(f"Upload fallback: {content_type} -> {attempt_type} for {file.filename}")
 
+            # Return original content_type so lesson delivery uses correct method
+            # (on Bale, audio is uploaded as document but stored as "document")
             return {
                 "file_id": file_id,
                 "type": actual_type,

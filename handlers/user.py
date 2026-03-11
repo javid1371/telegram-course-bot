@@ -424,7 +424,11 @@ def _extract_file_id_from_message(sent_msg, content_type_str: str) -> str | None
         "photo": lambda m: m.photo[-1].file_id if m.photo else None,
     }
     extractor = mapping.get(content_type_str)
-    return extractor(sent_msg) if extractor else None
+    fid = extractor(sent_msg) if extractor else None
+    # On Bale, audio/voice are sent as document — fallback to document field
+    if not fid and content_type_str in ("audio", "voice") and sent_msg.document:
+        fid = sent_msg.document.file_id
+    return fid
 
 
 async def _send_lesson(message: Message, lesson):

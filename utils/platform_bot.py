@@ -50,9 +50,15 @@ class PlatformBot(Bot):
         return await super().send_video(chat_id, video, caption=_adapt(caption), **kwargs)
 
     async def send_audio(self, chat_id, audio, caption=None, **kwargs):
+        if config.PLATFORM == "bale":
+            # Bale does not support sendAudio (MP3) — send as document instead
+            return await super().send_document(chat_id, audio, caption=_adapt(caption), **kwargs)
         return await super().send_audio(chat_id, audio, caption=_adapt(caption), **kwargs)
 
     async def send_voice(self, chat_id, voice, caption=None, **kwargs):
+        if config.PLATFORM == "bale":
+            # Bale does not support sendVoice (OGG) — send as document instead
+            return await super().send_document(chat_id, voice, caption=_adapt(caption), **kwargs)
         return await super().send_voice(chat_id, voice, caption=_adapt(caption), **kwargs)
 
     async def send_document(self, chat_id, document, caption=None, **kwargs):
