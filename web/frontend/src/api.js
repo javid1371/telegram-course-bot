@@ -325,6 +325,70 @@ export const media = {
   get: (id) => request(`/media/${id}`),
   delete: (id) => request(`/media/${id}`, { method: 'DELETE' }),
   platform: () => request('/media/platform'),
+  /**
+   * Upload file directly to media library from web panel.
+   * @param {File} file
+   * @param {string} contentType - video, audio, photo, document
+   * @param {(percent: number) => void} onProgress
+   * @returns {Promise<{id, name, file_type, file_id, file_size}>}
+   */
+  upload: (file, contentType = 'document', onProgress = null) => {
+    return new Promise((resolve, reject) => {
+      const token = getToken();
+      const form = new FormData();
+      form.append('file', file);
+      form.append('content_type', contentType);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/media/upload`);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      let serverPct = 90;
+      let serverWaitTimer = null;
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 90));
+        }
+      });
+
+      xhr.upload.addEventListener('load', () => {
+        if (onProgress) {
+          onProgress(90);
+          serverWaitTimer = setInterval(() => {
+            if (serverPct < 98) { serverPct += 0.5; onProgress(Math.round(serverPct)); }
+          }, 2000);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (serverWaitTimer) clearInterval(serverWaitTimer);
+        if (xhr.status === 401) {
+          clearToken();
+          window.location.href = '/login';
+          return reject(new Error('Unauthorized'));
+        }
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            if (onProgress) onProgress(100);
+            resolve(data);
+          } else {
+            reject(new Error(data.detail || `HTTP ${xhr.status}`));
+          }
+        } catch {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        if (serverWaitTimer) clearInterval(serverWaitTimer);
+        reject(new Error('خطا در اتصال'));
+      });
+
+      xhr.send(form);
+    });
+  },
 };
 
 // ── Settings ─────────────────────────────

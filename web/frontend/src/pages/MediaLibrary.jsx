@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { media } from '../api';
+import { media, upload } from '../api';
 
 const TYPE_ICONS = {
   video: '🎬',
@@ -50,6 +50,12 @@ export default function MediaLibrary() {
   const [search, setSearch] = useState('');
   const [platform, setPlatform] = useState({ platform: '', label: '' });
 
+  // Upload state
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [showUploadType, setShowUploadType] = useState(false);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -87,6 +93,31 @@ export default function MediaLibrary() {
     }
   };
 
+  const detectContentType = (file) => {
+    const mime = file.type || '';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('image/')) return 'photo';
+    return 'document';
+  };
+
+  const handleUpload = async (file) => {
+    const contentType = detectContentType(file);
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      await media.upload(file, contentType, (pct) => setUploadProgress(pct));
+      toast.success(`فایل «${file.name}» آپلود شد`);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -103,15 +134,48 @@ export default function MediaLibrary() {
         </div>
       </div>
 
-      {/* Info Banner */}
+      {/* Upload Button & Progress */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <p className="text-sm text-blue-800">
-          <strong>📌 نحوه افزودن فایل:</strong> فایل‌های خود را مستقیماً در چت بات {platform.label || 'تلگرام/بله'} ارسال کنید.
-          ابتدا دکمه «📁 کتابخانه فایل‌ها» را بزنید، سپس فایل بفرستید.
-        </p>
-        <p className="text-xs text-blue-600 mt-1">
-          ⚠️ فایل‌های هر پلتفرم جداگانه هستند — فایل آپلود شده در تلگرام فقط در پنل تلگرام نمایش داده می‌شود و بالعکس.
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-sm text-blue-800">
+              <strong>📌 آپلود فایل:</strong> فایل‌ها را مستقیماً از اینجا آپلود کنید یا در چت بات {platform.label || 'تلگرام/بله'} بفرستید.
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              پشتیبانی از ویدیو، صوت (MP3)، عکس و فایل — حداکثر ۵۰ مگابایت
+            </p>
+          </div>
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="video/*,audio/*,image/*,.pdf,.doc,.docx,.zip"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleUpload(file);
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {uploading ? `⏳ ${uploadProgress}%` : '📤 آپلود فایل'}
+            </button>
+          </div>
+        </div>
+        {uploading && (
+          <div className="mt-3">
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-blue-600 mt-1 text-center">در حال آپلود... {uploadProgress}%</p>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -155,7 +219,7 @@ export default function MediaLibrary() {
           <p className="text-4xl mb-3">📭</p>
           <p className="text-gray-500">هنوز فایلی آپلود نشده</p>
           <p className="text-sm text-gray-400 mt-1">
-            فایل‌ها رو از چت بات تلگرام/بله بفرستید (دکمه «📁 کتابخانه فایل‌ها»)
+            از دکمه «📤 آپلود فایل» بالا استفاده کنید
           </p>
         </div>
       ) : (

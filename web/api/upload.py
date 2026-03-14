@@ -155,9 +155,13 @@ async def upload_file(
             logger.warning(f"Bot API error [{error_code}]: {error_desc} (method={method}, file={file.filename}, size={len(file_data)})")
             if error_code == 413:
                 file_mb = len(file_data) / (1024 * 1024)
+                # If we have more attempts (fallback to document), try those first
+                if attempt_type != effective_type or len(attempts) > attempts.index(attempt_type) + 1:
+                    logger.info(f"413 on {method}, will try next fallback for {file.filename}")
+                    continue
                 raise HTTPException(
                     status_code=413,
-                    detail=f"فایل {file_mb:.0f}MB بزرگتر از حد مجاز ۵۰MB است. لطفاً از قابلیت تقسیم خودکار استفاده کنید."
+                    detail=f"سرور فایل {file_mb:.0f}MB را نپذیرفت (خطای {error_code}). لطفاً فایل را کوچکتر کنید یا از قابلیت تقسیم خودکار استفاده کنید."
                 )
             if attempt_type != content_type:
                 # Already tried fallback
