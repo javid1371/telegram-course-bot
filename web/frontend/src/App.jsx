@@ -14,6 +14,7 @@ import RegistrationFields from './pages/RegistrationFields';
 import MediaLibrary from './pages/MediaLibrary';
 import Settings from './pages/Settings';
 import Messaging from './pages/Messaging';
+import SupportChat from './pages/SupportChat';
 
 function PrivateRoute({ children }) {
   return isAuthenticated() ? children : <Navigate to="/login" />;
@@ -38,6 +39,7 @@ export default function App() {
                   <Route path="/users" element={<Users />} />
                   <Route path="/users/:id" element={<UserDetail />} />
                   <Route path="/messaging" element={<Messaging />} />
+                  <Route path="/support" element={<SupportChat />} />
                   <Route path="/lesson-progress" element={<LessonProgress />} />
                   <Route path="/registration-fields" element={<RegistrationFields />} />
                   <Route path="/media" element={<MediaLibrary />} />

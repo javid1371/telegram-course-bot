@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/courses', label: 'دوره‌ها', icon: '📚' },
   { to: '/users', label: 'کاربران', icon: '👥' },
   { to: '/messaging', label: 'پیام‌رسانی', icon: '📨' },
+  { to: '/support', label: 'پشتیبانی', icon: '💬' },
   { to: '/lesson-progress', label: 'روند دروس', icon: '📊' },
   { to: '/registration-fields', label: 'فرم ثبت‌نام', icon: '📝' },
   { to: '/media', label: 'کتابخانه فایل‌ها', icon: '📁' },

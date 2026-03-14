@@ -27,6 +27,7 @@ from web.api.settings import router as settings_router
 from web.api.sync import router as sync_router
 from web.api.messaging import router as messaging_router
 from web.api.audit import router as audit_router
+from web.api.support import router as support_router
 
 
 @asynccontextmanager
@@ -65,6 +66,7 @@ app.include_router(settings_router, prefix="/api/settings", tags=["Settings"])
 app.include_router(sync_router, prefix="/api/sync", tags=["Sync"])
 app.include_router(messaging_router, prefix="/api/messaging", tags=["Messaging"])
 app.include_router(audit_router, prefix="/api/audit", tags=["Audit"])
+app.include_router(support_router, prefix="/api/support", tags=["Support Chat"])
 
 # Serve React frontend (built files)
 STATIC_DIR = Path(__file__).parent / "static"

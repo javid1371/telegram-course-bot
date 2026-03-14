@@ -30,6 +30,7 @@ router = Router()
 class UserStates(StatesGroup):
     """FSM states for user interactions"""
     filling_form = State()  # User is filling a form lesson
+    support_chat = State()  # User is in support chat mode
 
 
 # ===========================
@@ -1928,8 +1929,11 @@ async def about_course(message: Message):
 
 @router.message(F.text == USER_BUTTONS["support"])
 @log_errors
-async def support(message: Message):
+async def support(message: Message, state: FSMContext):
     """Show support info with company details and assigned owner"""
+    # Clear any active FSM state (e.g. support_chat)
+    await state.clear()
+
     from services.support_service import SupportService
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -1945,6 +1949,14 @@ async def support(message: Message):
         text = support_service.build_support_text(company_info, user)
 
         builder = InlineKeyboardBuilder()
+
+        # "Send message to support" button — always shown
+        builder.row(
+            InlineKeyboardButton(
+                text=USER["support_send_message_btn"],
+                callback_data="support:start_chat",
+            )
+        )
 
         # If user has an assigned owner, show direct chat button
         if user and user.assigned_owner_id:
@@ -1975,6 +1987,86 @@ async def support(message: Message):
             await message.answer(text, reply_markup=builder.as_markup())
         else:
             await message.answer(text)
+
+
+# ===========================
+# SUPPORT CHAT (send message to admin)
+# ===========================
+
+@router.callback_query(F.data == "support:start_chat")
+async def start_support_chat(callback: CallbackQuery, state: FSMContext):
+    """Enter support chat mode — user messages go to admin panel"""
+    await callback.answer()
+    await state.set_state(UserStates.support_chat)
+
+    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+    back_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=GENERAL["back"])]],
+        resize_keyboard=True,
+    )
+    await callback.message.answer(USER["support_chat_mode"], reply_markup=back_kb)
+
+
+@router.message(UserStates.support_chat, F.text == GENERAL["back"])
+@log_errors
+async def exit_support_chat(message: Message, state: FSMContext):
+    """Exit support chat mode"""
+    await state.clear()
+    await message.answer(
+        USER["support_chat_ended"],
+        reply_markup=get_main_menu_keyboard(),
+    )
+
+
+@router.message(UserStates.support_chat)
+@log_errors
+async def handle_support_message(message: Message, state: FSMContext):
+    """Save user message to support_messages table"""
+    from database.models import SupportMessage
+
+    async with async_session_maker() as session:
+        user_service = UserService(session)
+        user = await user_service.get_user_by_telegram_id(message.from_user.id)
+        if not user:
+            await message.answer(USER["please_register"])
+            return
+
+        # Determine content type and extract file_id
+        msg_text = message.text or message.caption or ""
+        file_id = None
+        file_type = None
+
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            file_type = "photo"
+        elif message.video:
+            file_id = message.video.file_id
+            file_type = "video"
+        elif message.audio:
+            file_id = message.audio.file_id
+            file_type = "audio"
+        elif message.voice:
+            file_id = message.voice.file_id
+            file_type = "voice"
+        elif message.document:
+            file_id = message.document.file_id
+            file_type = "document"
+
+        support_msg = SupportMessage(
+            user_id=user.id,
+            sender_type="user",
+            message_text=msg_text if msg_text else None,
+            file_id=file_id,
+            file_type=file_type,
+            platform=config.PLATFORM,
+            is_read=False,
+        )
+        session.add(support_msg)
+        await session.commit()
+
+        logger.info(f"Support message saved: user={user.id}, type={file_type or 'text'}")
+
+    await message.answer(USER["support_message_sent"])
 
 
 @router.message(Command("progress"))

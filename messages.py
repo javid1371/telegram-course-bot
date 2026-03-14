@@ -416,6 +416,16 @@ USER = SmartDict("USER", {
     "support_owner_assigned": "\n\n👤 <b>کارشناس اختصاصی شما:</b> {owner_name}",
     "support_chat_btn": "💬 چت با کارشناس",
     "support_no_owner": "",
+    "support_send_message_btn": "✉️ ارسال پیام به پشتیبانی",
+    "support_chat_mode": (
+        "✉️ <b>ارسال پیام به پشتیبانی</b>\n\n"
+        "پیام خود را تایپ کنید یا فایل ارسال کنید.\n"
+        "تیم پشتیبانی پیام شما را دریافت و پاسخ خواهد داد.\n\n"
+        "برای خروج از حالت پیام، دکمه «بازگشت» را بزنید."
+    ),
+    "support_message_sent": "✅ پیام شما ارسال شد. تیم پشتیبانی در اسرع وقت پاسخ خواهد داد.",
+    "support_chat_ended": "✅ از حالت پیام خارج شدید.",
+    "support_admin_reply": "💬 <b>پاسخ پشتیبانی:</b>\n\n{message}",
 
     # راهنما
     "help_text": (

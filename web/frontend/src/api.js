@@ -443,6 +443,19 @@ export const messaging = {
   }),
 };
 
+// ── Support Chat ──────────────────────
+export const support = {
+  conversations: (page = 1, perPage = 50) =>
+    request(`/support/conversations?page=${page}&per_page=${perPage}`),
+  unreadCount: () => request('/support/unread-count'),
+  messages: (userId, limit = 100) =>
+    request(`/support/messages/${userId}?limit=${limit}`),
+  reply: (userId, message) => request(`/support/messages/${userId}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  }),
+};
+
 // ── User Actions ──────────────────────
 export const userActions = {
   updateTags: (userId, tags) => request(`/users/${userId}/tags`, {
