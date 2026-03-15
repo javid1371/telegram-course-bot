@@ -667,7 +667,7 @@ class SyncEvent(Base):
     event_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     # e.g. "lesson.complete", "quiz.pass", "form.submit", "course.complete", "lead.register"
 
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     # Phone extracted from registration_data.mobile — used for cross-platform user matching
 

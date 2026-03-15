@@ -10,6 +10,7 @@ from aiogram.filters import CommandStart, Command
 
 from database import async_session_maker
 from database.models import RegistrationField, FieldType, User
+import sqlalchemy as sa
 from services.user_service import UserService
 from services.lesson_service import LessonService
 from services.event_emitter import emit
@@ -468,6 +469,11 @@ async def _auto_send_first_lesson(message: Message, telegram_user_id: int):
 
                         # Delete the just-created (non-shadow) user
                         old_user_id = user.id
+                        # First delete any sync_events referencing this user (FK constraint)
+                        from database.models import SyncEvent
+                        await session.execute(
+                            sa.delete(SyncEvent).where(SyncEvent.user_id == old_user_id)
+                        )
                         await session.delete(user)
                         await session.commit()
 
