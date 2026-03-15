@@ -19,6 +19,34 @@ const FORM_FIELD_TYPES = [
   { value: 'select', label: 'انتخابی' },
 ];
 
+/**
+ * Auto-detect content type from file extension / MIME type.
+ * Prevents accidental mismatches like uploading PDF as audio.
+ */
+function detectContentType(file) {
+  const ext = (file.name || '').split('.').pop().toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+
+  // Video
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp'].includes(ext) || mime.startsWith('video/')) {
+    return 'video';
+  }
+  // Audio
+  if (['mp3', 'm4a', 'wav', 'flac', 'aac', 'wma'].includes(ext) || (mime.startsWith('audio/') && !mime.includes('ogg'))) {
+    return 'audio';
+  }
+  // Voice (OGG Opus)
+  if (ext === 'ogg' || ext === 'oga' || (mime.startsWith('audio/') && mime.includes('ogg'))) {
+    return 'voice';
+  }
+  // Photo
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg'].includes(ext) || mime.startsWith('image/')) {
+    return 'photo';
+  }
+  // Everything else → document (PDF, DOC, ZIP, etc.)
+  return 'document';
+}
+
 function ContentBlock({ item, index, total, onMoveUp, onMoveDown, onDelete, onReplace }) {
   const typeInfo = CONTENT_TYPES.find((t) => t.value === item.type) || { icon: '❓', label: item.type };
 
@@ -1107,7 +1135,16 @@ export default function LessonEdit() {
                   type="file"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) setAddFile(f);
+                    if (f) {
+                      setAddFile(f);
+                      // Auto-detect and switch content type based on file extension
+                      const detected = detectContentType(f);
+                      if (detected !== addType) {
+                        setAddType(detected);
+                        const label = CONTENT_TYPES.find(t => t.value === detected)?.label || detected;
+                        toast(`نوع فایل تشخیص داده شد: ${label}`, { icon: '🔍' });
+                      }
+                    }
                   }}
                   className="w-full"
                 />
@@ -1265,7 +1302,16 @@ export default function LessonEdit() {
                   type="file"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) setReplaceFile(f);
+                    if (f) {
+                      setReplaceFile(f);
+                      // Auto-detect and switch content type based on file extension
+                      const detected = detectContentType(f);
+                      if (detected !== replaceType) {
+                        setReplaceType(detected);
+                        const label = CONTENT_TYPES.find(t => t.value === detected)?.label || detected;
+                        toast(`نوع فایل تشخیص داده شد: ${label}`, { icon: '🔍' });
+                      }
+                    }
                   }}
                   className="w-full"
                 />

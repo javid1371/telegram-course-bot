@@ -79,6 +79,32 @@ async def upload_file(
     # Read file content once
     file_data = await file.read()
 
+    # Auto-detect content type from file extension to prevent mismatches
+    # (e.g., uploading PDF with type "audio" would cause PDF → MP3 display bug)
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if file.filename else ""
+    EXT_MAP = {
+        # Document types
+        "pdf": "document", "doc": "document", "docx": "document",
+        "xls": "document", "xlsx": "document", "ppt": "document", "pptx": "document",
+        "zip": "document", "rar": "document", "7z": "document", "tar": "document",
+        "gz": "document", "txt": "document", "csv": "document", "rtf": "document",
+        # Video types
+        "mp4": "video", "mov": "video", "avi": "video", "mkv": "video",
+        "webm": "video", "flv": "video", "wmv": "video", "3gp": "video",
+        # Audio types
+        "mp3": "audio", "m4a": "audio", "wav": "audio", "flac": "audio",
+        "aac": "audio", "wma": "audio",
+        # Voice types
+        "ogg": "voice", "oga": "voice",
+        # Photo types
+        "jpg": "photo", "jpeg": "photo", "png": "photo", "gif": "photo",
+        "webp": "photo", "bmp": "photo", "tiff": "photo",
+    }
+    detected_type = EXT_MAP.get(ext)
+    if detected_type and detected_type != content_type:
+        logger.info(f"Auto-correcting content_type: {content_type} → {detected_type} for {file.filename}")
+        content_type = detected_type
+
     # Bale does not support sendAudio (MP3) — force audio/voice to document
     effective_type = content_type
     if PLATFORM == "bale" and content_type in ("audio", "voice"):

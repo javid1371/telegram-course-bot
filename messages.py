@@ -426,6 +426,7 @@ USER = SmartDict("USER", {
     "support_message_sent": "✅ پیام شما ارسال شد. تیم پشتیبانی در اسرع وقت پاسخ خواهد داد.",
     "support_chat_ended": "✅ از حالت پیام خارج شدید.",
     "support_admin_reply": "💬 <b>پاسخ پشتیبانی:</b>\n\n{message}",
+    "support_reply_btn": "📩 پاسخ به پشتیبانی",
 
     # راهنما
     "help_text": (

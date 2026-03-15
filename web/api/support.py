@@ -228,10 +228,21 @@ async def reply_to_user(
             reply_text = f"💬 <b>پاسخ پشتیبانی:</b>\n\n{data.message}"
             parse_mode = config.PARSE_MODE
 
+            # Add inline "reply" button so user can respond without
+            # navigating back through the support menu
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            reply_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="📩 پاسخ به پشتیبانی",
+                    callback_data="support:start_chat",
+                )]
+            ])
+
             await bot.send_message(
                 chat_id=user.telegram_user_id,
                 text=reply_text,
                 parse_mode=parse_mode,
+                reply_markup=reply_kb,
             )
             logger.info(f"Support reply sent to user {user_id} (tg:{user.telegram_user_id})")
         except Exception as e:
